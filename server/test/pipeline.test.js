@@ -38,6 +38,8 @@ function fakeAi({ fail } = {}) {
         value = keepAllCandidates(user);
       } else if (label.startsWith('the key points') || label.startsWith('the merged')) {
         value = { key_points: [`Point ${n}a.`, `Point ${n}b.`] };
+      } else if (label.startsWith('the flashcards')) {
+        value = { cards: [{ question: `What does call ${n} ask?`, answer: 'Something from the lesson.', evidence: quoteFromPrompt(user, 8) }] };
       } else {
         const evidence = quoteFromPrompt(user);
         value = { terms: [{ term: 'Media', definition: `Defined in call ${n}.`, evidence }, { term: `Term ${n}`, definition: 'Another definition.', evidence }] };
@@ -76,7 +78,7 @@ describe('pipeline', () => {
     assert.equal(status.lesson.status, 'ready');
     assert.equal(status.lesson.error, null);
     assert.deepEqual({ stage: status.job.stage, status: status.job.status, error: status.job.error }, { stage: 'done', status: 'done', error: null });
-    assert.deepEqual(ai.calls.map((c) => c.label), ['the review sections', 'the key points', 'the key terms']);
+    assert.deepEqual(ai.calls.map((c) => c.label), ['the review sections', 'the key points', 'the key terms', 'the flashcards']);
 
     const [section] = rows('sections', id);
     assert.equal(section.position, 1);
@@ -85,6 +87,13 @@ describe('pipeline', () => {
     assert.equal(rows('key_points', id).length, 2);
     assert.deepEqual(rows('key_terms', id).map((t) => t.term), ['Media', 'Term 3']);
     assert.equal(rows('key_terms', id)[0].evidence, 'Photosynthesis - Plants make glucose Notes:', 'the verified quote is stored with the term');
+    const cards = db.prepare('SELECT kind, front, back, evidence, state, position FROM flashcards WHERE lesson_id = ? ORDER BY position').all(id);
+    assert.deepEqual(cards.map((c) => [c.kind, c.front, c.position, c.state]), [
+      ['term', 'Media', 1, 0],
+      ['concept', 'What does call 4 ask?', 2, 0],
+      ['term', 'Term 3', 3, 0],
+    ], 'term cards from the key terms, interleaved with the concept cards, all new');
+    assert.ok(cards.every((c) => c.evidence), 'every card keeps its evidence quote');
   });
 
   it('drops key terms whose evidence is not in the lesson, logs each one, and still finishes', async () => {
@@ -100,6 +109,7 @@ describe('pipeline', () => {
           });
         }
         if (label.startsWith('the key points')) return schema.parse({ key_points: ['p'] });
+        if (label.startsWith('the flashcards')) return schema.parse({ cards: [] });
         return schema.parse({ sections: [{ title: 't', content: 'c'.repeat(30), check_questions: [{ question: 'q', answer: 'a' }] }] });
       },
     };
@@ -109,8 +119,9 @@ describe('pipeline', () => {
     await runner.idle();
     assert.equal(getJobStatus(db, id).lesson.status, 'ready');
     assert.deepEqual(rows('key_terms', id).map((t) => t.term), ['Photosynthesis']);
-    assert.equal(infos.length, 1);
-    assert.match(infos[0], /dropped key term "Chlorophyll" \(evidence not found in the lesson text\)/);
+    const dropped = infos.filter((m) => m.includes('dropped key term'));
+    assert.equal(dropped.length, 1);
+    assert.match(dropped[0], /dropped key term "Chlorophyll" \(evidence not found in the lesson text\)/);
   });
 
   it('prompts use only-the-lesson-text and the Notes: rule, and send the lesson text', async () => {
@@ -214,7 +225,7 @@ describe('pipeline', () => {
     assert.equal(getJobStatus(db, id).lesson.status, 'processing');
     const healthy = fakeAi();
     await run(healthy, id);
-    assert.deepEqual(healthy.calls.map((c) => c.label), ['the key points', 'the key terms'], 'sections are not regenerated');
+    assert.deepEqual(healthy.calls.map((c) => c.label), ['the key points', 'the key terms', 'the flashcards'], 'sections are not regenerated');
     status = getJobStatus(db, id);
     assert.equal(status.lesson.status, 'ready');
     assert.equal(status.lesson.error, null);
@@ -289,7 +300,7 @@ describe('pipeline', () => {
         order.push(label);
         await new Promise((r) => setTimeout(r, 5));
         active--;
-        return schema.parse(label.startsWith('the key terms') ? { terms: [] } : label.startsWith('the key points') ? { key_points: ['p'] } : { sections: [{ title: 't', content: 'c'.repeat(30), check_questions: [{ question: 'q', answer: 'a' }] }] });
+        return schema.parse(label.startsWith('the flashcards') ? { cards: [] } : label.startsWith('the key terms') ? { terms: [] } : label.startsWith('the key points') ? { key_points: ['p'] } : { sections: [{ title: 't', content: 'c'.repeat(30), check_questions: [{ question: 'q', answer: 'a' }] }] });
       },
     };
     const runner = createPipelineRunner({ db, ai, log: quiet });

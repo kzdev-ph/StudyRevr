@@ -2,7 +2,7 @@
 
 // "Media Channels", "media channel" and "media-channel!" are the same term. Each word loses a trailing plural
 // ("-ies" -> "-y", "-ses/-xes/-ches/-shes/-zes" -> without "es", other "-s" unless it is "-ss", "-us" or "-is").
-const singular = (w) => {
+export const singular = (w) => {
   if (w.length <= 3) return w;
   if (/ies$/.test(w)) return `${w.slice(0, -3)}y`;
   if (/(?:[sxz]|ch|sh)es$/.test(w)) return w.slice(0, -2);

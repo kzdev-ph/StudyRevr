@@ -1,21 +1,22 @@
 // Job bookkeeping. One `jobs` row per lesson run: `stage` is where it is (or stopped), `status` is
 // queued | running | done | failed. The lesson row mirrors the outcome (processing | ready | failed).
 
-export const STAGES = ['sections', 'key_points', 'key_terms'];
+export const STAGES = ['sections', 'key_points', 'key_terms', 'flashcards'];
 
-// Marks the lesson as processing and (re)starts its job at the first stage. Call inside the caller's transaction
-// when creating a lesson; also used to retry a failed lesson.
-export function queueJob(db, lessonId) {
-  db.prepare(`UPDATE lessons SET status = 'processing', error = NULL WHERE id = ?`).run(lessonId);
+// Marks the lesson as processing and (re)starts its job at `stage` (default: the first). Call inside the caller's
+// transaction when creating a lesson; also used to retry a failed lesson. `keepLesson` leaves a ready lesson ready
+// (making flashcards for an existing lesson must not hide its review while it runs).
+export function queueJob(db, lessonId, { stage = STAGES[0], keepLesson = false } = {}) {
+  if (!keepLesson) db.prepare(`UPDATE lessons SET status = 'processing', error = NULL WHERE id = ?`).run(lessonId);
   const job = db.prepare('SELECT id FROM jobs WHERE lesson_id = ? ORDER BY id DESC LIMIT 1').get(lessonId);
   if (job) {
     db.prepare(
       `UPDATE jobs SET stage = ?, status = 'queued', error = NULL, progress_done = 0, progress_total = 0,
          updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`,
-    ).run(STAGES[0], job.id);
+    ).run(stage, job.id);
     return job.id;
   }
-  return Number(db.prepare(`INSERT INTO jobs (lesson_id, stage, status) VALUES (?, ?, 'queued')`).run(lessonId, STAGES[0]).lastInsertRowid);
+  return Number(db.prepare(`INSERT INTO jobs (lesson_id, stage, status) VALUES (?, ?, 'queued')`).run(lessonId, stage).lastInsertRowid);
 }
 
 export function getJobStatus(db, lessonId) {

@@ -126,3 +126,10 @@ export const LogoMark = ({ size = 28 }) => (
     <path d="M9 8h14M9 13h14" stroke="var(--on-accent)" strokeWidth="2.4" strokeLinecap="round" />
   </svg>
 );
+
+export const UndoIcon = (p) => (
+  <Svg {...p}>
+    <path d="M9 14 4.5 9.5 9 5" />
+    <path d="M4.5 9.5h9.5a5.5 5.5 0 0 1 0 11H11" />
+  </Svg>
+);

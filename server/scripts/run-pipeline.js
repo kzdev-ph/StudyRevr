@@ -1,4 +1,4 @@
-// Runs the lesson pipeline (extract -> sections -> key points -> key terms) on one file against your real AI provider
+// Runs the lesson pipeline (extract -> sections -> key points -> key terms -> flashcards) on one file against your real AI provider
 // and prints what it generated, so you can judge quality. Uses a throw-away in-memory database.
 //
 //   npm run pipeline -- <file> [--summary=short|detailed] [--chunk-tokens=N] [--concurrency=N]
@@ -127,6 +127,10 @@ for (const p of points) console.log(`- ${p.text}`);
 const terms = db.prepare('SELECT term, definition, evidence FROM key_terms WHERE lesson_id = ? ORDER BY id').all(lessonId);
 console.log(`\n## Key terms (${terms.length})`);
 for (const t of terms) console.log(`- ${t.term}: ${t.definition}\n    evidence: "${t.evidence}"`);
+
+const cards = db.prepare('SELECT kind, front, back, evidence FROM flashcards WHERE lesson_id = ? ORDER BY position').all(lessonId);
+console.log(`\n## Flashcards (${cards.length})`);
+for (const c of cards) console.log(`- [${c.kind}] ${c.front}\n    -> ${c.back}\n    evidence: "${c.evidence}"`);
 
 // Per-call times add up to more than the wall-clock time when calls overlap; the wall-clock time is what you wait.
 const { calls, promptTokens, completionTokens, jsonRetries, httpRetries, truncated, schemaSent, schemaRejected } = client.stats;

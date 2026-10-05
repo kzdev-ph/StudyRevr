@@ -38,6 +38,8 @@ function timedAi({ delay = () => 3, fail } = {}) {
         value = keepAllCandidates(user);
       } else if (label.startsWith('the key points') || label.startsWith('the merged')) {
         value = { key_points: [`Takeaway from ${label}.`] };
+      } else if (label.startsWith('the flashcards')) {
+        value = { cards: [] };
       } else {
         const evidence = quoteFromPrompt(user);
         value = { terms: [{ term: `Term ${n}`, definition: `Defined by ${label}.`, evidence }, { term: 'Shared', definition: 'Same everywhere.', evidence }] };

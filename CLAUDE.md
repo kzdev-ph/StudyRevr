@@ -61,8 +61,11 @@ Drag-drop or pick file → progress states: Extracting → Summarizing → Flash
 - Row per lesson: name | Start | New / Learning / Due counts
 - Study screen: front → tap to flip → Again / Hard / Good / Easy
 - SM-2 scheduling. User-configurable: new cards/day (20), max reviews/day (200), learning steps (1m 10m).
-- Hardcoded defaults: graduating interval 1d, easy interval 4d, starting ease 2.50, easy bonus 1.30, hard interval 1.20, relearning step 10m, min interval 1d, max interval 36500d
-- Card flip animation
+- Defaults (code, each overridable by a `settings` row; see `server/src/flashcards/config.js`): graduating interval 1d, easy interval 4d, starting ease 2.50, easy bonus 1.30, hard interval 1.20, relearning step 10m, lapse new interval 0 (then min 1d), min interval 1d, max interval 36500d
+- The study day starts at 04:00 Asia/Manila. Daily limits are one budget across all lessons ("All lessons" is the parent deck). Queue order: due (re)learning cards, due reviews, new cards (lesson order); learn ahead 20 min when nothing else is left.
+- Intervals are fuzzed like Anki (±25/15/5%), from a seeded generator (seed = card id + reps), so the interval on a button is exactly what the card gets and tests are deterministic. The scheduler (`server/src/flashcards/scheduler.js`) is pure: it takes `now` and the config.
+- Card generation is the pipeline's `flashcards` stage (also `POST /api/lessons/:id/flashcards/generate` for a lesson with no cards; the lesson stays ready while it runs). Term cards come from the grounded key terms; concept Q → A cards come from one AI call per chunk (the chunk's review sections as a guide). Every card has an `evidence` quote checked in code like key terms; answers over 40 words (prompt asks ≤ 25) are dropped; cards are de-duplicated against each other (term cards win). About one card per 50 words, at least 5, at most `flashcards_max` (30); term cards take at most half.
+- Card flip animation (Motion, 3D; cross-fade under reduced motion). Space flips, 1-4 answer, U / Ctrl+Z undo (multi-level within a session). "From the lesson: …" evidence under the answer. Done state says when the next card is due.
 
 ### Mock Quiz
 - Row per lesson: name | Start | Highest score
@@ -97,8 +100,10 @@ Drag-drop or pick file → progress states: Extracting → Summarizing → Flash
 - `key_points` (id, lesson_id, position, text)
 - `key_terms` (id, lesson_id, term, definition, evidence)
 - `review_progress` (lesson_id, last_section, completed_sections JSON, updated_at)
-- `flashcards` (id, lesson_id, front, back, state, ease, interval, due_at, reps, lapses, step)
-- `flashcard_reviews` (id, flashcard_id, rating, reviewed_at, prev_interval, new_interval)
+- `flashcards` (id, lesson_id, front, back, state, ease, interval, due_at, reps, lapses, step, kind, evidence, position)
+  - state 0 new / 1 learning / 2 review / 3 relearning; `kind` `term` | `concept`; `position` is the new-card order within the lesson; `interval` in days.
+- `flashcard_reviews` (id, flashcard_id, rating, reviewed_at, prev_interval, new_interval, state, ease, time_ms, snapshot)
+  - one row per answer: rating = button (1 Again … 4 Easy), `state` before the answer (daily limits count it), `ease` after, intervals in days (a learning step is a fraction of a day), `snapshot` = the card's scheduling fields before the answer (for undo; undo deletes the row).
 - `quiz_questions` (id, lesson_id, question, choices JSON, answer_index, explanation)
 - `quiz_attempts` (id, lesson_id, score, total, answers JSON, taken_at)
 - `study_sessions` (id, lesson_id, tab, started_at, duration_sec)
@@ -111,6 +116,7 @@ Drag-drop or pick file → progress states: Extracting → Summarizing → Flash
 - `POST /api/sections/:id/simplify` / `POST /api/sections/:id/translate`
 - `PUT /api/lessons/:id/review-progress`
 - `GET /api/lessons/:id/flashcards/due` / `POST /api/flashcards/:id/review`
+- `GET /api/flashcards/decks` / `GET /api/flashcards/due` (All lessons) / `POST /api/flashcards/reviews/:id/undo` / `POST /api/lessons/:id/flashcards/generate`
 - `GET /api/lessons/:id/quiz` (shuffled) / `POST /api/lessons/:id/quiz/attempt` / `POST /api/lessons/:id/quiz/regenerate`
 - `POST /api/sessions`
 - `GET /api/stats` / `GET /api/stats/export.csv`
@@ -123,7 +129,7 @@ Drag-drop or pick file → progress states: Extracting → Summarizing → Flash
 1. Repo scaffold, Express + SQLite + migrations, upload + parsing, lessons API — **done**
 2. AI adapter, job pipeline, sections / key points / key terms generation — **done** (incl. Phase 2.5: provider presets with Google as default, parallel chunk calls, model selection, grounded key terms)
 3. React app shell, tab bar, upload flow, Review tab — **done** (incl. `POST /api/sections/:id/simplify|translate` and review-progress save/load)
-4. Flashcard generation + SM-2 + Flashcard tab
+4. Flashcard generation + SM-2 + Flashcard tab — **done**
 5. Quiz generation + attempts + shuffle animation + Mock Quiz tab
 6. Session logging + Stats tab + CSV export
 7. Settings, backup/import, polish, README, LICENSE (MIT)

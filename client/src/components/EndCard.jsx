@@ -1,8 +1,31 @@
+import { useEffect, useState } from 'react';
 import { CardsIcon, QuizIcon } from './Icons.jsx';
+import { api } from '../lib/api.js';
+import { studyMinutes, totalDue } from '../lib/flashcards.js';
 import { paths } from '../lib/router.js';
 
-// What to do after the last section. Flashcards and quizzes are placeholders until those screens exist.
+// "Study N due flashcards (~X min)", from the lesson's deck. null while loading or if it can't be read.
+function useDeckSummary(lessonId) {
+  const [deck, setDeck] = useState(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    api.getDue(lessonId, controller.signal).then(setDeck, () => {});
+    return () => controller.abort();
+  }, [lessonId]);
+  return deck;
+}
+
+function flashcardLine(deck) {
+  if (!deck) return 'Flip, rate and remember the lesson’s cards.';
+  if (!deck.total) return 'This lesson has no cards yet; make them on the Flashcard tab.';
+  const n = totalDue(deck.counts);
+  if (!n) return 'All caught up for today.';
+  return `${n} ${n === 1 ? 'card' : 'cards'} to study, about ${studyMinutes(deck.counts)} min.`;
+}
+
+// What to do after the last section. The mock quiz is a placeholder until its screen exists.
 export default function EndCard({ lessonId, sectionCount, termCount, onRestart }) {
+  const deck = useDeckSummary(lessonId);
   return (
     <section className="endcard" aria-labelledby="whats-next">
       <h2 id="whats-next" className="endcard__title">
@@ -12,11 +35,11 @@ export default function EndCard({ lessonId, sectionCount, termCount, onRestart }
         You’ve read all {sectionCount} {sectionCount === 1 ? 'section' : 'sections'}. Now make it stick.
       </p>
       <div className="endcard__actions">
-        <a className="endcard__action" href={paths.tab('flashcards')}>
+        <a className="endcard__action" href={deck?.total ? paths.study(lessonId) : paths.tab('flashcards')}>
           <CardsIcon size={26} />
           <span>
             <strong>Study flashcards</strong>
-            <small>Flip through the lesson’s cards.</small>
+            <small>{flashcardLine(deck)}</small>
           </span>
         </a>
         <a className="endcard__action" href={paths.tab('quiz')}>

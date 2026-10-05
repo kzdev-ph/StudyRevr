@@ -4,14 +4,19 @@ import { Header, TabBar } from './components/Shell.jsx';
 import { useRoute, tabOf } from './lib/router.js';
 import LibraryScreen from './screens/LibraryScreen.jsx';
 import LessonScreen from './screens/LessonScreen.jsx';
+import FlashcardsScreen from './screens/FlashcardsScreen.jsx';
 import PlaceholderScreen from './screens/PlaceholderScreen.jsx';
 import SettingsScreen from './screens/SettingsScreen.jsx';
+import StudyScreen from './screens/StudyScreen.jsx';
 
 function Screen({ route }) {
   switch (route.name) {
     case 'lesson':
       return <LessonScreen key={route.lessonId} id={route.lessonId} view={route.view} />;
     case 'flashcards':
+      return <FlashcardsScreen />;
+    case 'study':
+      return <StudyScreen key={route.deck} deck={route.deck} />;
     case 'quiz':
     case 'stats':
       return <PlaceholderScreen which={route.name} />;
@@ -25,7 +30,7 @@ function Screen({ route }) {
 export default function App() {
   const route = useRoute();
   const mainRef = useRef(null);
-  const screenKey = route.name === 'lesson' ? `lesson-${route.lessonId}` : route.name;
+  const screenKey = route.name === 'lesson' ? `lesson-${route.lessonId}` : route.name === 'study' ? `study-${route.deck}` : route.name;
 
   // A new screen starts at the top, and keyboard / screen-reader focus moves to it.
   const first = useRef(true);

@@ -195,6 +195,7 @@ describe('sources end to end (mocked AI)', () => {
       let value;
       if (label.startsWith('the review sections')) value = { sections: [section('Inquiry basics', claim), section('Methods', [])] };
       else if (label.startsWith('the key points')) value = { key_points: ['One point.'] };
+      else if (label.startsWith('the flashcards')) value = { cards: [] };
       else value = { terms: [] };
       return schema.parse(value);
     },

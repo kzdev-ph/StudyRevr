@@ -1,12 +1,7 @@
-import { CardsIcon, QuizIcon, StatsIcon } from '../components/Icons.jsx';
+import { QuizIcon, StatsIcon } from '../components/Icons.jsx';
 import { paths } from '../lib/router.js';
 
 const COPY = {
-  flashcards: {
-    Icon: CardsIcon,
-    title: 'Flashcards are on their way',
-    text: 'Soon each lesson will turn into cards you flip, rate and see again just before you forget them.',
-  },
   quiz: {
     Icon: QuizIcon,
     title: 'Mock quizzes are on their way',

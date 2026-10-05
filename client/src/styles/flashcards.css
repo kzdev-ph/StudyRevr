@@ -1,0 +1,445 @@
+/* Flashcard tab: decks and the study screen. Only existing tokens: New / Learning / Due use accent / danger / ok,
+   the way Anki colours them blue / red / green. */
+
+/* ---- counts ---- */
+.counts {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
+}
+.count--new {
+  color: var(--accent);
+}
+.count--learning {
+  color: var(--danger);
+}
+.count--due {
+  color: var(--ok);
+}
+/* the queue the card on screen comes from */
+.count--current {
+  text-decoration: underline;
+  text-decoration-thickness: 3px;
+  text-underline-offset: 4px;
+  text-decoration-color: var(--hi);
+}
+.counts-legend {
+  display: flex;
+  gap: 10px;
+  font-size: 0.8125rem;
+  font-weight: 650;
+}
+
+/* ---- decks ---- */
+.deck-all {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px 16px;
+  padding: 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  background: var(--sheet);
+}
+.deck-all__text {
+  flex: 1 1 14rem;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.deck-all__title {
+  font-family: var(--font-read);
+  font-size: 1.25rem;
+  font-weight: 650;
+  line-height: 1.25;
+}
+.deck-all > .btn {
+  flex: 1 1 100%;
+}
+
+.decks-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: -12px;
+}
+.decks-head__title {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--ink-2);
+}
+
+.decks {
+  border-top: 1px solid var(--line-strong);
+}
+.deck {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 72px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.deck__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.deck__title {
+  font-family: var(--font-read);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.deck__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+.deck__total {
+  color: var(--ink-2);
+  font-size: 0.875rem;
+}
+.deck > .btn,
+.deck > .chip {
+  flex: none;
+}
+
+/* ---- study screen ---- */
+.study {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.study-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  margin-left: -10px;
+}
+.study-head .icon-btn {
+  flex: none;
+}
+.study-head__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 2px;
+}
+.study-head__title {
+  font-family: var(--font-read);
+  font-size: 1.25rem;
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+.study-undo {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink-2);
+  font-weight: 650;
+  font-size: 0.9375rem;
+}
+.study-undo:not(:disabled):hover {
+  color: var(--ink);
+  background: var(--accent-wash);
+}
+.study-undo:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* The card is a sheet from the notebook (the same red margin rule as a review page). It turns over in 3D: both
+   faces sit in one grid cell, so the card is as tall as its taller side. */
+.flashcard-scene {
+  perspective: 1400px;
+  cursor: pointer;
+}
+.flashcard-scene:has(.is-revealed) {
+  cursor: auto;
+}
+.flashcard {
+  display: grid;
+  transform-style: preserve-3d;
+}
+.flashcard__face {
+  grid-area: 1 / 1;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 15rem;
+  padding: 22px 18px 24px 40px;
+  border: 1px solid var(--line);
+  border-radius: 4px var(--r-lg) var(--r-lg) 4px;
+  background: var(--sheet);
+  box-shadow: 0 6px 18px rgb(14 17 38 / 0.08);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  overflow-wrap: anywhere;
+}
+.flashcard__face::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 26px;
+  width: 2px;
+  background: var(--margin);
+  opacity: 0.6;
+}
+.flashcard__face--front {
+  justify-content: center;
+}
+.flashcard__face--back {
+  transform: rotateY(180deg);
+}
+.flashcard--flat {
+  display: grid;
+  cursor: pointer;
+}
+.flashcard--flat.is-revealed {
+  cursor: auto;
+}
+
+.flashcard__kicker {
+  color: var(--ink-2);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.flashcard__lesson {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+}
+.flashcard__front {
+  font-family: var(--font-read);
+  font-size: 1.375rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.flashcard__front--term {
+  align-self: flex-start;
+  padding: 0 6px;
+  margin-left: -6px;
+  border-radius: 3px;
+  background: var(--hi);
+  color: var(--on-hi);
+  font-weight: 700;
+}
+.flashcard__asked {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-2);
+  font-family: var(--font-read);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+.flashcard__back {
+  font-family: var(--font-read);
+  font-size: 1.25rem;
+  line-height: 1.5;
+}
+.flashcard__evidence {
+  margin-top: auto;
+  color: var(--ink-2);
+  font-family: var(--font-read);
+  font-style: italic;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+}
+.flashcard__from {
+  font-family: var(--font-ui);
+  font-style: normal;
+  font-weight: 650;
+}
+
+/* Show answer / the four buttons stay in reach: pinned above the tab bar while the card is long. */
+.study-actions {
+  position: sticky;
+  bottom: calc(var(--tabbar-h) + var(--safe-bottom) + var(--lessonnav-gap));
+  z-index: 10;
+  padding: 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  background: var(--sheet);
+  box-shadow: 0 6px 18px rgb(14 17 38 / 0.1);
+}
+.study-show {
+  width: 100%;
+  min-height: 52px;
+}
+.study-show__key,
+.rate__key {
+  display: none;
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  font-weight: 650;
+  padding: 1px 6px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  opacity: 0.7;
+}
+
+.rate {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.rate:focus-visible {
+  outline-offset: 4px;
+}
+.rate__btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 56px;
+  padding: 6px 2px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--sheet);
+  line-height: 1.2;
+  transition: background-color 0.12s, border-color 0.12s;
+}
+.rate__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.rate__name {
+  font-weight: 700;
+  font-size: 0.9375rem;
+}
+.rate__ivl {
+  color: var(--ink-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.rate__btn--again {
+  border-color: var(--danger);
+  background: var(--danger-wash);
+}
+.rate__btn--again .rate__name {
+  color: var(--danger);
+}
+.rate__btn--hard {
+  background: var(--paper);
+}
+.rate__btn--good {
+  border-color: var(--ok);
+  background: var(--ok-wash);
+}
+.rate__btn--good .rate__name {
+  color: var(--ok);
+}
+.rate__btn--easy {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+}
+.rate__btn--easy .rate__name {
+  color: var(--accent);
+}
+.rate__btn:not(:disabled):hover {
+  border-color: var(--ink);
+}
+
+/* done for today */
+.done {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 24px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--sheet);
+}
+.done__icon {
+  color: var(--ok);
+}
+.done__title {
+  font-family: var(--font-read);
+  font-size: 1.5rem;
+  font-weight: 650;
+  line-height: 1.25;
+}
+.done__text {
+  max-width: 34rem;
+  color: var(--ink-2);
+}
+.done__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+@media (min-width: 40rem) {
+  .deck-all > .btn {
+    flex: none;
+  }
+  .flashcard__face {
+    min-height: 17rem;
+    padding: 28px 28px 28px 48px;
+  }
+  .flashcard__face::before {
+    left: 30px;
+  }
+  .flashcard__front {
+    font-size: 1.5rem;
+  }
+  .rate {
+    gap: 8px;
+  }
+}
+
+/* Keyboard hints only where there is a keyboard: a fine pointer that can hover. */
+@media (hover: hover) and (pointer: fine) {
+  .study-show__key,
+  .rate__key {
+    display: inline-block;
+  }
+  .rate__key {
+    margin-top: 2px;
+  }
+}
+
+@media (min-width: 56rem) {
+  .study-actions {
+    bottom: 16px;
+  }
+}
+
+/* a focused element never ends up under the pinned buttons (see the same rule for the lesson nav in review.css) */
+html:has(.study-actions) {
+  scroll-padding-bottom: calc(var(--tabbar-h) + var(--safe-bottom) + var(--lessonnav-gap) + 96px);
+}
+@media (min-width: 56rem) {
+  html:has(.study-actions) {
+    scroll-padding-bottom: calc(16px + 96px);
+  }
+}

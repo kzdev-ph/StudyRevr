@@ -169,3 +169,34 @@ Reply with this JSON shape:
   const questions = checkQuestions.map((q, i) => `${i + 1}. Question: ${q.question}\n   Answer: ${q.answer}`).join('\n');
   return { system, user: `Section title: ${title}\n<section>\n${content}\n</section>\nQuick-check questions:\n${questions || '(none)'}` };
 }
+
+// Concept flashcards (question -> answer) for one chunk of the lesson. `review` is the part of our study review
+// written from this text, as a guide to what matters; the answers and evidence must still come from the lesson text.
+// `keyTerms` already have their own term -> definition cards, so the model is told not to repeat them.
+export function flashcardsPrompt({ text, review, keyTerms = [], index, total, targetCards }) {
+  const system = `${LESSON_RULES}
+
+Task: write flashcards that help a student remember the important ideas of this lesson. A flashcard is a question on the front and a short answer on the back that the student must recall from memory.
+- Each card tests ONE idea the lesson explains: a concept, a purpose, a cause and effect, a process step, a characteristic, a rule, or a comparison. Prefer "why", "how" and "what is the difference" questions to yes/no questions.
+- "question": one clear question, at most 20 words, that makes sense without seeing the lesson. Do not give the answer away in the question.
+- "answer": short enough to recall from memory: at most 25 words, one sentence or a short phrase. Say only what the lesson says.
+- "evidence": one sentence or phrase copied EXACTLY, word for word, from the lesson text (at most 25 words) that supports the answer. Copy it character for character: do not paraphrase, do not shorten with "...", do not join pieces from different places, and never use a title or heading as evidence. If you cannot find such a quote, leave the card out.
+- No trivia: never ask about slide titles, slide or page numbers, the author, the teacher, the school, or the date of the presentation, unless the lesson itself teaches them as content.
+- Never ask two cards about the same fact.${
+    keyTerms.length
+      ? `
+- These key terms already have their own "term -> definition" cards: ${keyTerms.join('; ')}. Do not make a card that only asks what one of them means. You may ask how they work, why they matter, or how they differ.`
+      : ''
+  }${
+    review
+      ? `
+- <review> is a study review written from this lesson text. Use it as a guide to what matters, but take every answer and every evidence quote from <lesson_text>.`
+      : ''
+  }
+Give about ${targetCards} cards (fewer if the text has fewer ideas worth a card; never pad the list with trivia), in the order the ideas appear in the lesson. Reply {"cards":[]} if the text has nothing worth a card.
+
+Reply with this JSON shape:
+{"cards":[{"question":"...","answer":"...","evidence":"..."}]}`;
+  const guide = review ? `<review>\n${review}\n</review>\n\n` : '';
+  return { system, user: `${part(index, total)}${guide}${lessonText(text)}` };
+}

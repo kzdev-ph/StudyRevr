@@ -3,7 +3,9 @@ import { useSyncExternalStore } from 'react';
 // A tiny hash router: the back button works and a reload keeps the screen, with no extra dependency.
 //   #/review                  lesson library
 //   #/review/12               lesson 12, sections (also #/review/12/points and #/review/12/terms)
-//   #/flashcards  #/quiz  #/stats  #/settings
+//   #/flashcards              decks (one per lesson, plus All lessons)
+//   #/flashcards/all          study every lesson's cards;  #/flashcards/12  study lesson 12
+//   #/quiz  #/stats  #/settings
 
 const LESSON_VIEWS = ['sections', 'points', 'terms'];
 const TABS = ['flashcards', 'quiz', 'stats', 'settings'];
@@ -11,6 +13,9 @@ const TABS = ['flashcards', 'quiz', 'stats', 'settings'];
 export function parseRoute(hash) {
   const parts = String(hash ?? '').replace(/^#\/?/, '').split('/').filter(Boolean);
   const [first, second, third] = parts;
+  if (first === 'flashcards' && (second === 'all' || /^\d+$/.test(second ?? ''))) {
+    return { name: 'study', deck: second === 'all' ? 'all' : Number(second) };
+  }
   if (TABS.includes(first)) return { name: first };
   if (first === 'review' && /^\d+$/.test(second ?? '')) {
     return { name: 'lesson', lessonId: Number(second), view: LESSON_VIEWS.includes(third) ? third : 'sections' };
@@ -22,6 +27,7 @@ export const paths = {
   library: () => '#/review',
   lesson: (id, view = 'sections') => (view === 'sections' ? `#/review/${id}` : `#/review/${id}/${view}`),
   tab: (name) => `#/${name}`,
+  study: (deck) => `#/flashcards/${deck}`,
 };
 
 export const navigate = (to) => {
@@ -36,4 +42,7 @@ const subscribe = (callback) => {
 export const useRoute = () => parseRoute(useSyncExternalStore(subscribe, () => window.location.hash));
 
 // Which bottom tab a route belongs to (Settings has no tab).
-export const tabOf = (route) => (route.name === 'library' || route.name === 'lesson' ? 'review' : route.name);
+export const tabOf = (route) => {
+  if (route.name === 'library' || route.name === 'lesson') return 'review';
+  return route.name === 'study' ? 'flashcards' : route.name;
+};

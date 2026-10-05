@@ -1,6 +1,8 @@
 import { chunkLesson, DEFAULT_CHUNK_TOKENS } from '../ai/chunk.js';
 import { HttpError } from '../middleware/errors.js';
+import { flashcardsMax } from '../flashcards/config.js';
 import { getSetting } from '../services/settings.js';
+import { generateFlashcards } from './flashcards.js';
 import { generateKeyPoints, generateKeyTerms, generateSections } from './generate.js';
 import { STAGES } from './jobs.js';
 
@@ -19,15 +21,18 @@ const parseNumbers = (json) => {
 
 const count = (db, table, lessonId) => db.prepare(`SELECT COUNT(*) AS c FROM ${table} WHERE lesson_id = ?`).get(lessonId).c;
 
-// Generates sections, key points and key terms for a lesson and saves them. A stage whose output is already saved
-// is skipped, so retrying a failed lesson continues where it stopped. Never throws: the outcome is written to the
-// job and lesson rows. `ai` is { generateJSON }.
+// Generates sections, key points, key terms and flashcards for a lesson and saves them, starting at the job's stage.
+// A stage whose output is already saved is skipped, so retrying a failed lesson continues where it stopped. Never
+// throws: the outcome is written to the job and lesson rows. A lesson that was already ready (flashcards made later
+// for an older lesson) stays ready even if this run fails; only its job records the failure. `ai` is { generateJSON }.
 // `concurrency` parallel AI calls within a stage; `keyTermsMax` caps the key terms kept per lesson.
 export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUNK_TOKENS, concurrency = 1, keyTermsMax = 12, log = console }) {
-  const lesson = db.prepare('SELECT id, raw_text, source_kind, source_numbers, source_total FROM lessons WHERE id = ?').get(lessonId);
+  const lesson = db.prepare('SELECT id, raw_text, word_count, status, source_kind, source_numbers, source_total FROM lessons WHERE id = ?').get(lessonId);
   if (!lesson) return;
-  const jobId = db.prepare('SELECT id FROM jobs WHERE lesson_id = ? ORDER BY id DESC LIMIT 1').get(lessonId)?.id;
-  if (!jobId) return;
+  const job = db.prepare('SELECT id, stage FROM jobs WHERE lesson_id = ? ORDER BY id DESC LIMIT 1').get(lessonId);
+  if (!job) return;
+  const jobId = job.id;
+  const wasReady = lesson.status === 'ready';
 
   // A deleted lesson cascades away its job row; stop quietly instead of writing to nothing.
   const updateJob = (fields) => {
@@ -89,6 +94,33 @@ export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUN
         db.transaction(() => terms.forEach((t) => insert.run(lessonId, t.term, t.definition, t.evidence)))();
       },
     },
+    flashcards: {
+      // Like key terms, a lesson can end up with no cards; asking again is then allowed.
+      saved: () => count(db, 'flashcards', lessonId) > 0,
+      async run(chunks) {
+        const keyTerms = db.prepare('SELECT term, definition, evidence FROM key_terms WHERE lesson_id = ? ORDER BY id').all(lessonId);
+        const sections = db
+          .prepare('SELECT title, content, sources FROM sections WHERE lesson_id = ? ORDER BY position')
+          .all(lessonId)
+          .map((s) => ({ ...s, sources: s.sources ? JSON.parse(s.sources) : null }));
+        const onDrop = ({ front, reason }) => log.info?.(`[pipeline] lesson ${lessonId}: dropped flashcard "${front}" (${reason})`);
+        const cards = await generateFlashcards({
+          ai,
+          chunks,
+          lessonText: lesson.raw_text,
+          keyTerms,
+          sections,
+          wordCount: lesson.word_count,
+          maxCards: flashcardsMax(db),
+          concurrency,
+          onProgress: progress,
+          onDrop,
+        });
+        const insert = db.prepare('INSERT INTO flashcards (lesson_id, kind, front, back, evidence, position) VALUES (?, ?, ?, ?, ?, ?)');
+        db.transaction(() => cards.forEach((c, i) => insert.run(lessonId, c.kind, c.front, c.back, c.evidence, i + 1)))();
+        log.info?.(`[pipeline] lesson ${lessonId}: saved ${cards.length} flashcards`);
+      },
+    },
   };
 
   let stage = STAGES[0];
@@ -97,7 +129,7 @@ export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUN
     const numbers = parseNumbers(lesson.source_numbers);
     const chunks = chunkLesson(lesson.raw_text, { maxTokens: chunkTokens, numbers: numbers ?? undefined });
     if (!chunks.length) throw new HttpError(422, NO_TEXT);
-    for (stage of STAGES) {
+    for (stage of STAGES.slice(Math.max(0, STAGES.indexOf(job.stage)))) {
       if (stages[stage].saved()) continue;
       begin(stage);
       await stages[stage].run(chunks);
@@ -111,7 +143,7 @@ export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUN
     if (!(err instanceof HttpError)) log.error(`[pipeline] lesson ${lessonId} failed in ${stage}:`, err);
     try {
       updateJob({ stage, status: 'failed', error: message });
-      db.prepare(`UPDATE lessons SET status = 'failed', error = ? WHERE id = ?`).run(message, lessonId);
+      if (!wasReady) db.prepare(`UPDATE lessons SET status = 'failed', error = ? WHERE id = ?`).run(message, lessonId);
     } catch (inner) {
       if (!(inner instanceof LessonGone)) throw inner;
     }

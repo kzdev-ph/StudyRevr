@@ -2,13 +2,15 @@ import express from 'express';
 import { errorHandler, notFound } from './middleware/errors.js';
 import { createAiClient } from './ai/client.js';
 import { createPipelineRunner } from './pipeline/runner.js';
+import { flashcardsRouter } from './routes/flashcards.js';
 import { lessonsRouter } from './routes/lessons.js';
 import { sectionsRouter } from './routes/sections.js';
 import { settingsRouter } from './routes/settings.js';
 import { resolveAiConfig } from './services/settings.js';
 
-// `ai` and `runner` default to the real provider client and background job runner; tests inject stubs.
-export function createApp(db, config, { ai, runner } = {}) {
+// `ai` and `runner` default to the real provider client and background job runner; tests inject stubs, and a fake
+// `clock` (() => Date) for the flashcard scheduler.
+export function createApp(db, config, { ai, runner, clock } = {}) {
   ai ??= createAiClient({
     getConfig: () => resolveAiConfig(db, config.ai),
   });
@@ -26,6 +28,7 @@ export function createApp(db, config, { ai, runner } = {}) {
   app.use(express.json({ limit: '1mb' }));
 
   app.get('/api/health', (_req, res) => res.json({ ok: true }));
+  app.use('/api', flashcardsRouter({ db, runner, clock }));
   app.use('/api/lessons', lessonsRouter(db, config, runner));
   app.use('/api/sections', sectionsRouter({ ai, db }));
   app.use('/api/settings', settingsRouter({ ai, db, config }));

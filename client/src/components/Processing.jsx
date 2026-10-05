@@ -11,6 +11,7 @@ const STAGES = [
   { id: 'sections', doing: 'Writing the review sections', done: 'Review sections written' },
   { id: 'key_points', doing: 'Picking the key points', done: 'Key points picked' },
   { id: 'key_terms', doing: 'Finding the key terms', done: 'Key terms found' },
+  { id: 'flashcards', doing: 'Making the flashcards', done: 'Flashcards made' },
 ];
 
 function stageState(id, status) {

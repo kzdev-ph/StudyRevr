@@ -2,7 +2,7 @@
 
 Open-source, mobile-first study app. Upload a lesson (.docx / .pptx / .pdf) and get a sectioned review, Anki-style flashcards, and mock quizzes. Study activity is logged and exportable for research.
 
-> **Status:** Phase 3 of 7 — React app with the lesson library, upload, processing screen and the Review tab (sections, quick checks, simpler / Filipino-Taglish rewrites, key points, key terms, original text, resume). Flashcard, Mock Quiz, Stats and Settings are placeholders until their phases.
+> **Status:** Phase 4 of 7 — React app with the lesson library, upload, processing screen, the Review tab (sections, quick checks, simpler / Filipino-Taglish rewrites, key points, key terms, original text, resume) and the Flashcard tab (grounded cards, Anki-style SM-2 scheduling, undo). Mock Quiz, Stats and Settings are placeholders until their phases.
 
 ## Running it
 
@@ -62,7 +62,7 @@ Uploading returns `{ lesson, warning }`. `warning` is set when little text was e
 
 ### AI generation
 
-After an upload the lesson is `processing` and a background job runs, one lesson at a time: **sections** (with 1–2 quick-check questions each) → **key points** → **key terms**. The stages run in that order (key points are written from the sections), but inside a stage the chunk calls run in parallel, up to the provider's concurrency (`AI_CONCURRENCY`). Each stage makes one AI call per chunk of lesson text (paragraphs are never split; slides/pages and headings are the preferred cut points; a slide's `Notes:` stays with its slide). Every AI reply is validated with zod and retried once if it isn't valid JSON; rate limits (429) and overloads (5xx) are retried up to 5 attempts with a growing, jittered wait. Key points state a takeaway rather than list examples; key terms are limited to domain concepts a student must be able to define (at most `KEY_TERMS_MAX`, de-duplicated across chunks). A lesson that is split into several chunks gets one extra key-terms call that keeps the best candidates: it removes examples, evaluative phrases and weak or duplicate terms, and can only choose among the candidates (by number), never write terms or evidence; the evidence is checked again afterwards. Terms are also de-duplicated in code first, ignoring case and plurals. Key terms are grounded: each comes with an `evidence` quote (at most 25 words) copied from the lesson, and a term whose quote can't be found in the lesson text (ignoring case, spacing, punctuation and line-end hyphens) is dropped and logged, so the AI can't define a term from its own knowledge. The quote is saved in `key_terms.evidence` for the Review screen.
+After an upload the lesson is `processing` and a background job runs, one lesson at a time: **sections** (with 1–2 quick-check questions each) → **key points** → **key terms** → **flashcards**. The stages run in that order (key points are written from the sections), but inside a stage the chunk calls run in parallel, up to the provider's concurrency (`AI_CONCURRENCY`). Each stage makes one AI call per chunk of lesson text (paragraphs are never split; slides/pages and headings are the preferred cut points; a slide's `Notes:` stays with its slide). Every AI reply is validated with zod and retried once if it isn't valid JSON; rate limits (429) and overloads (5xx) are retried up to 5 attempts with a growing, jittered wait. Key points state a takeaway rather than list examples; key terms are limited to domain concepts a student must be able to define (at most `KEY_TERMS_MAX`, de-duplicated across chunks). A lesson that is split into several chunks gets one extra key-terms call that keeps the best candidates: it removes examples, evaluative phrases and weak or duplicate terms, and can only choose among the candidates (by number), never write terms or evidence; the evidence is checked again afterwards. Terms are also de-duplicated in code first, ignoring case and plurals. Key terms are grounded: each comes with an `evidence` quote (at most 25 words) copied from the lesson, and a term whose quote can't be found in the lesson text (ignoring case, spacing, punctuation and line-end hyphens) is dropped and logged, so the AI can't define a term from its own knowledge. The quote is saved in `key_terms.evidence` for the Review screen.
 
 ```bash
 curl http://localhost:3001/api/lessons/1/status       # { lesson: { id, status, error }, job: { stage, status, progress: { done, total }, error } }
@@ -104,6 +104,26 @@ curl http://localhost:3001/api/lessons/1/review-progress      # { review_progres
 `simplify` and `translate` call the active AI provider once per section and kind, save the result in the `sections` row (`simple_version`, `filipino_version`, as JSON) and answer from that cache afterwards; two taps at the same time share one call. `simplify` gives a plain-words rewrite plus an everyday example; `translate` gives natural Filipino/Taglish for the title, content and quick-check questions, keeping the lesson's key terms in English with the Filipino meaning in parentheses. The stored summary is never changed. `GET /api/lessons/:id` returns both versions (or `null`) on each section, the saved `review_progress`, and where each section came from: `lesson.source` (`{ kind, total, numbers }`, the real slide / page / paragraph number of each block of `raw_text`; `null` for lessons uploaded before this was recorded) and `sections[].sources` (the slide / page numbers the section was written from, checked against the file's real count; `null` when unknown, and Original text then falls back to an approximate match).
 
 Errors are always JSON: `{ "error": { "message": "..." } }`. A failing AI provider gets a message that says what to change (wrong model, wrong API key, rate limited, too slow); the provider's own reply is written to the server log with keys removed.
+
+### Flashcards
+
+The last pipeline stage makes the lesson's cards: **term → definition** cards straight from the grounded key terms (a long definition is cut to its first sentence), plus **question → answer** concept cards from one AI call per chunk of lesson text (the review sections written from that chunk are passed as a guide). Every card carries an `evidence` quote from the lesson that is checked in code exactly like key-term evidence; a card whose quote isn't in the lesson, whose quote only repeats the question, or whose answer is over 40 words (the prompt asks for 25) is dropped and logged. Cards are de-duplicated against each other ("What is a hypothesis?" duplicates the term card "Hypothesis"; term cards win). A lesson gets about one card per 50 words, at least 5 and at most `flashcards_max` (30); term cards take at most half, mixed in among the concept cards. Lessons uploaded before this phase get theirs from the Flashcard tab ("Make cards"), which runs only this stage and keeps the lesson readable meanwhile.
+
+Scheduling is Anki's SM-2 (`server/src/flashcards/scheduler.js`, a pure module tested with a fake clock): learning steps `1m 10m`, graduating interval 1 day, easy interval 4 days, starting ease 2.5, easy bonus 1.3, hard interval 1.2, relearning step 10m, lapse new interval 0 (so 1 day), max interval 36500 days, at most 20 new cards and 200 reviews a day across all lessons. The study day starts at 04:00 Asia/Manila. Intervals get Anki's fuzz from a seeded generator, so the interval printed on each button is exactly what the card gets. Every answer writes a `flashcard_reviews` row (button, previous / new interval, ease, time on the card in ms, timestamp, state before the answer, and a snapshot used by Undo).
+
+Settings rows (Settings screen in Phase 7): `flashcard_new_per_day` (20), `flashcard_reviews_per_day` (200), `flashcard_learning_steps` (`1m 10m`), `flashcards_max` (30); optional overrides `flashcard_graduating_interval`, `flashcard_easy_interval`, `flashcard_starting_ease`, `flashcard_easy_bonus`, `flashcard_hard_interval`, `flashcard_relearning_steps`, `flashcard_lapse_interval`, `flashcard_min_interval`, `flashcard_max_interval`, `study_timezone`.
+
+```bash
+curl http://localhost:3001/api/flashcards/decks                    # every lesson's New / Learning / Due counts, plus "All lessons"
+curl http://localhost:3001/api/lessons/1/flashcards/due            # the next card (with each button's interval) or next_due_at
+curl http://localhost:3001/api/flashcards/due                      # the same for All lessons
+curl -X POST http://localhost:3001/api/flashcards/5/review -H 'content-type: application/json' \
+     -d '{"rating":3,"time_ms":4200,"deck":1}'                     # 1 Again, 2 Hard, 3 Good, 4 Easy -> review_id + the deck's next card
+curl -X POST http://localhost:3001/api/flashcards/reviews/17/undo -H 'content-type: application/json' -d '{"deck":1}'
+curl -X POST http://localhost:3001/api/lessons/1/flashcards/generate   # make cards for a lesson that has none
+```
+
+In the app: Space flips the card, 1–4 answer, U or Ctrl+Z undoes.
 
 ## Project layout
 

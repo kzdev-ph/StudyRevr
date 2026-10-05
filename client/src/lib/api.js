@@ -45,4 +45,11 @@ export const api = {
   simplifySection: (id) => request(`/sections/${id}/simplify`, { method: 'POST' }),
   translateSection: (id) => request(`/sections/${id}/translate`, { method: 'POST' }),
   saveProgress: (id, progress) => request(`/lessons/${id}/review-progress`, { method: 'PUT', body: progress }),
+  // deck: a lesson id, or 'all'
+  listDecks: (signal) => request('/flashcards/decks', { signal }),
+  getDue: (deck, signal) => request(deck === 'all' ? '/flashcards/due' : `/lessons/${deck}/flashcards/due`, { signal }),
+  answerCard: (cardId, { rating, timeMs, deck }) =>
+    request(`/flashcards/${cardId}/review`, { method: 'POST', body: { rating, time_ms: timeMs, deck: deck === 'all' ? null : deck } }),
+  undoAnswer: (reviewId, deck) => request(`/flashcards/reviews/${reviewId}/undo`, { method: 'POST', body: { deck: deck === 'all' ? null : deck } }),
+  makeFlashcards: (lessonId) => request(`/lessons/${lessonId}/flashcards/generate`, { method: 'POST' }),
 };
