@@ -2,8 +2,9 @@ import { z } from 'zod';
 import { HttpError } from '../middleware/errors.js';
 import { chunkBlocks } from '../ai/chunk.js';
 import { mapLimit } from '../ai/pool.js';
-import { keyPointsPrompt, keyTermsPrompt, sectionsPrompt } from '../ai/prompts.js';
+import { keyPointsPrompt, keyTermsMergePrompt, keyTermsPrompt, sectionsPrompt } from '../ai/prompts.js';
 import { checkEvidence, comparable } from './evidence.js';
+import { groupTerms } from './terms.js';
 
 // One AI feature per function, one call per chunk of lesson text ("never one giant call"). Each takes the `ai`
 // client ({ generateJSON }), runs its chunk calls in parallel (at most `concurrency` at a time) and reports progress
@@ -33,6 +34,11 @@ const sectionsSchema = wrapArray(
 );
 const keyPointsSchema = wrapArray('key_points', z.object({ key_points: z.array(text).min(1) }));
 // A missing or malformed evidence quote becomes '' so that term is dropped (and logged) instead of failing the call.
+// The merge call answers with ids of the candidates it keeps (and which version of one), never with new text.
+const keyTermsMergeSchema = wrapArray(
+  'terms',
+  z.object({ terms: z.array(z.object({ id: z.coerce.number().int(), version: z.coerce.number().int().optional() })) }),
+);
 const keyTermsSchema = wrapArray(
   'terms',
   z.object({ terms: z.array(z.object({ term: text, definition: text, evidence: z.string().trim().catch('') })) }),
@@ -81,16 +87,26 @@ const responseSchemas = {
   },
 };
 
+responseSchemas.keyTermsMerge = {
+  name: 'key_terms_merge',
+  schema: {
+    type: 'object',
+    properties: { terms: { type: 'array', items: { type: 'object', properties: { id: { type: 'integer' }, version: { type: 'integer' } }, required: ['id'] } } },
+    required: ['terms'],
+  },
+};
+
 const partLabel = (what, i, n) => `${what}${n > 1 ? ` (part ${i + 1} of ${n})` : ''}`;
-const termKey = (term) => term.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 
 // Runs one AI call per item with progress that counts finished calls (stragglers after a failure stay silent).
-async function runCalls(items, concurrency, onProgress, call) {
+// `extraCalls`: calls the caller makes afterwards, counted in the progress total.
+async function runCalls(items, concurrency, onProgress, call, extraCalls = 0) {
   let done = 0;
-  onProgress({ done, total: items.length });
+  const total = items.length + extraCalls;
+  onProgress({ done, total });
   return mapLimit(items, concurrency, async (item, i, ctx) => {
     const out = await call(item, i);
-    if (!ctx.stopped()) onProgress({ done: ++done, total: items.length });
+    if (!ctx.stopped()) onProgress({ done: ++done, total });
     return out;
   });
 }
@@ -159,45 +175,80 @@ export async function generateKeyPoints({ ai, sections, chunkTokens, concurrency
   return points.slice(0, MAX_KEY_POINTS);
 }
 
-// -> [{ term, definition, evidence }], at most `maxTerms` per lesson, de-duplicated across chunks. Each chunk is asked
-// for its best few terms; the lists are interleaved best-first so a long lesson's later parts aren't crowded out by
-// its first. A term whose evidence quote isn't found in its chunk's text is dropped and reported to onDrop({ term, reason }).
-export async function generateKeyTerms({ ai, chunks, maxTerms = 12, concurrency = 1, onProgress = () => {}, onDrop = () => {} }) {
+// -> [{ term, definition, evidence }], at most `maxTerms` per lesson. Each chunk is asked for its best few terms; one
+// whose evidence quote isn't found in its chunk's text is dropped (onDrop({ term, reason })). Terms are then
+// de-duplicated across chunks (same term ignoring case and plurals). A lesson with several chunks gets one more call
+// that keeps the best of the candidates (see keyTermsMergePrompt); it can only choose among them, and the chosen
+// evidence is checked against the whole lesson again. onMerge({ before, after, fallback }) reports the term names
+// going into and coming out of that call.
+export async function generateKeyTerms({ ai, chunks, maxTerms = 12, concurrency = 1, onProgress = () => {}, onDrop = () => {}, onMerge = () => {} }) {
+  const merge = chunks.length > 1;
   const perChunk = Math.min(maxTerms, Math.ceil(maxTerms / chunks.length) + 2);
-  const lists = await runCalls(chunks, concurrency, onProgress, async (chunk) => {
-    // roughly one concept per 100 words of lesson text, between 3 and this call's share of the cap
-    const targetTerms = Math.min(perChunk, Math.max(3, Math.round(chunk.tokens / 2 / WORDS_PER_TERM)));
-    const { system, user } = keyTermsPrompt({ text: chunk.text, index: chunk.index, total: chunks.length, maxTerms: perChunk, targetTerms });
+  const lists = await runCalls(
+    chunks,
+    concurrency,
+    onProgress,
+    async (chunk) => {
+      // roughly one concept per 100 words of lesson text, between 3 and this call's share of the cap
+      const targetTerms = Math.min(perChunk, Math.max(3, Math.round(chunk.tokens / 2 / WORDS_PER_TERM)));
+      const { system, user } = keyTermsPrompt({ text: chunk.text, index: chunk.index, total: chunks.length, maxTerms: perChunk, targetTerms });
+      const out = await ai.generateJSON({
+        system,
+        user,
+        schema: keyTermsSchema,
+        responseSchema: responseSchemas.keyTerms,
+        maxTokens: 2000,
+        label: partLabel('the key terms', chunk.index, chunks.length),
+      });
+      const sourceKey = comparable(chunk.text);
+      const grounded = [];
+      for (const t of out.terms) {
+        const check = checkEvidence({ term: t.term, evidence: t.evidence, sourceKey });
+        if (check.ok) grounded.push({ ...t, evidence: check.evidence });
+        else onDrop({ term: t.term, reason: check.reason });
+      }
+      return grounded.slice(0, perChunk);
+    },
+    merge ? 1 : 0,
+  );
+
+  // Best-first across chunks, so a long lesson's later parts aren't crowded out by its first.
+  const interleaved = [];
+  const longest = Math.max(0, ...lists.map((l) => l.length));
+  for (let rank = 0; rank < longest; rank++) for (const list of lists) if (list[rank]) interleaved.push(list[rank]);
+  const groups = groupTerms(interleaved);
+  const first = (g) => ({ term: g.term, ...g.versions[0] });
+  if (!merge) return groups.slice(0, maxTerms).map(first);
+
+  if (groups.length) {
+    const { system, user } = keyTermsMergePrompt({ candidates: groups, maxTerms });
     const out = await ai.generateJSON({
       system,
       user,
-      schema: keyTermsSchema,
-      responseSchema: responseSchemas.keyTerms,
-      maxTokens: 2000,
-      label: partLabel('the key terms', chunk.index, chunks.length),
+      schema: keyTermsMergeSchema,
+      responseSchema: responseSchemas.keyTermsMerge,
+      maxTokens: 1500,
+      label: 'the merged key terms',
     });
-    const sourceKey = comparable(chunk.text);
-    const grounded = [];
-    for (const t of out.terms) {
-      const check = checkEvidence({ term: t.term, evidence: t.evidence, sourceKey });
-      if (check.ok) grounded.push({ ...t, evidence: check.evidence });
-      else onDrop({ term: t.term, reason: check.reason });
+    const wholeKey = comparable(chunks.map((c) => c.text).join('\n\n'));
+    const picked = new Set();
+    const kept = [];
+    for (const { id, version } of out.terms) {
+      const group = groups[id - 1];
+      if (!group || picked.has(id)) continue; // an unknown or repeated id is ignored: the model can only choose
+      picked.add(id);
+      const v = group.versions[(version ?? 1) - 1] ?? group.versions[0];
+      const check = checkEvidence({ term: group.term, evidence: v.evidence, sourceKey: wholeKey });
+      if (check.ok) kept.push({ term: group.term, definition: v.definition, evidence: check.evidence });
+      else onDrop({ term: group.term, reason: check.reason });
     }
-    return grounded.slice(0, perChunk);
-  });
-
-  const terms = [];
-  const seen = new Set();
-  const longest = Math.max(0, ...lists.map((l) => l.length));
-  for (let rank = 0; rank < longest && terms.length < maxTerms; rank++) {
-    for (const list of lists) {
-      const t = list[rank];
-      const key = t && termKey(t.term);
-      if (key && !seen.has(key) && terms.length < maxTerms) {
-        seen.add(key);
-        terms.push(t);
-      }
-    }
+    // A reply that picked nothing usable is more likely a glitch than a lesson with no terms: keep the candidates.
+    const fallback = !kept.length;
+    const result = (fallback ? groups.map(first) : kept).slice(0, maxTerms);
+    onMerge({ before: groups.map((g) => g.term), after: result.map((t) => t.term), fallback });
+    onProgress({ done: chunks.length + 1, total: chunks.length + 1 });
+    return result;
   }
-  return terms;
+  onProgress({ done: chunks.length + 1, total: chunks.length + 1 });
+  return [];
 }

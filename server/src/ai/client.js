@@ -87,6 +87,7 @@ export function createAiClient({
       extraBody: cfg.extraBody && typeof cfg.extraBody === 'object' ? cfg.extraBody : undefined,
       jsonSchema: Boolean(cfg.jsonSchema),
       temperature: typeof cfg.temperature === 'number' ? cfg.temperature : undefined,
+      timeoutMs: cfg.timeoutMs > 0 ? cfg.timeoutMs : timeoutMs,
     };
   }
 
@@ -120,7 +121,7 @@ export function createAiClient({
 
   function describeNetworkError(err, cfg) {
     if (err?.name === 'TimeoutError' || err?.name === 'AbortError') {
-      return new AiError('timeout', `The AI provider didn't answer within ${Math.round(timeoutMs / 1000)} seconds. It may be overloaded or the model too slow.`, 504);
+      return new AiError('timeout', `The AI provider didn't answer within ${Math.round(cfg.timeoutMs / 1000)} seconds. It may be overloaded or the model too slow.`, 504);
     }
     const code = err?.cause?.code ?? err?.code;
     if (code === 'ECONNREFUSED') return new AiError('network', `Couldn't connect to the AI provider at ${cfg.host}. Is it running, and is the base URL right?`);
@@ -134,6 +135,7 @@ export function createAiClient({
     if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`;
     if (body !== undefined) headers['Content-Type'] = 'application/json';
 
+    let timedOut = false; // a timeout is retried once: a stuck request often succeeds when sent again
     for (let attempt = 0; ; attempt++) {
       const canRetry = attempt < retryDelaysMs.length;
       let res;
@@ -142,13 +144,14 @@ export function createAiClient({
           method,
           headers,
           body: body === undefined ? undefined : JSON.stringify(body),
-          signal: AbortSignal.timeout(timeoutMs),
+          signal: AbortSignal.timeout(cfg.timeoutMs),
         });
       } catch (err) {
         const failure = describeNetworkError(err, cfg);
-        // A timeout already cost the full wait, and a refused/unknown host won't fix itself in seconds.
-        const hopeless = failure.code === 'timeout' || /ECONNREFUSED|ENOTFOUND/.test(String(err?.cause?.code));
+        // A refused/unknown host won't fix itself in seconds; a timeout already cost the full wait, so it gets one retry.
+        const hopeless = /ECONNREFUSED|ENOTFOUND/.test(String(err?.cause?.code)) || (failure.code === 'timeout' && timedOut);
         if (!canRetry || hopeless) throw failure;
+        if (failure.code === 'timeout') timedOut = true;
         const waitMs = jitter(retryDelaysMs[attempt]);
         stats.httpRetries += 1;
         onRetry({ reason: failure.code, waitMs, attempt: attempt + 1 });

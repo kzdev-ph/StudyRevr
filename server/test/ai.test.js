@@ -266,10 +266,24 @@ describe('createAiClient errors', () => {
     assert.equal(f.calls.length, 2);
   });
 
-  it('reports a timeout (504) without retrying', async () => {
-    const f = scriptedFetch(() => { throw Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' }); });
-    await assert.rejects(run(f), (err) => err.code === 'timeout' && err.status === 504 && /didn't answer within/.test(err.message));
-    assert.equal(f.calls.length, 1);
+  it('retries a timeout once, then reports it (504) with the configured wait', async () => {
+    const timeout = () => { throw Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' }); };
+    const f = scriptedFetch(timeout);
+    await assert.rejects(run(f, { ...CFG, timeoutMs: 60_000 }), (err) => err.code === 'timeout' && err.status === 504 && /didn't answer within 60 seconds/.test(err.message));
+    assert.equal(f.calls.length, 2, 'one retry, not five');
+  });
+
+  it('a timeout followed by an answer succeeds', async () => {
+    const timeout = () => { throw Object.assign(new Error('timeout'), { name: 'TimeoutError' }); };
+    const f = scriptedFetch(timeout, () => completion('{"answer":"ok","n":1}'));
+    const client = makeClient(f);
+    assert.deepEqual(await client.generateJSON({ system: 's', user: 'u', schema }), { answer: 'ok', n: 1 });
+    assert.equal(client.stats.httpRetries, 1);
+  });
+
+  it('without a provider timeout the client default applies', async () => {
+    const timeout = () => { throw Object.assign(new Error('timeout'), { name: 'TimeoutError' }); };
+    await assert.rejects(makeClient(scriptedFetch(timeout), CFG, { timeoutMs: 120_000 }).generateJSON({ system: 's', user: 'u', schema }), /within 120 seconds/);
   });
 
   it('explains a non-JSON HTTP 200 (wrong base URL)', async () => {

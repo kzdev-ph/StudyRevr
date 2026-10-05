@@ -64,6 +64,14 @@ describe('resolveAiConfig', () => {
     assert.equal(resolveAiConfig(db, env({ AI_TEMPERATURE: '0.5' })).temperature, 0.9);
   });
 
+  it('timeout: google 60 s, every other preset 300 s, AI_TIMEOUT_SECONDS overrides both', () => {
+    assert.equal(resolveAiConfig(db, env()).timeoutMs, 60_000);
+    for (const id of PROVIDER_IDS.filter((p) => p !== 'google')) assert.equal(resolveAiConfig(db, env(), { provider: id }).timeoutMs, 300_000, id);
+    assert.equal(resolveAiConfig(db, env({ AI_TIMEOUT_SECONDS: '90' })).timeoutMs, 90_000);
+    assert.equal(resolveAiConfig(db, env({ AI_TIMEOUT_SECONDS: '90' }), { provider: 'ollama' }).timeoutMs, 90_000);
+    assert.equal(resolveAiConfig(db, env({ AI_TIMEOUT_SECONDS: 'x' })).timeoutMs, 60_000, 'a bad value is ignored');
+  });
+
   it('uses the .env key of the active provider only', () => {
     const e = env({ GOOGLE_API_KEY: 'g-key', NVIDIA_API_KEY: 'n-key', OPENROUTER_API_KEY: 'o-key' });
     assert.equal(resolveAiConfig(db, e).apiKey, 'g-key');

@@ -37,6 +37,7 @@ export function parseExtraBody(raw, warn = console.warn) {
 }
 
 export function loadConfig(env = process.env) {
+  const timeoutSeconds = positiveInt(env.AI_TIMEOUT_SECONDS);
   return {
     port: Number(env.PORT) || 3001,
     dbPath: resolveDbPath(env.DB_PATH || 'server/data/studyrevr.db'),
@@ -54,8 +55,8 @@ export function loadConfig(env = process.env) {
         'nvidia-nim': env.NVIDIA_API_KEY || '',
         openrouter: env.OPENROUTER_API_KEY || '',
       },
-      timeoutMs: (Number(env.AI_TIMEOUT_SECONDS) || 300) * 1000,
       // Left undefined, these come from the provider preset.
+      timeoutMs: timeoutSeconds && timeoutSeconds * 1000, // per request (google 60 s, others 300 s)
       chunkTokens: positiveInt(env.AI_CHUNK_TOKENS), // lesson tokens per AI call
       concurrency: positiveInt(env.AI_CONCURRENCY), // parallel AI calls within one pipeline stage
       keyTermsMax: positiveInt(env.KEY_TERMS_MAX), // key terms kept per lesson (default 12)

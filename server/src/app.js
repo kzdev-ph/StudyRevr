@@ -10,7 +10,6 @@ import { resolveAiConfig } from './services/settings.js';
 export function createApp(db, config, { ai, runner } = {}) {
   ai ??= createAiClient({
     getConfig: () => resolveAiConfig(db, config.ai),
-    timeoutMs: config.ai?.timeoutMs,
   });
   runner ??= createPipelineRunner({
     db,

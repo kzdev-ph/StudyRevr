@@ -60,6 +60,7 @@ export function resolveAiConfig(db, envAi = {}, overrides = {}) {
     chunkTokens: getIntSetting(db, 'ai_chunk_tokens') ?? envAi.chunkTokens ?? preset.chunkTokens,
     concurrency: getIntSetting(db, 'ai_concurrency') ?? envAi.concurrency ?? preset.concurrency,
     temperature: getTemperatureSetting(db, 'ai_temperature') ?? envAi.temperature ?? preset.temperature,
+    timeoutMs: envAi.timeoutMs ?? preset.timeoutMs,
     extraBody: env.extraBody,
     jsonSchema: preset.jsonSchema,
     needsKey: preset.needsKey,

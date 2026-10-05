@@ -57,7 +57,12 @@ export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUN
       saved: () => count(db, 'key_terms', lessonId) > 0,
       async run(chunks) {
         const onDrop = ({ term, reason }) => log.info?.(`[pipeline] lesson ${lessonId}: dropped key term "${term}" (${reason})`);
-        const terms = await generateKeyTerms({ ai, chunks, maxTerms: keyTermsMax, concurrency, onProgress: progress, onDrop });
+        const onMerge = ({ before, after, fallback }) =>
+          log.info?.(
+            `[pipeline] lesson ${lessonId}: key terms before the merge (${before.length}): ${before.join('; ')}\n` +
+              `[pipeline] lesson ${lessonId}: key terms after the merge (${after.length}${fallback ? ', merge reply unusable so all candidates kept' : ''}): ${after.join('; ')}`,
+          );
+        const terms = await generateKeyTerms({ ai, chunks, maxTerms: keyTermsMax, concurrency, onProgress: progress, onDrop, onMerge });
         const insert = db.prepare('INSERT INTO key_terms (lesson_id, term, definition, evidence) VALUES (?, ?, ?, ?)');
         db.transaction(() => terms.forEach((t) => insert.run(lessonId, t.term, t.definition, t.evidence)))();
       },

@@ -7,7 +7,7 @@ import { openDb, runMigrations } from '../src/db/index.js';
 import { failInterruptedJobs, getJobStatus, queueJob } from '../src/pipeline/jobs.js';
 import { createPipelineRunner } from '../src/pipeline/runner.js';
 import { resolveAiConfig } from '../src/services/settings.js';
-import { quoteFromPrompt } from './helpers.js';
+import { keepAllCandidates, quoteFromPrompt } from './helpers.js';
 
 const quiet = { error() {}, warn() {}, log() {} };
 const para = (label, tokens = 50) => `${label} ${'word '.repeat(Math.max(0, (tokens * 3) / 5 - 1)).trim()}`.slice(0, tokens * 3);
@@ -34,6 +34,8 @@ function fakeAi({ fail } = {}) {
             },
           ],
         };
+      } else if (label.startsWith('the merged key terms')) {
+        value = keepAllCandidates(user);
       } else if (label.startsWith('the key points') || label.startsWith('the merged')) {
         value = { key_points: [`Point ${n}a.`, `Point ${n}b.`] };
       } else {
@@ -173,7 +175,7 @@ describe('pipeline', () => {
     const ai = fakeAi();
     // Sections are tiny in the fake, so shrink the budget until the review itself needs several key-point calls.
     await run(ai, id, 250);
-    assert.ok(!ai.calls.some((c) => c.label.startsWith('the merged')), 'a short review needs no merge step');
+    assert.ok(!ai.calls.some((c) => c.label.startsWith('the merged key points')), 'a short review needs no merge step');
 
     const longSections = Array.from({ length: 20 }, (_, i) => ({ title: `T${i}`, content: para(`c${i}`, 80) }));
     const { generateKeyPoints } = await import('../src/pipeline/generate.js');

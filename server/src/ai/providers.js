@@ -5,9 +5,12 @@
 //   concurrency  parallel calls within one pipeline stage (Google's free tier allows ~15 requests per minute)
 //   keyEnv       the .env variable that holds this provider's API key (null: no key needed)
 //   temperature  sampling temperature for the pipeline's calls (low: faithful to the lesson, steady JSON)
+//   timeoutMs    how long one request may take before it is abandoned (and retried once)
 //   jsonSchema   the endpoint accepts response_format: { type: 'json_schema' } (zod still validates every reply)
 export const DEFAULT_PROVIDER = 'google';
 export const DEFAULT_TEMPERATURE = 0.2;
+export const DEFAULT_TIMEOUT_MS = 300_000; // slow local and reasoning models need a long wait
+const GOOGLE_TIMEOUT_MS = 60_000; // Gemini answers in seconds; a request still silent after a minute is stuck
 
 // A sampling temperature from 0 to 2 (the range OpenAI-compatible APIs accept); anything else is undefined.
 export const parseTemperature = (value) => {
@@ -25,6 +28,7 @@ export const PRESETS = {
     chunkTokens: 30_000,
     concurrency: 2,
     temperature: DEFAULT_TEMPERATURE,
+    timeoutMs: GOOGLE_TIMEOUT_MS,
     keyEnv: 'GOOGLE_API_KEY',
     needsKey: true,
     jsonSchema: true,
@@ -37,6 +41,7 @@ export const PRESETS = {
     chunkTokens: 2_400,
     concurrency: 2,
     temperature: DEFAULT_TEMPERATURE,
+    timeoutMs: DEFAULT_TIMEOUT_MS,
     keyEnv: 'NVIDIA_API_KEY',
     needsKey: true,
     jsonSchema: false,
@@ -49,6 +54,7 @@ export const PRESETS = {
     chunkTokens: 2_400,
     concurrency: 2,
     temperature: DEFAULT_TEMPERATURE,
+    timeoutMs: DEFAULT_TIMEOUT_MS,
     keyEnv: 'OPENROUTER_API_KEY',
     needsKey: true,
     jsonSchema: false,
@@ -61,6 +67,7 @@ export const PRESETS = {
     chunkTokens: 2_400,
     concurrency: 1,
     temperature: DEFAULT_TEMPERATURE,
+    timeoutMs: DEFAULT_TIMEOUT_MS,
     keyEnv: null,
     needsKey: false,
     jsonSchema: false,
@@ -73,6 +80,7 @@ export const PRESETS = {
     chunkTokens: 2_400,
     concurrency: 1,
     temperature: DEFAULT_TEMPERATURE,
+    timeoutMs: DEFAULT_TIMEOUT_MS,
     keyEnv: null,
     needsKey: false,
     jsonSchema: false,
@@ -86,6 +94,7 @@ export const PRESETS = {
     chunkTokens: 2_400,
     concurrency: 1,
     temperature: DEFAULT_TEMPERATURE,
+    timeoutMs: DEFAULT_TIMEOUT_MS,
     keyEnv: 'AI_API_KEY',
     needsKey: false,
     jsonSchema: false,

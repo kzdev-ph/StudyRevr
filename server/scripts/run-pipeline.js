@@ -80,7 +80,6 @@ const started = Date.now();
 const secondsSince = (t) => ((Date.now() - t) / 1000).toFixed(1);
 const client = createAiClient({
   getConfig: () => resolveAiConfig(db, config.ai),
-  timeoutMs: config.ai.timeoutMs,
   onRetry: ({ reason, waitMs, attempt }) => {
     console.error(`  retry +${secondsSince(started)}s: ${reason}, waiting ${(waitMs / 1000).toFixed(1)}s before attempt ${attempt + 1}`);
   },

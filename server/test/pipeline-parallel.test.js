@@ -1,11 +1,11 @@
 import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { AiError } from '../src/ai/client.js';
-import { keyPointsPrompt, keyTermsPrompt, sectionsPrompt } from '../src/ai/prompts.js';
+import { keyPointsPrompt, keyTermsMergePrompt, keyTermsPrompt, sectionsPrompt } from '../src/ai/prompts.js';
 import { openDb, runMigrations } from '../src/db/index.js';
 import { generateKeyTerms, targetSectionCount } from '../src/pipeline/generate.js';
 import { getJobStatus, queueJob } from '../src/pipeline/jobs.js';
-import { quoteFromPrompt } from './helpers.js';
+import { keepAllCandidates, quoteFromPrompt } from './helpers.js';
 import { createPipelineRunner } from '../src/pipeline/runner.js';
 
 const quiet = { error() {}, warn() {}, log() {} };
@@ -34,6 +34,8 @@ function timedAi({ delay = () => 3, fail } = {}) {
       let value;
       if (label.startsWith('the review sections')) {
         value = { sections: [{ title: `S ${label}`, content: `Content for ${label}, long enough.`, check_questions: [{ question: 'Q?', answer: 'A.' }] }] };
+      } else if (label.startsWith('the merged key terms')) {
+        value = keepAllCandidates(user);
       } else if (label.startsWith('the key points') || label.startsWith('the merged')) {
         value = { key_points: [`Takeaway from ${label}.`] };
       } else {
@@ -82,7 +84,7 @@ describe('parallel pipeline', () => {
     const id = addLesson(longLesson());
     const ai = timedAi({ delay: (label) => (label.includes('part 1 of') ? 25 : 2) }); // part 1 is slowest
     await run(ai, id, { chunkTokens: 250, concurrency: 4 });
-    const stageOf = (l) => (l.startsWith('the review') ? 0 : l.startsWith('the key points') || l.startsWith('the merged') ? 1 : 2);
+    const stageOf = (l) => (l.startsWith('the review') ? 0 : l.startsWith('the key points') || l.startsWith('the merged key points') ? 1 : 2);
     const { started, finishedAtStart } = ai.log;
     const count = (stage) => started.filter((l) => stageOf(l) === stage).length;
     assert.ok(count(0) >= 3 && count(1) >= 1 && count(2) >= 3);
@@ -172,25 +174,90 @@ const QUOTE = 'The lesson explains every term in plain words.';
 
 describe('generateKeyTerms', () => {
   const chunks = (n) => Array.from({ length: n }, (_, i) => ({ index: i, text: `Part ${i}. ${QUOTE}`, tokens: 100 }));
-  const termsAi = (lists) => ({
+  // `lists[i]` answers the i-th chunk call; the merge call (label "the merged key terms") is answered by `merge(user)`
+  // and, like the real one, only ever sees and returns candidate numbers.
+  const termsAi = (lists, merge = keepAllCandidates) => ({
     prompts: [],
-    async generateJSON({ schema, user, system }) {
+    merges: [],
+    async generateJSON({ schema, user, system, label }) {
+      if (label === 'the merged key terms') {
+        this.merges.push({ user, system });
+        return schema.parse(merge(user));
+      }
       const i = this.prompts.push({ user, system }) - 1;
       return schema.parse({ terms: lists[i] });
     },
   });
-  const t = (term) => ({ term, definition: `${term} is defined.`, evidence: QUOTE });
+  const t = (term, definition = `${term} is defined.`) => ({ term, definition, evidence: QUOTE });
 
-  it('de-duplicates across chunks ignoring case and punctuation, first definition wins', async () => {
-    const ai = termsAi([[t('Interactivity'), t('Reach')], [t('interactivity!'), t('Personalization')]]);
+  it('de-duplicates across chunks ignoring case, punctuation and plurals, before the merge call', async () => {
+    const ai = termsAi([[t('Media Channels', 'First.'), t('Reach')], [t('media channel!', 'Second.'), t('Personalization')]]);
     const out = await generateKeyTerms({ ai, chunks: chunks(2), maxTerms: 12 });
-    assert.deepEqual(out.map((x) => x.term), ['Interactivity', 'Reach', 'Personalization']);
+    assert.deepEqual(out.map((x) => x.term), ['Media Channels', 'Reach', 'Personalization']);
+    assert.equal(out[0].definition, 'First.', 'the first spelling and definition win unless the merge picks another version');
+    const { user } = ai.merges[0];
+    assert.equal(user.match(/^\[\d+\] /gm).length, 3, 'one candidate per distinct term');
+    assert.match(user, /\[1\] Media Channels\n {2}version 1: definition: First\.[^]*version 2: definition: Second\./, 'both versions are offered');
   });
 
   it('caps the total and interleaves chunks best-first so later parts are not crowded out', async () => {
     const ai = termsAi([[t('a1'), t('a2'), t('a3'), t('a4')], [t('b1'), t('b2'), t('b3'), t('b4')], [t('c1'), t('c2'), t('c3'), t('c4')]]);
     const out = await generateKeyTerms({ ai, chunks: chunks(3), maxTerms: 5 });
     assert.deepEqual(out.map((x) => x.term), ['a1', 'b1', 'c1', 'a2', 'b2']);
+    assert.match(ai.merges[0].system, /at most 5/);
+    assert.match(ai.merges[0].user, /\[1\] a1[^]*\[2\] b1[^]*\[3\] c1[^]*\[4\] a2/, 'candidates go in best-first order');
+  });
+
+  it('a lesson with one chunk skips the merge call; so does one with no candidates', async () => {
+    const one = termsAi([[t('a'), t('A')]]);
+    assert.deepEqual((await generateKeyTerms({ ai: one, chunks: chunks(1) })).map((x) => x.term), ['a']);
+    assert.equal(one.merges.length, 0);
+    const none = termsAi([[], []]);
+    assert.deepEqual(await generateKeyTerms({ ai: none, chunks: chunks(2) }), []);
+    assert.equal(none.merges.length, 0);
+  });
+
+  it('the merge only keeps, drops and picks among the candidates: order, version choice, unknown and repeated ids', async () => {
+    const lists = [[t('Alpha', 'A1.'), t('Beta'), t('Wide Reach')], [t('alphas', 'A2.'), t('Gamma'), t('Flyers')]];
+    // candidates: 1 Alpha (versions 1, 2), 2 Gamma?  -> interleaved: Alpha, alphas(version of 1), Beta, Gamma, Wide Reach, Flyers
+    const ai = termsAi(lists, () => ({ terms: [{ id: 3, version: 1 }, { id: 1, version: 2 }, { id: 99 }, { id: 3 }, { id: 1, version: 7 }] }));
+    const merged = [];
+    const out = await generateKeyTerms({ ai, chunks: chunks(2), maxTerms: 12, onMerge: (m) => merged.push(m) });
+    assert.deepEqual(out.map((x) => [x.term, x.definition]), [['Gamma', 'Gamma is defined.'], ['Alpha', 'A2.']]);
+    assert.ok(out.every((x) => x.evidence === QUOTE));
+    assert.deepEqual(merged, [{ before: ['Alpha', 'Beta', 'Gamma', 'Wide Reach', 'Flyers'], after: ['Gamma', 'Alpha'], fallback: false }]);
+  });
+
+  it('the merge cannot add terms or evidence: an answer with extra text fields is still only ids', async () => {
+    const ai = termsAi([[t('Alpha')], [t('Beta')]], () => ({ terms: [{ id: 1, term: 'Invented', definition: 'Made up', evidence: 'Made up quote' }] }));
+    const out = await generateKeyTerms({ ai, chunks: chunks(2) });
+    assert.deepEqual(out, [{ term: 'Alpha', definition: 'Alpha is defined.', evidence: QUOTE }]);
+  });
+
+  it('an unusable merge answer keeps all candidates (capped) instead of erasing the lesson key terms', async () => {
+    const ai = termsAi([[t('Alpha')], [t('Beta')]], () => ({ terms: [{ id: 42 }] }));
+    const merged = [];
+    const out = await generateKeyTerms({ ai, chunks: chunks(2), maxTerms: 12, onMerge: (m) => merged.push(m) });
+    assert.deepEqual(out.map((x) => x.term), ['Alpha', 'Beta']);
+    assert.equal(merged[0].fallback, true);
+  });
+
+  it('counts the merge call in the progress total', async () => {
+    const seen = [];
+    await generateKeyTerms({ ai: termsAi([[t('a')], [t('b')], [t('c')]]), chunks: chunks(3), onProgress: (p) => seen.push(`${p.done}/${p.total}`) });
+    assert.deepEqual(seen, ['0/4', '1/4', '2/4', '3/4', '4/4']);
+  });
+
+  it('merge prompt: keep only domain concepts, remove examples and evaluative phrases, only choose, never invent', () => {
+    const { system, user } = keyTermsMergePrompt({ candidates: [{ term: 'Media', versions: [{ definition: 'D.', evidence: 'E e e.' }] }], maxTerms: 12 });
+    assert.match(system, /domain-specific concepts a student must be able to define on a test/);
+    assert.match(system, /plain example or list item/);
+    assert.match(system, /evaluative or descriptive phrase[^]*wide reach/);
+    assert.match(system, /same idea as a better candidate/);
+    assert.match(system, /Keep at most 12/);
+    assert.match(system, /never add a term, never rewrite a definition or an evidence quote, and refer to candidates only by their number/);
+    assert.match(system, /Use ONLY the text you are given/);
+    assert.match(user, /\[1\] Media\n {2}version 1: definition: D\.\n {4}evidence: "E e e\."/);
   });
 
   it('asks each call for only a share of the cap, and the cap defaults to 12', async () => {

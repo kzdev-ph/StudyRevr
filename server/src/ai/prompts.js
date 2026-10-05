@@ -68,6 +68,31 @@ ${text}
 </text>` };
 }
 
+// The key terms found in the different parts of one lesson are reviewed together. The model only chooses among the
+// candidates (by number) and never writes terms or evidence, so nothing it says can fall outside the lesson.
+// candidates: [{ term, versions: [{ definition, evidence }] }]
+export function keyTermsMergePrompt({ candidates, maxTerms }) {
+  const system = `${REVIEW_RULES}
+
+Task: you get candidate key terms collected from different parts of one lesson. Each candidate has a number, a term, and one or more versions (a definition and the evidence quote it came from). Choose which candidates stay on the lesson's key-terms list.
+Keep ONLY domain-specific concepts a student must be able to define on a test: technical terms, vocabulary and named ideas, methods, principles, process steps and classifications that the lesson explains.
+Remove a candidate that is:
+- a plain example or list item: a particular product, brand, device, publication, platform, place or person named to illustrate a concept;
+- an evaluative or descriptive phrase, such as an advantage, a quality or a trait ("wide reach", "high engagement", "limited interactivity", "fast");
+- an everyday word, a slide or section title, or something too vague, weak or minor to be asked on a test;
+- a definition that only lists examples instead of saying what the term is;
+- the same idea as a better candidate (a synonym, a narrower or broader duplicate): keep only the best one.
+When a kept term has several versions, choose the version whose definition says best what the term IS and is supported by its evidence.
+Keep at most ${maxTerms} candidates, most important first. Keep fewer if the rest are weak. You may ONLY keep, drop and choose among the candidates given: never add a term, never rewrite a definition or an evidence quote, and refer to candidates only by their number.
+
+Reply with this JSON shape (version is the number of the chosen version, 1 if there is only one):
+{"terms":[{"id":1,"version":1}]}`;
+  const list = candidates
+    .map((c, i) => `[${i + 1}] ${c.term}\n${c.versions.map((v, j) => `  version ${j + 1}: definition: ${v.definition}\n    evidence: "${v.evidence}"`).join('\n')}`)
+    .join('\n');
+  return { system, user: `Candidate key terms:\n<candidates>\n${list}\n</candidates>` };
+}
+
 // maxTerms: how many terms this call may return (the caller trims the merged list to the lesson-wide cap).
 export function keyTermsPrompt({ text, index, total, maxTerms, targetTerms = maxTerms }) {
   const system = `${LESSON_RULES}
