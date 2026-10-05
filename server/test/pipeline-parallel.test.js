@@ -192,10 +192,19 @@ describe('generateKeyTerms', () => {
   it('asks each call for only a share of the cap, and the cap defaults to 12', async () => {
     const ai = termsAi([[], [], [], []]);
     await generateKeyTerms({ ai, chunks: chunks(4) });
-    for (const { system } of ai.prompts) assert.match(system, /at most 5 terms/);
+    for (const { system } of ai.prompts) assert.match(system, /\(at most 5\)/);
     const one = termsAi([[]]);
     await generateKeyTerms({ ai: one, chunks: chunks(1) });
-    assert.match(one.prompts[0].system, /at most 12 terms/);
+    assert.match(one.prompts[0].system, /\(at most 12\)/);
+  });
+
+  it('scales the target term count with the size of the chunk (about one per 100 words, 3 at least)', async () => {
+    const ai = termsAi([[], [], []]);
+    const sized = (tokens) => [{ index: 0, text: 'x', tokens }];
+    await generateKeyTerms({ ai, chunks: sized(100), maxTerms: 12 });
+    await generateKeyTerms({ ai, chunks: sized(1200), maxTerms: 12 });
+    await generateKeyTerms({ ai, chunks: sized(5000), maxTerms: 12 });
+    assert.deepEqual(ai.prompts.map((p) => p.system.match(/about (\d+) terms/)[1]), ['3', '6', '12']);
   });
 
   it('trims a model that returns more than it was asked for', async () => {
@@ -214,7 +223,9 @@ describe('prompts', () => {
     assert.match(system, /plain examples or list items/);
     assert.match(system, /evaluative or descriptive phrases[^]*wide reach/);
     assert.match(system, /say what the term IS[^]*Never just list examples/);
-    assert.match(system, /at most 12 terms/);
+    assert.match(system, /only names or titles a term[^]*never define a term from your own knowledge/);
+    assert.match(system, /\(at most 12\)/);
+    assert.match(system, /A concept is an idea, method, principle[^]*is NOT a concept/);
     assert.match(system, /Use ONLY the lesson text/);
     assert.match(system, /exactly "Notes:"/, 'still explains the Notes: line');
     assert.match(user, /<lesson_text>\nSlide/);

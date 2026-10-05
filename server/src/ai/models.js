@@ -10,7 +10,7 @@ const NON_CHAT_NAME = new RegExp(
     'detector', 'deplot', 'robotics',
     // short tokens only count as whole name parts ('nemotron-parse' yes, 'derivative' no); the last five are
     // Gemini's image / video generation and realtime (live) / audio models
-    '(?:^|[/_.-])(?:riva|tts|asr|clip|nvclip|sd3|ocr|parse|bge|e5|gte|nvolve|imagen|veo|live|audio|image)(?:[/_.-]|$)',
+    '(?:^|[/_.-])(?:riva|tts|asr|clip|nvclip|sd3|ocr|parse|bge|e5|gte|nvolve|imagen|veo|live|audio|image|transcribe|lyria)(?:[/_.-]|$)',
   ].join('|'),
   'i',
 );

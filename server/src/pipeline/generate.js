@@ -11,6 +11,7 @@ import { keyPointsPrompt, keyTermsPrompt, sectionsPrompt } from '../ai/prompts.j
 
 const MAX_KEY_POINTS = 8;
 const WORDS_PER_SECTION = 280; // a section covers roughly this much lesson text
+const WORDS_PER_TERM = 100; // a lesson has about one key concept per this many words
 
 // Models sometimes return a list of lines where a string was asked for, or a bare array instead of {key: [...]}.
 const text = z.preprocess((v) => (Array.isArray(v) ? v.map(String).join('\n') : v), z.string().trim().min(1));
@@ -153,7 +154,9 @@ export async function generateKeyPoints({ ai, sections, chunkTokens, concurrency
 export async function generateKeyTerms({ ai, chunks, maxTerms = 12, concurrency = 1, onProgress = () => {} }) {
   const perChunk = Math.min(maxTerms, Math.ceil(maxTerms / chunks.length) + 2);
   const lists = await runCalls(chunks, concurrency, onProgress, async (chunk) => {
-    const { system, user } = keyTermsPrompt({ text: chunk.text, index: chunk.index, total: chunks.length, maxTerms: perChunk });
+    // roughly one concept per 100 words of lesson text, between 3 and this call's share of the cap
+    const targetTerms = Math.min(perChunk, Math.max(3, Math.round(chunk.tokens / 2 / WORDS_PER_TERM)));
+    const { system, user } = keyTermsPrompt({ text: chunk.text, index: chunk.index, total: chunks.length, maxTerms: perChunk, targetTerms });
     const out = await ai.generateJSON({
       system,
       user,

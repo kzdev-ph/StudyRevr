@@ -69,19 +69,19 @@ ${text}
 }
 
 // maxTerms: how many terms this call may return (the caller trims the merged list to the lesson-wide cap).
-export function keyTermsPrompt({ text, index, total, maxTerms }) {
+export function keyTermsPrompt({ text, index, total, maxTerms, targetTerms = maxTerms }) {
   const system = `${LESSON_RULES}
 
 Task: pick the key terms a student must be able to define on a test.
-Include ONLY domain-specific concepts: technical terms, vocabulary and named ideas that this lesson explains or defines. Prefer the broad concept over its examples (define the category, not each item in it).
+Include ONLY domain-specific concepts: technical terms, vocabulary and named ideas that this lesson explains or defines. A concept is an idea, method, principle, process step or classification that the lesson explains. Named types, approaches, methods, principles and steps ARE concepts, even when the lesson lists several of them and defines each. A concrete thing named as an example of a concept (a particular product, brand, device, publication or platform) is NOT a concept, even if the lesson describes it in one line.
 Do NOT include:
 - plain examples or list items: the individual things named to illustrate a concept (each product, brand, tool, device, place or person in a list of examples);
 - evaluative or descriptive phrases, such as an advantage, a quality or a trait ("fast", "high quality", "easy to use", "wide reach"), unless the lesson itself defines that phrase as a named concept;
-- everyday words, slide or section titles, and anything the lesson does not explain well enough to define.
+- everyday words, slide or section titles, and anything the lesson does not explain well enough to define. If the lesson only names or titles a term and never says what it means, leave that term out: never define a term from your own knowledge.
 For each term:
 - "term": 1 to 4 words, written as the lesson writes it.
 - "definition": 1 or 2 plain sentences that say what the term IS (its meaning, what it does or how it works), using only what the lesson says. Never just list examples, and do not repeat the term as its own definition.
-Give at most ${maxTerms} terms, most important first. Fewer is better than weak ones; reply {"terms":[]} if the text defines no real concepts.
+Give about ${targetTerms} terms (at most ${maxTerms}), most important first. Do not stop at the few most basic concepts, but never pad the list with examples or list items just to reach that number: fewer is better than weak ones. Reply {"terms":[]} if the text defines no real concepts.
 
 Reply with this JSON shape:
 {"terms":[{"term":"...","definition":"..."}]}`;

@@ -101,7 +101,7 @@ describe('chat model filter: Gemini', () => {
     for (const id of [
       'models/text-embedding-004', 'gemini-embedding-001', 'imagen-4.0-generate-001', 'veo-3.0-generate-preview',
       'gemini-2.5-flash-preview-tts', 'gemini-live-2.5-flash', 'gemini-2.5-flash-native-audio-preview', 'gemini-2.5-flash-image',
-      'gemini-robotics-er-1.5-preview',
+      'gemini-robotics-er-1.5-preview', 'gemini-3.5-transcribe', 'lyria-3.5',
     ]) {
       assert.equal(isChatModel(id), false, id);
     }
