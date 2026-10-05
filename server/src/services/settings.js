@@ -7,3 +7,17 @@ export function getBoolSetting(db, key, fallback) {
   if (['false', '0', 'no', 'off'].includes(v)) return false;
   return fallback;
 }
+
+// Reads a trimmed string setting; '' when the row is missing or blank.
+export function getSetting(db, key) {
+  return db.prepare('SELECT value FROM settings WHERE key = ?').get(key)?.value?.trim() ?? '';
+}
+
+// Provider config: values saved in the settings table (Settings screen) override the .env defaults.
+export function resolveAiConfig(db, envAi = {}) {
+  return {
+    baseUrl: getSetting(db, 'ai_base_url') || envAi.baseUrl || '',
+    apiKey: getSetting(db, 'ai_api_key') || envAi.apiKey || '',
+    model: getSetting(db, 'ai_model') || envAi.model || '',
+  };
+}

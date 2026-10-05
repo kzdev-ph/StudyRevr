@@ -17,6 +17,8 @@ export function loadConfig(env = process.env) {
       baseUrl: env.AI_BASE_URL || '',
       apiKey: env.AI_API_KEY || '',
       model: env.AI_MODEL || '',
+      timeoutMs: (Number(env.AI_TIMEOUT_SECONDS) || 300) * 1000,
+      chunkTokens: Number(env.AI_CHUNK_TOKENS) || undefined, // lesson tokens per AI call; default suits 8k-context models
     },
   };
 }

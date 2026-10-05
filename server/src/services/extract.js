@@ -3,6 +3,7 @@ import { HttpError } from '../middleware/errors.js';
 import { extractPdf } from './pdf.js';
 import { extractPptx } from './pptx.js';
 import { countWords, normalizeText } from './text.js';
+import { assertSafeZip } from './zipguard.js';
 
 const UNREADABLE = "Couldn't read this file. Make sure it opens in Word, PowerPoint or a PDF viewer, then try again.";
 
@@ -17,6 +18,7 @@ async function extractDocx(buffer) {
 export async function extractText(buffer, ext, { includeNotes = true } = {}) {
   let raw;
   let pageCount = null;
+  if (ext === '.docx' || ext === '.pptx') assertSafeZip(buffer); // before any parser inflates the archive
   try {
     if (ext === '.docx') raw = await extractDocx(buffer);
     else if (ext === '.pptx') raw = await extractPptx(buffer, { includeNotes });

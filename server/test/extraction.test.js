@@ -221,7 +221,7 @@ describe('word count and warning use the final combined text', () => {
   before(async () => {
     db = openDb(':memory:');
     runMigrations(db);
-    const app = createApp(db, { maxUploadBytes: 5 * 1024 * 1024 });
+    const app = createApp(db, { maxUploadBytes: 5 * 1024 * 1024 }, { runner: { enqueue() {} } });
     await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
     base = `http://127.0.0.1:${server.address().port}`;
   });

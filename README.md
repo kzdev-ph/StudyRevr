@@ -2,7 +2,7 @@
 
 Open-source, mobile-first study app. Upload a lesson (.docx / .pptx / .pdf) and get a sectioned review, Anki-style flashcards, and mock quizzes. Study activity is logged and exportable for research.
 
-> **Status:** Phase 1 of 7 — backend foundation (upload, text extraction, lessons API). The React client arrives in Phase 3.
+> **Status:** Phase 2 of 7 — backend with AI generation (sections, key points, key terms). The React client arrives in Phase 3.
 
 ## Running it
 
@@ -25,7 +25,13 @@ The SQLite database is created at `server/data/studyrevr.db` on first start, and
 | `DB_PATH` | `server/data/studyrevr.db` | SQLite file (relative to repo root) |
 | `MAX_UPLOAD_MB` | `20` | Upload size limit |
 
-`AI_BASE_URL`, `AI_API_KEY` and `AI_MODEL` are used from Phase 2.
+| `AI_BASE_URL` | – | OpenAI-compatible base URL, e.g. `https://integrate.api.nvidia.com/v1` or `http://localhost:11434/v1` |
+| `AI_API_KEY` | – | Provider key (leave empty for local servers). Never logged or returned by the API |
+| `AI_MODEL` | – | Chat model id, e.g. `meta/llama-3.1-8b-instruct` |
+| `AI_TIMEOUT_SECONDS` | `300` | Per AI request; raise it for slow local or reasoning models |
+| `AI_CHUNK_TOKENS` | `2400` | Lesson text per AI call; the default suits ~8k-context models |
+
+Values saved in the `settings` table (`ai_base_url`, `ai_api_key`, `ai_model`, `summary_length` = `short`/`detailed`) override `.env`; the Settings screen arrives in Phase 7.
 
 ### Try the API
 
@@ -36,9 +42,31 @@ curl http://localhost:3001/api/lessons/1                         # one lesson, w
 curl -X DELETE http://localhost:3001/api/lessons/1               # delete
 ```
 
-Supported formats: `.docx`, `.pptx` and `.pdf` (up to `MAX_UPLOAD_MB`). Slides and PDF pages are separated by a blank line in the extracted text, with one paragraph per line inside each. For PowerPoint files this includes bullet lists, tables, SmartArt text and (by default) speaker notes under a `Notes:` line; set the `include_speaker_notes` row in the `settings` table to `false` to leave notes out of future uploads. For PDFs, lines that repeat on most pages (headers, footers, page numbers) are removed and wrapped lines are rejoined into paragraphs.
+Supported formats: `.docx`, `.pptx` and `.pdf` (up to `MAX_UPLOAD_MB`). A `.docx`/`.pptx` that would unpack to more than 200 MB or hold more than 10,000 parts is rejected before it is read (zip-bomb guard). Slides and PDF pages are separated by a blank line in the extracted text, with one paragraph per line inside each. For PowerPoint files this includes bullet lists, tables, SmartArt text and (by default) speaker notes under a `Notes:` line; set the `include_speaker_notes` row in the `settings` table to `false` to leave notes out of future uploads. For PDFs, lines that repeat on most pages (headers, footers, page numbers) are removed and wrapped lines are rejoined into paragraphs.
 
 Uploading returns `{ lesson, warning }`. `warning` is set when little text was extracted (for example, image-heavy slides). A PDF with almost no text gets "This PDF looks scanned or image-only; text can't be extracted." (there is no OCR). Old `.doc` / `.ppt` files are rejected with a "save as .docx/.pptx" message.
+
+### AI generation
+
+After an upload the lesson is `processing` and a background job runs, one lesson at a time: **sections** (with 1–2 quick-check questions each) → **key points** → **key terms**. Each stage makes one AI call per chunk of lesson text (paragraphs are never split; slides/pages and headings are the preferred cut points; a slide's `Notes:` stays with its slide). Every AI reply is validated with zod and retried once if it isn't valid JSON.
+
+```bash
+curl http://localhost:3001/api/lessons/1/status       # { lesson: { id, status, error }, job: { stage, status, progress: { done, total }, error } }
+curl http://localhost:3001/api/lessons/1              # lesson + sections, key_points, key_terms once ready
+curl -X POST http://localhost:3001/api/lessons/1/retry   # re-run a failed lesson (finished stages are kept)
+curl http://localhost:3001/api/settings/models        # chat models offered by the provider, sorted
+curl -X POST http://localhost:3001/api/settings/test-ai  # tiny JSON round-trip: checks URL, key, model
+```
+
+`status` is `processing`, `ready` or `failed`; `job.stage` is `sections`, `key_points`, `key_terms` or `done`. A job still running when the server stops is marked failed on the next start and can be retried.
+
+Try the pipeline on a file without the server (uses a throw-away database, prints the results):
+
+```bash
+npm run pipeline                                    # lists files in test-lessons/
+npm run pipeline -- Introduction-to-Media-Channels  # partial file name is fine
+npm run pipeline -- lesson.pdf --summary=short --chunk-tokens=1500
+```
 
 Errors are always JSON: `{ "error": { "message": "..." } }`.
 

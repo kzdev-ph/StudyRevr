@@ -100,7 +100,7 @@ describe('lessons API', () => {
   before(async () => {
     db = openDb(':memory:');
     runMigrations(db);
-    const app = createApp(db, { maxUploadBytes: MAX_UPLOAD });
+    const app = createApp(db, { maxUploadBytes: MAX_UPLOAD }, { runner: { enqueue() {} } });
     await new Promise((resolve) => {
       server = app.listen(0, '127.0.0.1', resolve);
     });
@@ -136,7 +136,7 @@ describe('lessons API', () => {
     const { lesson, warning } = await res.json();
     assert.equal(lesson.title, 'Plant Biology');
     assert.equal(lesson.filename, 'Plant Biology.docx');
-    assert.equal(lesson.status, 'ready');
+    assert.equal(lesson.status, 'processing', 'AI processing is queued; the lesson is ready once it finishes');
     assert.ok(lesson.word_count > 300, `word_count was ${lesson.word_count}`);
     assert.equal(warning, null);
     assert.equal(db.prepare('SELECT COUNT(*) c FROM jobs WHERE lesson_id = ?').get(lesson.id).c, 1);
