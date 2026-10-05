@@ -205,7 +205,7 @@ describe('createAiClient errors', () => {
   });
 
   it('rejects a base URL that is not a URL', async () => {
-    await assert.rejects(run(scriptedFetch(completion('{}')), { baseUrl: 'not a url', apiKey: '', model: 'm' }), (err) => err.code === 'not_configured' && /isn't a valid URL/.test(err.message));
+    await assert.rejects(run(scriptedFetch(completion('{}')), { baseUrl: 'not a url', apiKey: '', model: 'm' }), (err) => err.code === 'not_configured' && /isn't a valid web address/.test(err.message) && /AI_BASE_URL/.test(err.hint));
   });
 
   it('maps 401 to an API-key message without retrying and never leaks the key', async () => {
@@ -213,8 +213,10 @@ describe('createAiClient errors', () => {
     const client = makeClient(f);
     await assert.rejects(client.generateJSON({ system: 's', user: 'u', schema }), (err) => {
       assert.equal(err.code, 'auth');
-      assert.match(err.message, /rejected the API key \(HTTP 401\)\. Check the API key in Settings/);
-      assert.ok(!err.message.includes(KEY), 'key must be redacted');
+      assert.match(err.message, /^The AI provider rejected the API key\. Check the key, then retry\.$/);
+      assert.ok(!/HTTP|\b401\b/.test(err.message), 'no status code on screen');
+      assert.match(err.hint, /AI_API_KEY in the \.env file/);
+      assert.ok(!err.message.includes(KEY) && !err.hint.includes(KEY), 'key must be redacted');
       return true;
     });
     assert.equal(f.calls.length, 1);
@@ -222,11 +224,11 @@ describe('createAiClient errors', () => {
   });
 
   it('maps 403 to the same API-key message', async () => {
-    await assert.rejects(run(scriptedFetch(failure(403, { error: { message: 'forbidden' } }))), (err) => err.code === 'auth' && /HTTP 403.*API key in Settings/.test(err.message));
+    await assert.rejects(run(scriptedFetch(failure(403, { error: { message: 'forbidden' } }))), (err) => err.code === 'auth' && /rejected the API key/.test(err.message) && !/HTTP|403/.test(err.message));
   });
 
   it('points a 401 at the .env variable of the provider when it has one', async () => {
-    await assert.rejects(run(scriptedFetch(failure(401, {})), { ...CFG, keyEnv: 'GOOGLE_API_KEY' }), (err) => /GOOGLE_API_KEY in \.env/.test(err.message));
+    await assert.rejects(run(scriptedFetch(failure(401, {})), { ...CFG, keyEnv: 'GOOGLE_API_KEY' }), (err) => /GOOGLE_API_KEY in the \.env file/.test(err.hint) && !/GOOGLE_API_KEY/.test(err.message));
   });
 
   it('logs the provider error body on the server with the key redacted, and keeps it off the screen', async () => {
@@ -245,7 +247,7 @@ describe('createAiClient errors', () => {
 
   it('maps 400 to a "check the model" message', async () => {
     const f = scriptedFetch(failure(400, { error: { message: 'model "nope" is not supported' } }));
-    await assert.rejects(run(f), (err) => err.code === 'bad_request' && /HTTP 400.*Check the model in Settings/.test(err.message));
+    await assert.rejects(run(f), (err) => err.code === 'bad_request' && /Check the model, then retry/.test(err.message) && !/HTTP|400/.test(err.message) && /AI_MODEL/.test(err.hint));
     assert.equal(f.calls.length, 1);
   });
 
@@ -255,18 +257,18 @@ describe('createAiClient errors', () => {
       const body = [{ error: { code: 400, message, status: 'INVALID_ARGUMENT' } }];
       const f = scriptedFetch(failure(400, body));
       const client = makeClient(f, { ...CFG, jsonSchema: true });
-      await assert.rejects(client.generateJSON({ system: 's', user: 'u', schema, responseSchema: { name: 'x', schema: { type: 'object' } } }), (err) => err.code === 'auth' && /API key in Settings/.test(err.message) && !/model/.test(err.message));
+      await assert.rejects(client.generateJSON({ system: 's', user: 'u', schema, responseSchema: { name: 'x', schema: { type: 'object' } } }), (err) => err.code === 'auth' && /rejected the API key/.test(err.message) && !/model/.test(err.message));
       assert.equal(f.calls.length, 1, 'no second try without response_format: the key is the problem');
     }
   });
 
   it('maps 404 to a model / base URL hint', async () => {
-    await assert.rejects(run(scriptedFetch(failure(404, { error: { message: 'model not found' } }))), (err) => err.code === 'not_found' && /Check the model in Settings/.test(err.message) && /base URL/.test(err.message));
+    await assert.rejects(run(scriptedFetch(failure(404, { error: { message: 'model not found' } }))), (err) => err.code === 'not_found' && /Check the model name/.test(err.message) && !/HTTP|404/.test(err.message) && /AI_BASE_URL/.test(err.hint));
   });
 
   it('adds a context-window hint to a 400 about token limits', async () => {
     const f = scriptedFetch(failure(400, { error: { message: "This model's maximum context length is 4096 tokens" } }));
-    await assert.rejects(run(f), (err) => err.code === 'bad_request' && /context window is too small/.test(err.message) && /Check the model in Settings/.test(err.message));
+    await assert.rejects(run(f), (err) => err.code === 'bad_request' && /context window is too small/.test(err.message) && /Check the model, then retry/.test(err.message));
     assert.equal(f.calls.length, 1);
   });
 
@@ -281,14 +283,14 @@ describe('createAiClient errors', () => {
   it('gives up on a persistent 429 after 5 attempts with a rate-limit message', async () => {
     const f = scriptedFetch(failure(429, { error: 'slow down' }));
     const client = makeClient(f);
-    await assert.rejects(client.generateJSON({ system: 's', user: 'u', schema }), (err) => err.code === 'rate_limit' && /rate limiting requests \(HTTP 429\)\. Try again shortly/.test(err.message));
+    await assert.rejects(client.generateJSON({ system: 's', user: 'u', schema }), (err) => err.code === 'rate_limit' && err.message === 'The AI provider is rate limiting requests. Try again shortly.');
     assert.equal(f.calls.length, 5);
     assert.deepEqual(client.sleeps, [2000, 6000, 15000, 30000]);
   });
 
   it('retries a 503 and then reports a provider error', async () => {
     const f = scriptedFetch(failure(503, 'upstream down'));
-    await assert.rejects(run(f), (err) => err.code === 'provider_error' && /HTTP 503/.test(err.message));
+    await assert.rejects(run(f), (err) => err.code === 'provider_error' && /had a problem/.test(err.message) && !/HTTP|503/.test(err.message));
     assert.equal(f.calls.length, 5);
   });
 
@@ -328,7 +330,7 @@ describe('createAiClient errors', () => {
 
   it('explains a non-JSON HTTP 200 (wrong base URL)', async () => {
     const f = scriptedFetch(new Response('<html>Welcome</html>', { status: 200 }));
-    await assert.rejects(run(f), (err) => err.code === 'bad_response' && /OpenAI-compatible/.test(err.message));
+    await assert.rejects(run(f), (err) => err.code === 'bad_response' && /didn't return JSON/.test(err.message) && /OpenAI-compatible/.test(err.hint));
   });
 
   it('explains a reply with no choices', async () => {

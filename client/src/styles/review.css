@@ -20,7 +20,7 @@
 }
 .lesson-head__title {
   font-family: var(--font-read);
-  font-size: 1.25rem;
+  font-size: var(--t-lead);
   font-weight: 650;
   line-height: 1.25;
   letter-spacing: -0.01em;
@@ -28,7 +28,7 @@
 }
 .lesson-head .muted {
   margin-top: 2px;
-  font-size: 0.875rem;
+  font-size: var(--t-meta);
 }
 
 /* sections / key points / key terms */
@@ -45,7 +45,7 @@
   padding: 0 14px;
   color: var(--ink-2);
   font-weight: 650;
-  font-size: 0.9375rem;
+  font-size: var(--t-ui);
 }
 .subnav a:first-child {
   padding-left: 0;
@@ -62,9 +62,10 @@
   left: 0;
   right: 0;
   bottom: -1px;
-  height: 5px;
-  border-radius: 3px;
+  height: 6px;
+  border-radius: var(--r-mark);
   background: var(--hi);
+  box-shadow: 0 2px 0 var(--mark-edge);
 }
 .subnav a:first-child[aria-current='page']::after {
   left: 0;
@@ -87,25 +88,28 @@
 }
 .progress__label {
   color: var(--ink-2);
-  font-size: 0.875rem;
+  font-size: var(--t-meta);
   font-weight: 650;
   font-variant-numeric: tabular-nums;
 }
 .progress__track {
   height: 10px;
-  border-radius: 5px;
+  border-radius: var(--r-mark);
   background: var(--line);
   overflow: hidden;
 }
 .progress__fill {
   display: block;
   height: 100%;
-  border-radius: 5px;
+  border-radius: var(--r-mark);
   background: var(--hi);
+  box-shadow: inset 0 -2px 0 var(--mark-edge);
 }
 
-/* The section page: a sheet of paper with the notebook's red margin rule. It runs edge to edge on a phone. */
-.page {
+/* A sheet of paper with the notebook's red margin rule. The section page, key points and key terms are all sheets.
+   On a phone it runs edge to edge. */
+.page,
+.sheet {
   position: relative;
   display: flex;
   flex-direction: column;
@@ -115,7 +119,8 @@
   background: var(--sheet);
   border-block: 1px solid var(--line);
 }
-.page::before {
+.page::before,
+.sheet::before {
   content: '';
   position: absolute;
   top: 0;
@@ -127,7 +132,7 @@
 }
 .page__title {
   font-family: var(--font-read);
-  font-size: 1.5rem;
+  font-size: var(--t-title);
   font-weight: 650;
   line-height: 1.25;
   letter-spacing: -0.01em;
@@ -143,13 +148,13 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 14px 0 11px;
   border: 1.5px solid var(--line-strong);
-  border-radius: 999px;
+  border-radius: var(--r-control);
   background: var(--sheet);
   font-weight: 600;
-  font-size: 0.875rem;
+  font-size: var(--t-ui);
   transition: background-color 0.12s, border-color 0.12s;
 }
 .chip-btn:hover {
@@ -157,7 +162,8 @@
 }
 .chip-btn[aria-pressed='true'] {
   background: var(--hi);
-  border-color: var(--hi);
+  border-color: var(--on-hi);
+  box-shadow: inset 0 -3px 0 var(--mark-edge);
   color: var(--on-hi);
 }
 
@@ -167,7 +173,7 @@
   flex-direction: column;
   gap: 0.85em;
   font-family: var(--font-read);
-  font-size: 1.0625rem;
+  font-size: var(--t-body);
   line-height: 1.7;
   max-width: 40rem;
 }
@@ -180,27 +186,28 @@
   position: relative;
   padding-left: 1.25em;
 }
+/* list markers are short ink dashes; yellow is kept for "you are here" and key terms */
 .prose li::before {
   content: '';
   position: absolute;
   left: 0;
-  top: 0.78em;
-  width: 0.7em;
-  height: 0.38em;
-  border-radius: 2px;
-  background: var(--hi);
+  top: 0.82em;
+  width: 0.6em;
+  height: 2px;
+  border-radius: var(--r-mark);
+  background: var(--accent);
 }
 
 .example {
   padding: 14px 16px;
   border-left: 4px solid var(--hi);
-  border-radius: 2px var(--r-md) var(--r-md) 2px;
+  border-radius: var(--r-mark) var(--r-surface) var(--r-surface) var(--r-mark);
   background: var(--hi-soft);
 }
 .example__label {
   margin-bottom: 6px;
   font-weight: 700;
-  font-size: 0.9375rem;
+  font-size: var(--t-ui);
 }
 .example .prose {
   font-size: 1rem;
@@ -215,12 +222,12 @@
 .skeleton__label {
   color: var(--ink-2);
   font-weight: 600;
-  font-size: 0.9375rem;
+  font-size: var(--t-ui);
 }
 .skeleton__line {
   display: block;
   height: 14px;
-  border-radius: 7px;
+  border-radius: var(--r-tag);
   background: linear-gradient(90deg, var(--line) 25%, var(--hi-soft) 50%, var(--line) 75%);
   background-size: 300% 100%;
   animation: shimmer 1.6s ease-in-out infinite;
@@ -244,7 +251,7 @@
   gap: 10px;
   padding: 16px;
   border: 1px solid var(--line-strong);
-  border-radius: var(--r-md);
+  border-radius: var(--r-surface);
   background: var(--paper);
 }
 .source__title {
@@ -253,7 +260,7 @@
 }
 .source__hint {
   color: var(--ink-2);
-  font-size: 0.875rem;
+  font-size: var(--t-meta);
 }
 .source__blocks {
   display: flex;
@@ -262,7 +269,7 @@
 .source__block {
   padding: 12px 0;
   border-top: 1px solid var(--line);
-  font-size: 0.9375rem;
+  font-size: var(--t-ui);
   line-height: 1.55;
   overflow-wrap: anywhere;
 }
@@ -272,14 +279,14 @@
 .source__label {
   margin-bottom: 4px;
   color: var(--ink-2);
-  font-size: 0.8125rem;
+  font-size: var(--t-meta);
   font-weight: 700;
 }
 .source__notes {
   margin-top: 10px !important;
   color: var(--ink-2);
   font-weight: 700;
-  font-size: 0.875rem;
+  font-size: var(--t-meta);
 }
 .source .link-btn {
   align-self: flex-start;
@@ -295,7 +302,7 @@
 }
 .quickcheck__title {
   font-family: var(--font-read);
-  font-size: 1.125rem;
+  font-size: var(--t-lead);
   font-weight: 650;
 }
 .quickcheck__list {
@@ -311,7 +318,7 @@
 }
 .check__q {
   font-family: var(--font-read);
-  font-size: 1.0625rem;
+  font-size: var(--t-body);
   line-height: 1.5;
   font-weight: 600;
 }
@@ -324,7 +331,7 @@
   min-height: 72px;
   padding: 10px 12px;
   border: 1.5px solid var(--line-strong);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-control);
   background: var(--paper);
   font-size: 1rem;
   line-height: 1.5;
@@ -340,7 +347,7 @@
 .check__answer {
   padding: 12px 14px;
   border-left: 4px solid var(--accent);
-  border-radius: 2px var(--r-md) var(--r-md) 2px;
+  border-radius: var(--r-mark) var(--r-surface) var(--r-surface) var(--r-mark);
   background: var(--accent-wash);
   font-family: var(--font-read);
   line-height: 1.6;
@@ -349,7 +356,7 @@
   margin-bottom: 2px;
   font-family: var(--font-ui);
   font-weight: 700;
-  font-size: 0.875rem;
+  font-size: var(--t-meta);
   color: var(--accent);
 }
 .check__rate {
@@ -358,7 +365,7 @@
   align-items: center;
   gap: 8px 10px;
   margin-top: 12px;
-  font-size: 0.9375rem;
+  font-size: var(--t-ui);
 }
 .check__rate > span {
   flex-basis: 100%;
@@ -371,7 +378,7 @@
   gap: 6px;
   margin-top: 12px;
   font-weight: 600;
-  font-size: 0.9375rem;
+  font-size: var(--t-ui);
 }
 .check__feedback--got {
   color: var(--ok);
@@ -395,7 +402,7 @@
   gap: 10px;
   padding: 8px;
   border: 1px solid var(--line-strong);
-  border-radius: 14px;
+  border-radius: var(--r-surface);
   background: var(--sheet);
   box-shadow: 0 6px 18px rgb(14 17 38 / 0.1);
 }
@@ -405,8 +412,12 @@
 .lesson-nav .btn--primary {
   margin-left: auto;
 }
+/* The "What's next" card has no Previous / Next bar, so it needs no room for one. */
+.review__body--end {
+  padding-bottom: 12px;
+}
 
-/* key points */
+/* key points: ink dashes in the margin */
 .points {
   display: flex;
   flex-direction: column;
@@ -416,7 +427,7 @@
   padding: 16px 0 16px 34px;
   border-bottom: 1px solid var(--line);
   font-family: var(--font-read);
-  font-size: 1.0625rem;
+  font-size: var(--t-body);
   line-height: 1.6;
 }
 .points__item::before {
@@ -424,13 +435,13 @@
   position: absolute;
   left: 0;
   top: 1.62em;
-  width: 22px;
-  height: 10px;
-  border-radius: 3px;
-  background: var(--hi);
+  width: 14px;
+  height: 2px;
+  border-radius: var(--r-mark);
+  background: var(--accent);
 }
 
-/* key terms */
+/* key terms: the term is the one thing a student would highlight, so it gets the yellow */
 .terms {
   display: flex;
   flex-direction: column;
@@ -442,28 +453,32 @@
   padding: 18px 0;
   border-bottom: 1px solid var(--line);
 }
+.points__item:last-child,
+.term:last-child {
+  border-bottom: 0;
+}
 .term__name {
   align-self: flex-start;
   padding: 0 6px;
   margin-left: -6px;
-  border-radius: 3px;
+  border-radius: var(--r-mark);
   background: var(--hi);
   color: var(--on-hi);
   font-family: var(--font-read);
-  font-size: 1.125rem;
+  font-size: var(--t-body);
   font-weight: 700;
   line-height: 1.5;
 }
 .term__def {
   font-family: var(--font-read);
-  font-size: 1.0625rem;
+  font-size: var(--t-body);
   line-height: 1.6;
 }
 .term__evidence {
   color: var(--ink-2);
   font-family: var(--font-read);
   font-style: italic;
-  font-size: 0.9375rem;
+  font-size: var(--t-ui);
   line-height: 1.55;
 }
 .term__from {
@@ -495,7 +510,7 @@
 }
 .endcard__title {
   font-family: var(--font-read);
-  font-size: 1.5rem;
+  font-size: var(--t-title);
   font-weight: 650;
 }
 .endcard__lede {
@@ -513,7 +528,7 @@
   min-height: 64px;
   padding: 12px 16px;
   border: 1.5px solid var(--line-strong);
-  border-radius: var(--r-md);
+  border-radius: var(--r-surface);
   background: var(--paper);
 }
 .endcard__action:hover {
@@ -529,7 +544,7 @@
 }
 .endcard__action small {
   color: var(--ink-2);
-  font-size: 0.875rem;
+  font-size: var(--t-ui);
 }
 .endcard__more {
   display: flex;
@@ -539,11 +554,12 @@
 
 @media (min-width: 40rem) {
   .page,
+  .sheet,
   .endcard {
     margin-inline: 0;
     padding-right: 28px;
     border: 1px solid var(--line);
-    border-radius: 4px var(--r-lg) var(--r-lg) 4px;
+    border-radius: var(--r-sheet);
   }
   .endcard__actions {
     flex-direction: row;

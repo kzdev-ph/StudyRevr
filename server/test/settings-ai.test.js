@@ -85,7 +85,8 @@ describe('AI settings routes', () => {
     await start({}); // no key at all
     res = await api('/api/settings/models');
     assert.deepEqual([res.status, res.body.freeText, res.body.error.code], [200, true, 'not_configured']);
-    assert.match(res.body.error.message, /GOOGLE_API_KEY/);
+    assert.match(res.body.error.hint, /GOOGLE_API_KEY/);
+    assert.doesNotMatch(res.body.error.message, /GOOGLE_API_KEY/);
   });
 
   it('PUT /ai saves provider, per-provider model and key; GET /ai never returns a key', async () => {
@@ -150,7 +151,8 @@ describe('AI settings routes', () => {
     const res = await send('POST', '/api/settings/test-ai', { provider: 'openrouter' });
     assert.equal(res.status, 400);
     assert.equal(res.body.error.code, 'not_configured');
-    assert.match(res.body.error.message, /OPENROUTER_API_KEY/);
+    assert.match(res.body.error.hint, /OPENROUTER_API_KEY/);
+    assert.doesNotMatch(res.body.error.message, /OPENROUTER_API_KEY|HTTP/);
     assert.equal(fetchImpl.calls.length, 0);
   });
 });

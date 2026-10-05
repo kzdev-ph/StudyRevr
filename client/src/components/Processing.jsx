@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { CheckIcon, RetryIcon } from './Icons.jsx';
+import { CheckIcon, ChevronLeft, RetryIcon } from './Icons.jsx';
 import Notice from './Notice.jsx';
 import { api } from '../lib/api.js';
 import { paths } from '../lib/router.js';
@@ -72,12 +72,13 @@ export default function Processing({ lessonId, title, warning, onReady }) {
 
   const failed = status?.lesson.status === 'failed';
   const failure = status?.lesson.error || status?.job?.error || 'Something went wrong while preparing this lesson.';
+  const failureHint = status?.lesson.error_hint || status?.job?.error_hint || null;
   const progress = status?.job?.progress;
 
   return (
     <section className="stack processing">
       <a className="back" href={paths.library()}>
-        All lessons
+        <ChevronLeft size={18} /> All lessons
       </a>
       <div>
         <h1 className="screen-title">{failed ? "We couldn’t finish this lesson" : 'Preparing your review'}</h1>
@@ -109,17 +110,17 @@ export default function Processing({ lessonId, title, warning, onReady }) {
 
       {failed ? (
         <div className="stack stack--tight">
-          <Notice action={null}>{failure}</Notice>
+          <Notice hint={failureHint}>{failure}</Notice>
           <div>
             <button type="button" className="btn btn--primary" onClick={retry} disabled={retrying}>
               <RetryIcon size={18} /> {retrying ? 'Retrying…' : 'Retry'}
             </button>
           </div>
-          <p className="muted">Steps that already finished are kept, so a retry picks up where it stopped.</p>
+          <p className="muted">Finished steps are kept. Retry picks up where it stopped.</p>
         </div>
       ) : (
         <p className="muted" aria-live="polite">
-          This usually takes under a minute. You can leave this page; the lesson keeps preparing.
+          You can leave this page. The lesson keeps preparing and shows “Preparing” in your list.
         </p>
       )}
     </section>

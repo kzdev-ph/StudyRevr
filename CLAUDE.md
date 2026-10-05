@@ -21,9 +21,21 @@ Open-source, mobile-first study app. Students upload a lesson (.docx / .pptx / .
 - Mobile-first CSS, dark mode via `prefers-color-scheme` + manual toggle
 - Respect `prefers-reduced-motion` (skip non-essential animations)
 - Every AI call: strict "use only the provided lesson text" instruction, zod validation, one retry on invalid JSON, clear error surfaced to UI
-- Provider errors become actionable messages (`server/src/ai/client.js`): 400 check the model in Settings (unless the body says the key is invalid, as Google's does: then the key), 401/403 check the API key in Settings, 404 model or base URL, 429 rate limited, try again shortly, timeout the provider is slow, retry. The provider's own error body is logged server-side with keys redacted and never shown in the UI.
+- Provider errors become plain, actionable messages (`server/src/ai/client.js`): what happened and what to do, never an HTTP status code. 400 check the model (unless the body says the key is invalid, as Google's does: then the key), 401/403 check the key, 404 model or address, 429 rate limited, try again shortly, timeout the provider is slow, retry. `AiError.hint` carries the developer guidance (which `.env` variable to set). It is stored with a failed lesson (`lessons.error_hint`, `jobs.error_hint`), returned as `error.hint` / `lesson.error_hint`, and the UI shows it behind a collapsed "Details" toggle (`Notice`'s `hint` prop). TODO(Phase 7): once Settings has the key / model / URL fields, hints point there instead of `.env`. The provider's status and error body are logged server-side with keys redacted and never shown in the UI.
 - Every AI prompt that receives lesson text must explain that a `Notes:` line inside a slide block marks the teacher's spoken explanation of that slide: treat it as lesson content that elaborates the slide, not as a separate topic
 - Long-running generation is async: create a job, frontend polls status
+- Copy: sentence case, plain language, say what happened and what to do. No promises about the future ("soon"), no time promises ("takes under a minute"), no status codes. Names are used the same way everywhere: Review, Flashcards, Mock Quiz, Stats.
+
+## Design system
+Source of truth: `client/src/styles/tokens.css` (its header repeats the rules). Concept: a school notebook. Ballpoint-blue ink for actions, highlighter yellow for "you are here", a pencil-red margin rule, serif reading text.
+- **Palette** (light / dark): paper `#f1f3f6` / `#14161a` (the desk), sheet `#fffffc` / `#1c1f25` (the page), ink `#171a20` / `#e9ebef`, ink-2 `#4b5260` / `#a6adb9`, rule `#d5deeb` / `#2c323c` (dividers), control border `#7d8aa0` / `#6f7b8d`, accent (ballpoint ink) `#1d4f9f` / `#8fb4f2`, highlighter `#ffe55c` / `#f2d94a`, margin rule `#dd4f66` / `#d9657d`. Semantic ok / warn / danger and their washes are in tokens.css. Neutrals stay near grey so the ink blue is the only blue.
+- **Yellow** means location or selection (active tab, sub-tab, progress, selected toggle) and key-term names. Light-mode yellow is only 1.26:1 on the sheet, so a selected state also gets an ink edge (`--mark-edge`, transparent in dark) and a control gets a tick. List markers are ink dashes, never yellow.
+- **Contrast**: text 4.5:1; control borders and the focus ring 3:1 (`--line-strong`, never `--line`). Check both themes after changing a colour.
+- **Type**: Literata for reading text, titles and the wordmark; Hanken Grotesk for controls and meta. Six sizes only: `--t-meta` 13, `--t-ui` 15, `--t-body` 17, `--t-lead` 20, `--t-title` 24, `--t-display` 30 px.
+- **Radius by role**: `--r-mark` 2px (highlighter strokes, progress, term names), `--r-tag` 4px, `--r-control` 6px (buttons, inputs, toggles), `--r-group` 8px (joined controls), `--r-surface` 10px (upload row, notices, action cards, floating bar), `--r-sheet` 3px 12px 12px 3px (a page on wide screens). No pills; circles only for step dots and the spinner.
+- **Sheet**: the section page, key points, key terms and the end card sit on a `.page` / `.sheet` with the red margin rule.
+- **Touch and focus**: targets are 44px; focus ring is 3px accent; focused elements are never hidden under the sticky header, tab bar or Previous / Next bar (`scroll-padding` in review.css).
+- **Logo**: yellow tile, red margin rule, ballpoint-drawn S (`client/public/favicon.svg`, `apple-touch-icon.png`). It uses fixed colours in both themes.
 
 ## AI Layer (provider-agnostic)
 One adapter speaking the OpenAI-compatible `/v1/chat/completions` API. This covers Google Gemini, NVIDIA NIM, Ollama (`/v1`), llama.cpp server, OpenRouter, and similar.
@@ -41,10 +53,10 @@ One adapter speaking the OpenAI-compatible `/v1/chat/completions` API. This cove
 - Request JSON only; strip code fences before parsing
 
 ## Screens
-Bottom tab bar: **Review | Flashcard | Mock Quiz | Stats**. Gear icon in header opens **Settings**. Home/upload is reachable from the header or an empty state.
+Bottom tab bar: **Review | Flashcards | Mock Quiz | Stats**. Gear icon in header opens **Settings**. Home/upload is reachable from the header or an empty state.
 
 ### Upload
-Drag-drop or pick file → progress states: Extracting → Summarizing → Flashcards → Quiz → Done. Accepts .docx, .pptx and .pdf. Warn if extracted text is very short (e.g. image-heavy slides); for PDFs with almost no text, warn that it looks scanned or image-only.
+The large drop zone is the empty state. Once a lesson exists, upload is one compact row ("Add a lesson" + Upload); dropping a file on it still works. Drag-drop or pick file → progress states: Extracting → Summarizing → Flashcards → Quiz → Done. Accepts .docx, .pptx and .pdf. Warn if extracted text is very short (e.g. image-heavy slides); for PDFs with almost no text, warn that it looks scanned or image-only.
 
 ### Review
 - Lesson list → lesson view
@@ -57,7 +69,7 @@ Drag-drop or pick file → progress states: Extracting → Summarizing → Flash
 - Resume where the student left off
 - End card "What's next": study N due flashcards (~X min) → take quiz
 
-### Flashcard (Anki-style)
+### Flashcards (Anki-style)
 - Row per lesson: name | Start | New / Learning / Due counts
 - Study screen: front → tap to flip → Again / Hard / Good / Easy
 - SM-2 scheduling. User-configurable: new cards/day (20), max reviews/day (200), learning steps (1m 10m).
@@ -75,21 +87,21 @@ Drag-drop or pick file → progress states: Extracting → Summarizing → Flash
 
 ### Stats
 - Overview cards: study time today/this week, streak (days), cards due today, lessons uploaded/completed
-- Charts (Recharts): study time per day (bar, 7/30 days), quiz score trend per lesson (line), flashcard state (donut: New / Learning / Mature), time per activity (Review vs Flashcard vs Quiz)
+- Charts (Recharts): study time per day (bar, 7/30 days), quiz score trend per lesson (line), flashcard state (donut: New / Learning / Mature), time per activity (Review vs Flashcards vs Quiz)
 - Per-lesson drill-down: attempts, accuracy, time spent
 - "Export CSV" of study sessions, quiz attempts, and flashcard reviews (for research analysis)
 
 ### Settings (gear icon)
 - AI provider: presets (Google Gemini (default), NVIDIA NIM, OpenRouter, Ollama, llama.cpp, Custom) that prefill base URL; per-provider API key (shown only as set / not set); model picker fed by `GET /api/settings/models` with a free-text fallback; "Test connection" tests the provider + model in the form before saving
 - Quiz question count; flashcards per lesson; summary length (short / detailed); include speaker notes (`include_speaker_notes`, default on; applies to pptx uploads made after changing it)
-- Flashcard: new cards/day, max reviews/day, learning steps
+- Flashcards: new cards/day, max reviews/day, learning steps
 - Data: delete lesson, reset flashcard progress, export/import JSON backup
 - About: version, GitHub link, license
 
 ## Data Model
-- `lessons` (id, title, filename, raw_text, word_count, status, error, created_at, source_kind, source_numbers JSON, source_total)
+- `lessons` (id, title, filename, raw_text, word_count, status, error, error_hint, created_at, source_kind, source_numbers JSON, source_total)
   - `source_numbers[k]` is the real slide / page number (Word: paragraph number) of the k-th block of `raw_text`, `source_kind` is `slide` | `page` | `paragraph` and `source_total` the real count. A slide or page with no text has no block, so a block's place in `raw_text` is not its slide number. NULL on lessons uploaded before migration 005.
-- `jobs` (id, lesson_id, stage, status, error, updated_at)
+- `jobs` (id, lesson_id, stage, status, error, error_hint, updated_at)
 - `sections` (id, lesson_id, position, title, content, simple_version, filipino_version, check_questions JSON, sources JSON)
   - `sources` is the sorted list of slide / page numbers the section was written from. The sections prompt labels each block (`[Slide 3]`) and asks the model for `sources`; in code each number must be a whole number within `source_total` and the number of a block that was in that call's chunk, anything else is dropped and logged, and if nothing is left it is NULL. Original text shows exactly those slides / pages; NULL (older lessons) falls back to a vocabulary match in the client, labelled approximate.
   - `simple_version` stores JSON `{ text, example }`, `filipino_version` stores JSON `{ title, content, check_questions }`; both are made on demand and cached here, the original `content` is never changed.
@@ -122,8 +134,8 @@ Drag-drop or pick file → progress states: Extracting → Summarizing → Flash
 ## Build Phases
 1. Repo scaffold, Express + SQLite + migrations, upload + parsing, lessons API — **done**
 2. AI adapter, job pipeline, sections / key points / key terms generation — **done** (incl. Phase 2.5: provider presets with Google as default, parallel chunk calls, model selection, grounded key terms)
-3. React app shell, tab bar, upload flow, Review tab — **done** (incl. `POST /api/sections/:id/simplify|translate` and review-progress save/load)
-4. Flashcard generation + SM-2 + Flashcard tab
+3. React app shell, tab bar, upload flow, Review tab — **done** (incl. `POST /api/sections/:id/simplify|translate` and review-progress save/load; design pass: ballpoint-ink tokens, new logo, plain error messages with a "Details" hint)
+4. Flashcard generation + SM-2 + Flashcards tab
 5. Quiz generation + attempts + shuffle animation + Mock Quiz tab
 6. Session logging + Stats tab + CSV export
 7. Settings, backup/import, polish, README, LICENSE (MIT)

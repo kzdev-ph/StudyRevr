@@ -14,7 +14,7 @@ function Status({ lesson }) {
       </span>
     );
   }
-  if (lesson.status === 'failed') return <span className="chip chip--failed">Needs retry</span>;
+  if (lesson.status === 'failed') return <span className="chip chip--failed">Didn’t finish</span>;
   return null;
 }
 

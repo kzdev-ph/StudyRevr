@@ -3,12 +3,16 @@ import { HttpError } from '../middleware/errors.js';
 import { parseJsonReply } from './json.js';
 import { chatModelIds } from './models.js';
 
-// Failures talking to the AI provider. `message` is written for the student/teacher to read; `code` is for code.
+// Failures talking to the AI provider. `message` is plain language for the student/teacher: what happened and what to
+// do, with no status codes (those go to the server log). `hint` is for whoever runs the server (which .env variable to
+// set); the UI shows it behind a collapsed "Details" toggle. `code` is for code.
+// TODO(Phase 7): once Settings has the key / model / URL fields, the hints should point there instead of .env.
 // It is an HttpError so a route can let it propagate and get a JSON error with the right status.
 export class AiError extends HttpError {
-  constructor(code, message, status = 502) {
-    super(status, message, { code });
+  constructor(code, message, status = 502, hint = undefined) {
+    super(status, message, hint ? { code, hint } : { code });
     this.code = code;
+    this.hint = hint;
   }
 }
 
@@ -63,22 +67,24 @@ export function createAiClient({
     if (cfg.needsKey && !cfg.apiKey) {
       throw new AiError(
         'not_configured',
-        `No API key for ${cfg.label ?? 'the AI provider'} yet. Add ${cfg.keyEnv ?? 'AI_API_KEY'} to .env, or enter the key in Settings.`,
+        `No API key is set for ${cfg.label ?? 'the AI provider'} yet. Add the key, then retry.`,
         400,
+        `Add ${cfg.keyEnv ?? 'AI_API_KEY'} to the .env file and restart the server.`,
       );
     }
     if (!baseUrl || (needModel && !cfg.model)) {
       throw new AiError(
         'not_configured',
-        "The AI provider isn't set up yet. Pick a provider and model in Settings, or set AI_PROVIDER and its API key in .env.",
+        "The AI provider isn't set up yet. Choose a provider and model, then retry.",
         400,
+        'Set AI_PROVIDER and its API key (and AI_MODEL for a custom provider) in the .env file and restart the server.',
       );
     }
     let host;
     try {
       host = new URL(baseUrl).host;
     } catch {
-      throw new AiError('not_configured', `The AI base URL "${baseUrl}" isn't a valid URL. It should look like https://host/v1.`, 400);
+      throw new AiError('not_configured', "The AI base URL isn't a valid web address. Fix it, then retry.", 400, `"${baseUrl}" should look like https://host/v1. Set AI_BASE_URL in the .env file and restart the server.`);
     }
     return {
       baseUrl,
@@ -130,20 +136,20 @@ export function createAiClient({
     const { detail, body } = await readFailureBody(res, cfg);
     const s = res.status;
     log.warn?.(`[ai] ${cfg.host} answered HTTP ${s} for model "${cfg.model || '(none)'}": ${body || '(empty body)'}`);
-    const keyHint = cfg.keyEnv ? ` (or ${cfg.keyEnv} in .env)` : '';
+    const keyEnv = cfg.keyEnv ?? 'AI_API_KEY';
     let failure;
     // Google answers an invalid key with 400 "API key not valid" instead of 401, so a 400 is read before it is blamed on the model.
     if (s === 401 || s === 403 || (s === 400 && /valid api key|api[ _-]?key (?:not valid|is invalid|invalid|expired)|API_KEY_INVALID|invalid api key|incorrect api key|missing api key/i.test(body))) {
-      failure = new AiError('auth', `The AI provider rejected the API key (HTTP ${s}). Check the API key in Settings${keyHint}.`);
+      failure = new AiError('auth', 'The AI provider rejected the API key. Check the key, then retry.', 502, `Set ${keyEnv} in the .env file to a valid key and restart the server.`);
     } else if (s === 404) {
-      failure = new AiError('not_found', `The AI provider couldn't find that model or endpoint (HTTP 404). Check the model in Settings, and the base URL if you use a custom one.`);
+      failure = new AiError('not_found', "The AI provider couldn't find that model or address. Check the model name, then retry.", 502, 'Set AI_MODEL in the .env file, and AI_BASE_URL if you use a custom provider, then restart the server.');
     } else if (s === 429) {
-      failure = new AiError('rate_limit', `The AI provider is rate limiting requests (HTTP 429). Try again shortly.`);
+      failure = new AiError('rate_limit', 'The AI provider is rate limiting requests. Try again shortly.');
     } else if (s >= 500) {
-      failure = new AiError('provider_error', `The AI provider had a problem (HTTP ${s}). Try again in a moment.`);
+      failure = new AiError('provider_error', 'The AI provider had a problem. Try again in a moment.');
     } else {
       const tooLong = /context|token|too long|maximum/i.test(detail) ? " If the model's context window is too small, pick one with a larger window." : '';
-      failure = new AiError('bad_request', `The AI provider rejected the request (HTTP ${s}). Check the model in Settings.${tooLong}`);
+      failure = new AiError('bad_request', `The AI provider rejected the request. Check the model, then retry.${tooLong}`, 502, 'Set AI_MODEL in the .env file to a chat model and restart the server.');
     }
     failure.detail = detail;
     return failure;
@@ -151,12 +157,12 @@ export function createAiClient({
 
   function describeNetworkError(err, cfg) {
     if (err?.name === 'TimeoutError' || err?.name === 'AbortError') {
-      return new AiError('timeout', `The AI provider is slow: it didn't answer within ${Math.round(cfg.timeoutMs / 1000)} seconds. Retry, or pick a faster model in Settings.`, 504);
+      return new AiError('timeout', `The AI provider is slow: it didn't answer within ${Math.round(cfg.timeoutMs / 1000)} seconds. Retry, or use a faster model.`, 504, 'Set AI_MODEL in the .env file to a faster model, or raise AI_TIMEOUT_SECONDS, and restart the server.');
     }
     const code = err?.cause?.code ?? err?.code;
-    if (code === 'ECONNREFUSED') return new AiError('network', `Couldn't connect to the AI provider at ${cfg.host}. Is it running, and is the base URL right?`);
-    if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') return new AiError('network', `Couldn't find the AI provider's address (${cfg.host}). Check the base URL and your internet connection.`);
-    return new AiError('network', `Couldn't reach the AI provider at ${cfg.host} (${redact(code ?? err?.message ?? 'network error', cfg.apiKey)}).`);
+    if (code === 'ECONNREFUSED') return new AiError('network', `Couldn't connect to the AI provider at ${cfg.host}. Is it running?`, 502, 'Check AI_BASE_URL in the .env file.');
+    if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') return new AiError('network', `Couldn't find the AI provider's address (${cfg.host}). Check your internet connection, then retry.`, 502, 'If you use a custom provider, check AI_BASE_URL in the .env file.');
+    return new AiError('network', `Couldn't reach the AI provider at ${cfg.host}. Check your connection, then retry.`, 502, `Network error: ${redact(code ?? err?.message ?? 'unknown', cfg.apiKey)}`);
   }
 
   // One HTTP exchange, retrying rate limits, 5xx and dropped connections with a short wait.
@@ -206,7 +212,7 @@ export function createAiClient({
     try {
       return await res.json();
     } catch {
-      throw new AiError('bad_response', `The AI provider didn't return JSON. Is ${cfg.baseUrl} an OpenAI-compatible endpoint (it should end in /v1)?`);
+      throw new AiError('bad_response', "The AI provider didn't return JSON. Check the provider's web address, then retry.", 502, `Is ${cfg.baseUrl} an OpenAI-compatible endpoint? It should end in /v1. Set AI_BASE_URL in the .env file.`);
     }
   }
 
@@ -235,7 +241,7 @@ export function createAiClient({
     res ??= await send(cfg, '/chat/completions', { method: 'POST', body });
     const data = await readJson(res, cfg);
     const choice = data?.choices?.[0];
-    if (!choice) throw new AiError('bad_response', "The AI provider's reply had no answer in it. Check that the model name is a chat model.");
+    if (!choice) throw new AiError('bad_response', "The AI provider's reply had no answer in it. Check that the model is a chat model, then retry.", 502, 'Set AI_MODEL in the .env file to a chat model and restart the server.');
     stats.calls += 1;
     stats.promptTokens += data.usage?.prompt_tokens ?? 0;
     stats.completionTokens += data.usage?.completion_tokens ?? 0;
@@ -281,7 +287,7 @@ export function createAiClient({
     }
     throw new AiError(
       'invalid_json',
-      `The AI model didn't return usable JSON for ${label} after 2 tries: ${problem} Try again, or choose a more capable model in Settings.`,
+      `The AI model didn't return usable JSON for ${label} after 2 tries: ${problem} Try again, or use a more capable model.`,
     );
   }
 

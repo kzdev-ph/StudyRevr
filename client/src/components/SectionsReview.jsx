@@ -63,7 +63,7 @@ export default function SectionsReview({ lesson, sections, progress, keyTermCoun
       const { version } = await (kind === 'simple' ? api.simplifySection(target.id) : api.translateSection(target.id));
       onVersion(target.id, kind, version);
     } catch (err) {
-      setFailure((f) => ({ ...f, [key]: err.message }));
+      setFailure((f) => ({ ...f, [key]: { message: err.message, hint: err.hint } }));
     } finally {
       setBusy((b) => ({ ...b, [key]: false }));
     }
@@ -92,9 +92,9 @@ export default function SectionsReview({ lesson, sections, progress, keyTermCoun
       </div>
 
       <AnimatePresence mode="wait" custom={dir} initial={false}>
-        <motion.div className="review__body" key={index} custom={dir} variants={slide} initial="enter" animate="center" exit="exit" transition={{ duration: 0.16 }}>
+        <motion.div className={`review__body${atEnd ? ' review__body--end' : ''}`} key={index} custom={dir} variants={slide} initial="enter" animate="center" exit="exit" transition={{ duration: 0.16 }}>
           {atEnd ? (
-            <EndCard lessonId={lesson.id} sectionCount={count} termCount={keyTermCount} onRestart={() => goTo(0)} />
+            <EndCard lessonId={lesson.id} sectionCount={count} termCount={keyTermCount} onBack={() => goTo(count - 1)} onRestart={() => goTo(0)} />
           ) : (
             <SectionPage
               lesson={lesson}
@@ -112,16 +112,17 @@ export default function SectionsReview({ lesson, sections, progress, keyTermCoun
         </motion.div>
       </AnimatePresence>
 
-      <div className="lesson-nav">
-        <button type="button" className="btn btn--quiet" onClick={() => goTo(index - 1)} disabled={index === 0}>
-          <ChevronLeft size={18} /> Previous
-        </button>
-        {!atEnd && (
+      {/* On the "What's next" card there is no Next, so the bar goes and the card offers "Back to the last section". */}
+      {!atEnd && (
+        <div className="lesson-nav">
+          <button type="button" className="btn btn--quiet" onClick={() => goTo(index - 1)} disabled={index === 0}>
+            <ChevronLeft size={18} /> Previous
+          </button>
           <button type="button" className="btn btn--primary" onClick={() => goTo(index + 1, true)}>
             {index === count - 1 ? 'Finish' : 'Next section'} <ChevronRight size={18} />
           </button>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

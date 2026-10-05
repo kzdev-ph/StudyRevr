@@ -252,7 +252,9 @@ describe('pipeline', () => {
     await run(ai, id);
     const { lesson, job } = getJobStatus(db, id);
     assert.equal(lesson.status, 'failed');
-    assert.match(lesson.error, /No API key for Google Gemini[^]*GOOGLE_API_KEY/);
+    assert.match(lesson.error, /No API key is set for Google Gemini/);
+    assert.match(lesson.error_hint, /GOOGLE_API_KEY[^]*\.env/);
+    assert.equal(job.error_hint, lesson.error_hint);
     assert.equal(job.stage, 'sections');
   });
 
@@ -362,7 +364,7 @@ describe('pipeline API', () => {
 
     await runner.idle();
     const done = await json(`/api/lessons/${id}/status`);
-    assert.deepEqual(done.body.lesson, { id, status: 'ready', error: null });
+    assert.deepEqual(done.body.lesson, { id, status: 'ready', error: null, error_hint: null });
     assert.equal(done.body.job.stage, 'done');
     assert.equal(done.body.job.status, 'done');
     assert.equal(typeof done.body.job.updated_at, 'string');

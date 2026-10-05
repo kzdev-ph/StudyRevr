@@ -61,13 +61,14 @@ export default function SectionPage({ lesson, section, variant, busy, failure, s
 
       {variant !== 'summary' && !busy && failure && (
         <Notice
+          hint={failure.hint}
           action={
             <button type="button" className="btn btn--quiet btn--small" onClick={onRetry}>
               Try again
             </button>
           }
         >
-          {failure}
+          {failure.message}
         </Notice>
       )}
 

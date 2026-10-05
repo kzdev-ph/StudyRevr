@@ -1,7 +1,8 @@
 export class ApiError extends Error {
-  constructor(message, status = 0) {
+  constructor(message, status = 0, hint = null) {
     super(message);
     this.status = status;
+    this.hint = hint; // developer hint from the server, shown behind "Details"
   }
 }
 
@@ -26,7 +27,7 @@ async function request(path, { method = 'GET', body, form, signal } = {}) {
     const message = data?.error?.message;
     // The dev proxy answers 500/502/503/504 with no JSON body when the Express server is down.
     if (!message && res.status >= 500) throw new ApiError(UNREACHABLE, res.status);
-    throw new ApiError(message ?? `The server answered with an error (${res.status}).`, res.status);
+    throw new ApiError(message ?? `The server answered with an error (${res.status}).`, res.status, data?.error?.hint ?? null);
   }
   return data;
 }

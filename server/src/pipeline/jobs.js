@@ -6,11 +6,11 @@ export const STAGES = ['sections', 'key_points', 'key_terms'];
 // Marks the lesson as processing and (re)starts its job at the first stage. Call inside the caller's transaction
 // when creating a lesson; also used to retry a failed lesson.
 export function queueJob(db, lessonId) {
-  db.prepare(`UPDATE lessons SET status = 'processing', error = NULL WHERE id = ?`).run(lessonId);
+  db.prepare(`UPDATE lessons SET status = 'processing', error = NULL, error_hint = NULL WHERE id = ?`).run(lessonId);
   const job = db.prepare('SELECT id FROM jobs WHERE lesson_id = ? ORDER BY id DESC LIMIT 1').get(lessonId);
   if (job) {
     db.prepare(
-      `UPDATE jobs SET stage = ?, status = 'queued', error = NULL, progress_done = 0, progress_total = 0,
+      `UPDATE jobs SET stage = ?, status = 'queued', error = NULL, error_hint = NULL, progress_done = 0, progress_total = 0,
          updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`,
     ).run(STAGES[0], job.id);
     return job.id;
@@ -19,10 +19,10 @@ export function queueJob(db, lessonId) {
 }
 
 export function getJobStatus(db, lessonId) {
-  const lesson = db.prepare('SELECT id, status, error FROM lessons WHERE id = ?').get(lessonId);
+  const lesson = db.prepare('SELECT id, status, error, error_hint FROM lessons WHERE id = ?').get(lessonId);
   if (!lesson) return null;
   const job = db
-    .prepare('SELECT stage, status, error, progress_done, progress_total, updated_at FROM jobs WHERE lesson_id = ? ORDER BY id DESC LIMIT 1')
+    .prepare('SELECT stage, status, error, error_hint, progress_done, progress_total, updated_at FROM jobs WHERE lesson_id = ? ORDER BY id DESC LIMIT 1')
     .get(lessonId);
   return {
     lesson,
@@ -30,6 +30,7 @@ export function getJobStatus(db, lessonId) {
       stage: job.stage,
       status: job.status,
       error: job.error,
+      error_hint: job.error_hint,
       progress: { done: job.progress_done, total: job.progress_total },
       updated_at: job.updated_at,
     },

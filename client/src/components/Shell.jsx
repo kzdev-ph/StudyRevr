@@ -4,7 +4,7 @@ import { paths } from '../lib/router.js';
 
 const TABS = [
   { id: 'review', label: 'Review', Icon: ReviewIcon, to: paths.library() },
-  { id: 'flashcards', label: 'Flashcard', Icon: CardsIcon, to: paths.tab('flashcards') },
+  { id: 'flashcards', label: 'Flashcards', Icon: CardsIcon, to: paths.tab('flashcards') },
   { id: 'quiz', label: 'Mock Quiz', Icon: QuizIcon, to: paths.tab('quiz') },
   { id: 'stats', label: 'Stats', Icon: StatsIcon, to: paths.tab('stats') },
 ];

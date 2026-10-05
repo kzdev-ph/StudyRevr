@@ -108,7 +108,7 @@ describe('createAiClient: jitter, extra body, response_format, provider config',
   it('is not_configured, naming the provider and its .env variable, when a keyed provider has no key', async () => {
     const f = scriptedFetch(completion('{}'));
     const cfg = { baseUrl: 'https://x.test/v1', apiKey: '', model: 'm', needsKey: true, label: 'Google Gemini', keyEnv: 'GOOGLE_API_KEY' };
-    await assert.rejects(makeClient(f, cfg).generateJSON({ system: 's', user: 'u', schema }), (err) => err.code === 'not_configured' && /Google Gemini[^]*GOOGLE_API_KEY/.test(err.message));
+    await assert.rejects(makeClient(f, cfg).generateJSON({ system: 's', user: 'u', schema }), (err) => err.code === 'not_configured' && /Google Gemini/.test(err.message) && !/GOOGLE_API_KEY/.test(err.message) && /GOOGLE_API_KEY[^]*\.env/.test(err.hint));
     assert.equal(f.calls.length, 0);
   });
 

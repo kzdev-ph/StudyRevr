@@ -28,7 +28,6 @@ export default function SettingsScreen() {
           ))}
         </div>
       </fieldset>
-      <p className="muted">AI provider, quiz length, flashcard pacing and backups will be set here soon.</p>
     </section>
   );
 }

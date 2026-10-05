@@ -2,7 +2,7 @@
 
 Open-source, mobile-first study app. Upload a lesson (.docx / .pptx / .pdf) and get a sectioned review, Anki-style flashcards, and mock quizzes. Study activity is logged and exportable for research.
 
-> **Status:** Phase 3 of 7 — React app with the lesson library, upload, processing screen and the Review tab (sections, quick checks, simpler / Filipino-Taglish rewrites, key points, key terms, original text, resume). Flashcard, Mock Quiz, Stats and Settings are placeholders until their phases.
+> **Status:** Phase 3 of 7 — React app with the lesson library, upload, processing screen and the Review tab (sections, quick checks, simpler / Filipino-Taglish rewrites, key points, key terms, original text, resume). Flashcards, Mock Quiz, Stats and Settings are placeholders until their phases.
 
 ## Running it
 

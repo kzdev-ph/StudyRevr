@@ -103,15 +103,16 @@ export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUN
       await stages[stage].run(chunks);
     }
     updateJob({ stage: 'done', status: 'done' });
-    db.prepare(`UPDATE lessons SET status = 'ready', error = NULL WHERE id = ?`).run(lessonId);
+    db.prepare(`UPDATE lessons SET status = 'ready', error = NULL, error_hint = NULL WHERE id = ?`).run(lessonId);
   } catch (err) {
     if (err instanceof LessonGone) return;
     // Our own errors (AiError, HttpError) carry a message meant for the user; anything else is a bug: log it, hide it.
     const message = err instanceof HttpError ? err.message : 'Something went wrong while processing this lesson. Retry, and report it if it keeps happening.';
+    const hint = (err instanceof HttpError && err.extra?.hint) || null;
     if (!(err instanceof HttpError)) log.error(`[pipeline] lesson ${lessonId} failed in ${stage}:`, err);
     try {
-      updateJob({ stage, status: 'failed', error: message });
-      db.prepare(`UPDATE lessons SET status = 'failed', error = ? WHERE id = ?`).run(message, lessonId);
+      updateJob({ stage, status: 'failed', error: message, error_hint: hint });
+      db.prepare(`UPDATE lessons SET status = 'failed', error = ?, error_hint = ? WHERE id = ?`).run(message, hint, lessonId);
     } catch (inner) {
       if (!(inner instanceof LessonGone)) throw inner;
     }

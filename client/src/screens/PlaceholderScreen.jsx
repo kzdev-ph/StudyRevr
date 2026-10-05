@@ -4,18 +4,18 @@ import { paths } from '../lib/router.js';
 const COPY = {
   flashcards: {
     Icon: CardsIcon,
-    title: 'Flashcards are on their way',
-    text: 'Soon each lesson will turn into cards you flip, rate and see again just before you forget them.',
+    title: 'Flashcards aren’t ready yet',
+    text: 'Each lesson will get cards you flip and rate, so the ones you miss come back sooner.',
   },
   quiz: {
     Icon: QuizIcon,
-    title: 'Mock quizzes are on their way',
-    text: 'Soon you will be able to take a multiple-choice quiz on any lesson and see how your score improves.',
+    title: 'Mock quizzes aren’t ready yet',
+    text: 'You’ll take a multiple-choice quiz on any lesson and see your score for each attempt.',
   },
   stats: {
     Icon: StatsIcon,
-    title: 'Stats are on their way',
-    text: 'Soon this is where your study time, streak and quiz scores will show up.',
+    title: 'Stats aren’t ready yet',
+    text: 'Your study time, streak and quiz scores will show up here.',
   },
 };
 
@@ -27,7 +27,7 @@ export default function PlaceholderScreen({ which }) {
       <h1 className="empty__title">{title}</h1>
       <p className="empty__text">{text}</p>
       <a className="btn btn--primary" href={paths.library()}>
-        Back to your lessons
+        Back to lessons
       </a>
     </section>
   );

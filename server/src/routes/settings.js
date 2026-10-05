@@ -43,7 +43,7 @@ export function settingsRouter({ ai, db, config }) {
       res.json({ ...answer, models, freeText: models.length === 0 });
     } catch (err) {
       if (!(err instanceof AiError)) throw err;
-      res.json({ ...answer, models: [], freeText: true, error: { code: err.code, message: err.message } });
+      res.json({ ...answer, models: [], freeText: true, error: { code: err.code, message: err.message, ...(err.hint ? { hint: err.hint } : {}) } });
     }
   });
 

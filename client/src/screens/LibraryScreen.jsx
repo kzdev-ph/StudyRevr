@@ -67,7 +67,7 @@ export default function LibraryScreen() {
 
   return (
     <section className="stack">
-      <h1 className="screen-title">{hasLessons ? 'Your lessons' : 'Lessons'}</h1>
+      <h1 className="screen-title">Lessons</h1>
 
       {uploadError && (
         <Notice onDismiss={() => setUploadError(null)}>
@@ -81,9 +81,9 @@ export default function LibraryScreen() {
         </Notice>
       )}
 
-      <UploadZone onFile={upload} onReject={setUploadError} busy={uploading} empty={lessons && !hasLessons} />
+      <UploadZone onFile={upload} onReject={setUploadError} busy={uploading} empty={lessons && !hasLessons} compact={hasLessons} />
 
-      {lessons === null && !loadError && <p className="muted" aria-live="polite">Loading your lessons…</p>}
+      {lessons === null && !loadError && <p className="muted" aria-live="polite">Loading lessons…</p>}
 
       {hasLessons && (
         <ul className="lessons" aria-label="Your lessons">

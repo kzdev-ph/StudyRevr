@@ -121,8 +121,8 @@ export const SourceIcon = (p) => (
 
 export const LogoMark = ({ size = 28 }) => (
   <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" focusable="false">
-    <rect width="32" height="32" rx="7" fill="var(--accent)" />
-    <rect x="6" y="19" width="20" height="6" rx="1.5" fill="var(--hi)" />
-    <path d="M9 8h14M9 13h14" stroke="var(--on-accent)" strokeWidth="2.4" strokeLinecap="round" />
+    <rect width="32" height="32" rx="6" fill="#ffe55c" />
+    <path d="M7.5 0v32" stroke="#dd4f66" strokeWidth="1.6" />
+    <path d="M25 10.6C23.8 8.6 21.4 7.4 18.6 7.4C15 7.4 13 9.2 13 11.6C13 14.2 15 15.2 18.4 16C21.8 16.8 24 17.8 24 20.4C24 23 21.6 24.8 18.2 24.8C15.3 24.8 13.1 23.6 12 21.4" fill="none" stroke="#1d4f9f" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );

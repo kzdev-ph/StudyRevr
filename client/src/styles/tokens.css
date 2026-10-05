@@ -1,34 +1,50 @@
 /* StudyRevr design tokens.
-   Ink on paper: a navy ink for text and actions, a highlighter yellow for "you are here", and the red margin rule of
-   a school notebook. Light and dark follow the device; Settings can force one through [data-theme]. */
+   A school notebook: ballpoint-blue ink for actions and links, highlighter yellow for "you are here", the pencil-red
+   margin rule, and pale ruled-blue lines. Neutrals stay close to grey so the ink blue is the only blue on the page.
+   Light and dark follow the device; Settings can force one through [data-theme].
+
+   Rules that keep it coherent (also in CLAUDE.md):
+   - Yellow means location or selection, and key-term names. On the light sheet it is only 1.26:1, so a selected state
+     also gets an ink edge (--mark-edge) and, in a control, a tick. List markers are ink dashes, never yellow.
+   - Control borders use --line-strong (3:1 on sheet and desk). --line is for dividers only.
+   - Radius follows role (--r-*), type follows the --t-* scale. Do not add one-off sizes. */
 
 :root {
-  --paper: #f4f5fa;
-  --sheet: #ffffff;
-  --ink: #161a3c;
-  --ink-2: #4f5578;
-  --line: #dbdfef;
-  --line-strong: #bfc5df;
+  --paper: #f1f3f6; /* the desk */
+  --sheet: #fffffc; /* the page you write on */
+  --ink: #171a20;
+  --ink-2: #4b5260;
+  --line: #d5deeb; /* ruled-paper blue: dividers */
+  --line-strong: #7d8aa0; /* control borders */
 
-  --accent: #3040d8;
-  --accent-hover: #2432b8;
+  --accent: #1d4f9f; /* ballpoint ink */
+  --accent-hover: #153f85;
   --on-accent: #ffffff;
-  --accent-wash: #e9ebff;
+  --accent-wash: #e4edf9;
 
-  --hi: #ffe55c;
-  --hi-soft: #fff4b3;
-  --on-hi: #161a3c;
-  --margin: #ec5b78;
+  --hi: #ffe55c; /* highlighter */
+  --hi-soft: #fff6bf;
+  --on-hi: #171a20;
+  --mark-edge: var(--ink); /* the ink edge under a yellow mark; light page only */
+  --margin: #dd4f66; /* pencil-red margin rule */
 
   --ok: #17794f;
   --ok-wash: #e1f3e9;
   --warn: #7d4a00;
   --warn-wash: #fff0d1;
   --danger: #b3263e;
-  --danger-wash: #fde6ea;
+  --danger-wash: #fbe9ec;
 
   --font-ui: 'Hanken Grotesk Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-read: 'Literata Variable', Georgia, 'Times New Roman', serif;
+
+  /* type scale: six sizes */
+  --t-meta: 0.8125rem; /* 13: meta, tags, tab labels */
+  --t-ui: 0.9375rem; /* 15: buttons, controls, secondary text */
+  --t-body: 1.0625rem; /* 17: reading text */
+  --t-lead: 1.25rem; /* 20: lesson title, wordmark, quick-check title */
+  --t-title: 1.5rem; /* 24: section and end-card titles */
+  --t-display: 1.875rem; /* 30: screen titles */
 
   --gutter: 16px;
   --header-h: 56px;
@@ -38,30 +54,35 @@
   --rail-w: 224px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 
-  --r-sm: 8px;
-  --r-md: 12px;
-  --r-lg: 18px;
+  /* radius by role, not one value everywhere */
+  --r-mark: 2px; /* highlighter strokes, progress fill, term names */
+  --r-tag: 4px; /* status tags */
+  --r-control: 6px; /* buttons, inputs, toggles */
+  --r-group: 8px; /* a joined group of controls (Settings) */
+  --r-surface: 10px; /* upload row, notices, action cards, floating bar */
+  --r-sheet: 3px 12px 12px 3px; /* a page: tight on the spine side (wide screens) */
 
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --paper: #0e1126;
-    --sheet: #171b38;
-    --ink: #eceeff;
-    --ink-2: #a3a9d3;
-    --line: #2a3058;
-    --line-strong: #3d4577;
+    --paper: #14161a;
+    --sheet: #1c1f25;
+    --ink: #e9ebef;
+    --ink-2: #a6adb9;
+    --line: #2c323c;
+    --line-strong: #6f7b8d;
 
-    --accent: #8f9cff;
-    --accent-hover: #aab4ff;
-    --on-accent: #0e1126;
-    --accent-wash: #232a5c;
+    --accent: #8fb4f2;
+    --accent-hover: #aec9f7;
+    --on-accent: #0f1a2e;
+    --accent-wash: #1f2f4d;
 
     --hi: #f2d94a;
-    --hi-soft: #4a4420;
-    --on-hi: #161a3c;
+    --hi-soft: #3f3a1a;
+    --on-hi: #171a20;
+    --mark-edge: transparent; /* yellow is 11.6:1 on the dark sheet, so it needs no edge */
     --margin: #d9657d;
 
     --ok: #6fd3a2;
@@ -76,21 +97,22 @@
 }
 
 :root[data-theme='dark'] {
-  --paper: #0e1126;
-  --sheet: #171b38;
-  --ink: #eceeff;
-  --ink-2: #a3a9d3;
-  --line: #2a3058;
-  --line-strong: #3d4577;
+  --paper: #14161a;
+  --sheet: #1c1f25;
+  --ink: #e9ebef;
+  --ink-2: #a6adb9;
+  --line: #2c323c;
+  --line-strong: #6f7b8d;
 
-  --accent: #8f9cff;
-  --accent-hover: #aab4ff;
-  --on-accent: #0e1126;
-  --accent-wash: #232a5c;
+  --accent: #8fb4f2;
+  --accent-hover: #aec9f7;
+  --on-accent: #0f1a2e;
+  --accent-wash: #1f2f4d;
 
   --hi: #f2d94a;
-  --hi-soft: #4a4420;
-  --on-hi: #161a3c;
+  --hi-soft: #3f3a1a;
+  --on-hi: #171a20;
+  --mark-edge: transparent;
   --margin: #d9657d;
 
   --ok: #6fd3a2;

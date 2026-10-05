@@ -22,14 +22,14 @@ export default function LessonScreen({ id, view }) {
 
   useEffect(() => () => clearWarning(id), [id]);
 
-  if (loading) return <p className="muted" aria-live="polite">Opening your lesson…</p>;
+  if (loading) return <p className="muted" aria-live="polite">Opening lesson…</p>;
   if (error) {
     return (
       <section className="stack">
         <a className="back" href={paths.library()}>
           <ChevronLeft size={18} /> All lessons
         </a>
-        <Notice>{error.status === 404 ? "That lesson doesn't exist any more. It may have been deleted." : error.message}</Notice>
+        <Notice>{error.status === 404 ? "That lesson isn’t here anymore. It may have been deleted." : error.message}</Notice>
       </section>
     );
   }
@@ -45,7 +45,7 @@ export default function LessonScreen({ id, view }) {
         <a className="back" href={paths.library()}>
           <ChevronLeft size={18} /> All lessons
         </a>
-        <Notice tone="warn">There is nothing to review in this lesson. The file may have too little text; try a text-based version.</Notice>
+        <Notice tone="warn">Nothing could be written for this lesson. The file may have too little text. Try a version with selectable text.</Notice>
       </section>
     );
   }
