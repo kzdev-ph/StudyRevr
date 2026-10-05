@@ -1,0 +1,80 @@
+import { Router } from 'express';
+import { z } from 'zod';
+import { HttpError } from '../middleware/errors.js';
+import { assertZip, createUpload, fileExtension } from '../middleware/upload.js';
+import { extractText } from '../services/extract.js';
+
+const SHORT_TEXT_WORDS = 150;
+const SHORT_TEXT_WARNING =
+  "Very little text was found in this file. Image-heavy slides can't be read, so the review may be thin. Try a text-based version.";
+
+const idParam = z.object({ id: z.coerce.number().int().positive() });
+const createBody = z.object({ title: z.string().trim().min(1).max(200).optional() });
+
+const SUMMARY_COLUMNS = 'id, title, filename, word_count, status, error, created_at';
+
+// multer decodes multipart filenames as latin1; recover UTF-8 names (e.g. "Aralin 1 Ñ.docx").
+const fixFilename = (name) => Buffer.from(name, 'latin1').toString('utf8');
+
+export function lessonsRouter(db, { maxUploadBytes }) {
+  const router = Router();
+  const upload = createUpload(maxUploadBytes);
+
+  const insertLesson = db.prepare(
+    `INSERT INTO lessons (title, filename, raw_text, word_count, status) VALUES (?, ?, ?, ?, 'ready')`,
+  );
+  const insertJob = db.prepare(`INSERT INTO jobs (lesson_id, stage, status) VALUES (?, 'extract', 'done')`);
+  const createLesson = db.transaction((title, filename, text, wordCount) => {
+    const { lastInsertRowid } = insertLesson.run(title, filename, text, wordCount);
+    insertJob.run(lastInsertRowid);
+    return Number(lastInsertRowid);
+  });
+
+  const parseId = (req) => {
+    const parsed = idParam.safeParse(req.params);
+    if (!parsed.success) throw new HttpError(400, 'Lesson id must be a positive number.');
+    return parsed.data.id;
+  };
+
+  router.post('/', (req, res, next) => {
+    upload(req, res, async (err) => {
+      try {
+        if (err) throw err;
+        if (!req.file) throw new HttpError(400, 'Choose a .docx or .pptx file to upload.');
+        const body = createBody.safeParse(req.body ?? {});
+        if (!body.success) throw new HttpError(400, 'Title must be 1-200 characters.');
+
+        const filename = fixFilename(req.file.originalname);
+        const ext = fileExtension(filename);
+        assertZip(req.file.buffer);
+        const { text, wordCount } = await extractText(req.file.buffer, ext);
+
+        const title = body.data.title || filename.slice(0, -ext.length).trim() || 'Untitled lesson';
+        const id = createLesson(title, filename, text, wordCount);
+        const lesson = db.prepare(`SELECT ${SUMMARY_COLUMNS} FROM lessons WHERE id = ?`).get(id);
+        const warning = wordCount < SHORT_TEXT_WORDS ? SHORT_TEXT_WARNING : null;
+        res.status(201).json({ lesson, warning });
+      } catch (e) {
+        next(e);
+      }
+    });
+  });
+
+  router.get('/', (_req, res) => {
+    res.json({ lessons: db.prepare(`SELECT ${SUMMARY_COLUMNS} FROM lessons ORDER BY created_at DESC, id DESC`).all() });
+  });
+
+  router.get('/:id', (req, res) => {
+    const lesson = db.prepare('SELECT * FROM lessons WHERE id = ?').get(parseId(req));
+    if (!lesson) throw new HttpError(404, 'Lesson not found.');
+    res.json({ lesson });
+  });
+
+  router.delete('/:id', (req, res) => {
+    const { changes } = db.prepare('DELETE FROM lessons WHERE id = ?').run(parseId(req));
+    if (!changes) throw new HttpError(404, 'Lesson not found.');
+    res.status(204).end();
+  });
+
+  return router;
+}

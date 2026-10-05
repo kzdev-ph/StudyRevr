@@ -1,0 +1,9 @@
+{
+  "name": "studyrevr-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node -e \"console.log('[client] React + Vite app arrives in Phase 3')\""
+  }
+}
