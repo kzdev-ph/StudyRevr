@@ -53,6 +53,17 @@ describe('resolveAiConfig', () => {
     assert.equal(c.keyTermsMax, 12);
   });
 
+  it('temperature: preset default 0.2, overridden by .env AI_TEMPERATURE, then by the Settings value; bad values are ignored', () => {
+    for (const id of PROVIDER_IDS) assert.equal(PRESETS[id].temperature, 0.2, id);
+    assert.equal(resolveAiConfig(db, env()).temperature, 0.2);
+    assert.equal(resolveAiConfig(db, env({ AI_TEMPERATURE: '0.5' })).temperature, 0.5);
+    assert.equal(resolveAiConfig(db, env({ AI_TEMPERATURE: '0' })).temperature, 0, '0 is a real value');
+    assert.equal(resolveAiConfig(db, env({ AI_TEMPERATURE: 'hot' })).temperature, 0.2);
+    assert.equal(resolveAiConfig(db, env({ AI_TEMPERATURE: '9' })).temperature, 0.2, 'out of range');
+    db.prepare("INSERT INTO settings (key, value) VALUES ('ai_temperature', '0.9')").run();
+    assert.equal(resolveAiConfig(db, env({ AI_TEMPERATURE: '0.5' })).temperature, 0.9);
+  });
+
   it('uses the .env key of the active provider only', () => {
     const e = env({ GOOGLE_API_KEY: 'g-key', NVIDIA_API_KEY: 'n-key', OPENROUTER_API_KEY: 'o-key' });
     assert.equal(resolveAiConfig(db, e).apiKey, 'g-key');

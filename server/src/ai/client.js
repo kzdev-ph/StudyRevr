@@ -44,10 +44,12 @@ export function createAiClient({
   random = Math.random,
   timeoutMs = DEFAULT_TIMEOUT_MS,
   retryDelaysMs = DEFAULT_RETRY_DELAYS_MS,
+  onRetry = () => {}, // ({ reason, waitMs, attempt }) before each wait, e.g. for a progress log
 } = {}) {
   // jsonRetries: replies re-asked because they were not valid JSON; httpRetries: requests repeated after a 429 / 5xx /
-  // dropped connection; truncated: replies cut off by max_tokens.
-  const stats = { calls: 0, promptTokens: 0, completionTokens: 0, jsonRetries: 0, httpRetries: 0, truncated: 0 };
+  // dropped connection; truncated: replies cut off by max_tokens; schemaSent / schemaRejected: requests that carried
+  // response_format json_schema, and those the provider refused (then repeated without it).
+  const stats = { calls: 0, promptTokens: 0, completionTokens: 0, jsonRetries: 0, httpRetries: 0, truncated: 0, schemaSent: 0, schemaRejected: 0 };
   const noJsonSchema = new Set(); // hosts that rejected response_format; not sent there again
 
   // Randomizes a wait by up to +25% so parallel calls that were rate-limited together don't retry in lockstep.
@@ -84,6 +86,7 @@ export function createAiClient({
       model: cfg.model || '',
       extraBody: cfg.extraBody && typeof cfg.extraBody === 'object' ? cfg.extraBody : undefined,
       jsonSchema: Boolean(cfg.jsonSchema),
+      temperature: typeof cfg.temperature === 'number' ? cfg.temperature : undefined,
     };
   }
 
@@ -146,16 +149,20 @@ export function createAiClient({
         // A timeout already cost the full wait, and a refused/unknown host won't fix itself in seconds.
         const hopeless = failure.code === 'timeout' || /ECONNREFUSED|ENOTFOUND/.test(String(err?.cause?.code));
         if (!canRetry || hopeless) throw failure;
+        const waitMs = jitter(retryDelaysMs[attempt]);
         stats.httpRetries += 1;
-        await sleep(jitter(retryDelaysMs[attempt]));
+        onRetry({ reason: failure.code, waitMs, attempt: attempt + 1 });
+        await sleep(waitMs);
         continue;
       }
       if (res.ok) return res;
       if (canRetry && RETRYABLE_STATUS.has(res.status)) {
         const retryAfter = Number(res.headers.get('retry-after'));
         res.body?.cancel().catch(() => {}); // free the connection; no need to wait for it
+        const waitMs = jitter(Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter * 1000, MAX_RETRY_AFTER_MS) : retryDelaysMs[attempt]);
         stats.httpRetries += 1;
-        await sleep(jitter(Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter * 1000, MAX_RETRY_AFTER_MS) : retryDelaysMs[attempt]));
+        onRetry({ reason: `HTTP ${res.status}`, waitMs, attempt: attempt + 1 });
+        await sleep(waitMs);
         continue;
       }
       throw await describeFailure(res, cfg);
@@ -174,17 +181,20 @@ export function createAiClient({
   // `responseSchema` ({ name, schema } as JSON Schema) is sent as response_format only to providers that support it;
   // if one turns out not to, the request is repeated without it and the host is remembered.
   // AI_EXTRA_BODY options are merged in, but can't replace the model or the messages.
-  async function chat({ messages, maxTokens = 4000, temperature = 0.2, responseSchema, config }) {
+  async function chat({ messages, maxTokens = 4000, temperature, responseSchema, config }) {
     const cfg = readConfig({ needModel: true }, config);
-    const body = { temperature, max_tokens: maxTokens, stream: false, ...cfg.extraBody, model: cfg.model, messages };
+    // sampling temperature: this call > the provider's setting (preset default 0.2); AI_EXTRA_BODY can still override it
+    const body = { temperature: temperature ?? cfg.temperature ?? 0.2, max_tokens: maxTokens, stream: false, ...cfg.extraBody, model: cfg.model, messages };
     const useSchema = Boolean(responseSchema) && cfg.jsonSchema && !noJsonSchema.has(cfg.host);
     let res;
     if (useSchema) {
       const withFormat = { ...body, response_format: { type: 'json_schema', json_schema: { name: responseSchema.name, schema: responseSchema.schema } } };
       try {
+        stats.schemaSent += 1;
         res = await send(cfg, '/chat/completions', { method: 'POST', body: withFormat });
       } catch (err) {
         if (err.code !== 'bad_request') throw err;
+        stats.schemaRejected += 1;
         res = await send(cfg, '/chat/completions', { method: 'POST', body });
         noJsonSchema.add(cfg.host); // the same request works without response_format, so that was the problem
       }

@@ -41,6 +41,28 @@ describe('createAiClient: jitter, extra body, response_format, provider config',
     assert.equal(body.messages.length, 2);
   });
 
+  it('sends the provider temperature (default 0.2); a call can override it, and AI_EXTRA_BODY still wins', async () => {
+    const f = scriptedFetch(completion('{"answer":"ok","n":1}'));
+    await makeClient(f).generateJSON({ system: 's', user: 'u', schema });
+    assert.equal(f.calls[0].body.temperature, 0.2, 'no setting: 0.2');
+    await makeClient(f, { ...CFG, temperature: 0.7 }).generateJSON({ system: 's', user: 'u', schema });
+    assert.equal(f.calls[1].body.temperature, 0.7, 'the provider setting');
+    await makeClient(f, { ...CFG, temperature: 0.7 }).generateJSON({ system: 's', user: 'u', schema, temperature: 0 });
+    assert.equal(f.calls[2].body.temperature, 0, 'the call, even when 0');
+    await makeClient(f, { ...CFG, temperature: 0.7, extraBody: { temperature: 1 } }).generateJSON({ system: 's', user: 'u', schema });
+    assert.equal(f.calls[3].body.temperature, 1);
+  });
+
+  it('reports each retry wait to onRetry (reason, jittered wait, retry number)', async () => {
+    const seen = [];
+    const f = scriptedFetch(failure(429, 'slow'), failure(503, 'overloaded'), completion('{"answer":"ok","n":1}'));
+    await makeClient(f, CFG, { random: () => 1, onRetry: (r) => seen.push(r) }).generateJSON({ system: 's', user: 'u', schema });
+    assert.deepEqual(seen, [
+      { reason: 'HTTP 429', waitMs: 2500, attempt: 1 },
+      { reason: 'HTTP 503', waitMs: 7500, attempt: 2 },
+    ]);
+  });
+
   const responseSchema = { name: 'reply', schema: { type: 'object', properties: { answer: { type: 'string' } }, required: ['answer'] } };
 
   it('sends response_format json_schema only to providers that support it, and still validates with zod', async () => {
@@ -64,6 +86,15 @@ describe('createAiClient: jitter, extra body, response_format, provider config',
     assert.deepEqual(f.calls.map((c) => 'response_format' in c.body), [true, false]);
     await client.generateJSON({ system: 's', user: 'u', schema, responseSchema });
     assert.equal('response_format' in f.calls[2].body, false, 'not sent again to that host');
+    assert.deepEqual({ sent: client.stats.schemaSent, rejected: client.stats.schemaRejected }, { sent: 1, rejected: 1 });
+  });
+
+  it('counts the requests that carried response_format when the provider accepts it', async () => {
+    const f = scriptedFetch(completion('{"answer":"ok","n":1}'));
+    const client = makeClient(f, { ...CFG, jsonSchema: true });
+    await client.generateJSON({ system: 's', user: 'u', schema, responseSchema });
+    await client.generateJSON({ system: 's', user: 'u', schema, responseSchema });
+    assert.deepEqual({ sent: client.stats.schemaSent, rejected: client.stats.schemaRejected }, { sent: 2, rejected: 0 });
   });
 
   it('does not blame response_format for a request that fails either way', async () => {

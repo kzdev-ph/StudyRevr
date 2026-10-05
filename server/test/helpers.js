@@ -34,3 +34,7 @@ export const makeClient = (fetchImpl, cfg = CFG, extra = {}) => {
 };
 
 export const schema = z.object({ answer: z.string().min(1), n: z.number() });
+
+// A verbatim quote for a key-terms mock: the first few words of the lesson text inside a prompt's <lesson_text> block.
+export const quoteFromPrompt = (user, words = 6) =>
+  (/<lesson_text>\n([^]*?)\n<\/lesson_text>/.exec(user)?.[1] ?? '').split(/\s+/).slice(0, words).join(' ');

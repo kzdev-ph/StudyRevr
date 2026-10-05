@@ -68,7 +68,7 @@ const { text, wordCount, pageCount } = await extractText(buffer, ext);
 const chunks = chunkLesson(text, { maxTokens: chunkTokens });
 
 console.log(`# ${path.basename(file)}`);
-console.log(`Provider: ${provider.label} (${provider.baseUrl})  Model: ${provider.model}  Concurrency: ${concurrency}`);
+console.log(`Provider: ${provider.label} (${provider.baseUrl})  Model: ${provider.model}  Concurrency: ${concurrency}  Temperature: ${provider.temperature}`);
 console.log(`Extracted ${wordCount} words${pageCount ? ` from ${pageCount} pages` : ''}; ${chunks.length} chunk(s) of ~${chunks.map((c) => c.tokens).join(', ')} tokens (budget ${chunkTokens}).`);
 
 const lessonId = Number(
@@ -76,9 +76,15 @@ const lessonId = Number(
 );
 queueJob(db, lessonId);
 
-const client = createAiClient({ getConfig: () => resolveAiConfig(db, config.ai), timeoutMs: config.ai.timeoutMs });
 const started = Date.now();
 const secondsSince = (t) => ((Date.now() - t) / 1000).toFixed(1);
+const client = createAiClient({
+  getConfig: () => resolveAiConfig(db, config.ai),
+  timeoutMs: config.ai.timeoutMs,
+  onRetry: ({ reason, waitMs, attempt }) => {
+    console.error(`  retry +${secondsSince(started)}s: ${reason}, waiting ${(waitMs / 1000).toFixed(1)}s before attempt ${attempt + 1}`);
+  },
+});
 const callTimes = [];
 const timed = {
   async generateJSON(request) {
@@ -119,12 +125,13 @@ const points = db.prepare('SELECT text FROM key_points WHERE lesson_id = ? ORDER
 console.log(`\n## Key points (${points.length})`);
 for (const p of points) console.log(`- ${p.text}`);
 
-const terms = db.prepare('SELECT term, definition FROM key_terms WHERE lesson_id = ? ORDER BY id').all(lessonId);
+const terms = db.prepare('SELECT term, definition, evidence FROM key_terms WHERE lesson_id = ? ORDER BY id').all(lessonId);
 console.log(`\n## Key terms (${terms.length})`);
-for (const t of terms) console.log(`- ${t.term}: ${t.definition}`);
+for (const t of terms) console.log(`- ${t.term}: ${t.definition}\n    evidence: "${t.evidence}"`);
 
 // Per-call times add up to more than the wall-clock time when calls overlap; the wall-clock time is what you wait.
-const { calls, promptTokens, completionTokens, jsonRetries, httpRetries, truncated } = client.stats;
+const { calls, promptTokens, completionTokens, jsonRetries, httpRetries, truncated, schemaSent, schemaRejected } = client.stats;
 const avg = callTimes.length ? (callTimes.reduce((a, b) => a + b, 0) / callTimes.length / 1000).toFixed(1) : '0.0';
 console.log(`\nDone in ${seconds}s: ${calls} AI call(s) (avg ${avg}s each), ${promptTokens} prompt + ${completionTokens} completion tokens.`);
 console.log(`Retries: ${jsonRetries} invalid-JSON, ${httpRetries} rate-limit/server, ${truncated} cut-off replies.`);
+console.log(`Structured output (response_format json_schema): sent on ${schemaSent} request(s), rejected by the provider on ${schemaRejected}.`);

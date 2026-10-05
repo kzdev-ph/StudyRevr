@@ -30,6 +30,7 @@ The SQLite database is created at `server/data/studyrevr.db` on first start, and
 | `AI_EXTRA_BODY` | – | JSON object merged into every chat request for provider options, e.g. `{"reasoning_effort":"none"}` to switch thinking off. Ignored, with a warning, if it isn't a JSON object |
 | `AI_CONCURRENCY` | preset | Parallel AI calls within one stage of a lesson |
 | `AI_CHUNK_TOKENS` | preset | Lesson text per AI call |
+| `AI_TEMPERATURE` | preset (`0.2`) | Sampling temperature (0 to 2) for the lesson calls |
 | `AI_TIMEOUT_SECONDS` | `300` | Per AI request; raise it for slow local or reasoning models |
 | `KEY_TERMS_MAX` | `12` | Key terms kept per lesson |
 
@@ -43,7 +44,7 @@ Provider presets (base URL, default model, chunk tokens, concurrency):
 | `ollama` | `http://localhost:11434/v1` | `llama3.1:8b` | 2400 | 1 |
 | `llamacpp` | `http://localhost:8080/v1` | `local` | 2400 | 1 |
 
-Each value resolves as: a one-off request value → what is saved in the `settings` table → `.env` → the preset. The `.env` overrides (`AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`, `AI_EXTRA_BODY`) belong to the `.env` provider and are not used for any other provider you switch to. The model is never fixed: any id works, and the provider's list comes from `GET /api/settings/models`. Settings keys (the Settings screen arrives in Phase 7): `ai_provider`, and per provider `ai_model:<provider>`, `ai_base_url:<provider>`, `ai_api_key:<provider>`; plus `ai_concurrency`, `ai_chunk_tokens`, `key_terms_max`, `summary_length` (`short`/`detailed`). Switching provider brings back that provider's last model and key. **A backup export (Phase 7) must leave `ai_api_key:*` out.**
+Each value resolves as: a one-off request value → what is saved in the `settings` table → `.env` → the preset. The `.env` overrides (`AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`, `AI_EXTRA_BODY`) belong to the `.env` provider and are not used for any other provider you switch to. The model is never fixed: any id works, and the provider's list comes from `GET /api/settings/models`. Settings keys (the Settings screen arrives in Phase 7): `ai_provider`, and per provider `ai_model:<provider>`, `ai_base_url:<provider>`, `ai_api_key:<provider>`; plus `ai_concurrency`, `ai_chunk_tokens`, `ai_temperature`, `key_terms_max`, `summary_length` (`short`/`detailed`). Switching provider brings back that provider's last model and key. **A backup export (Phase 7) must leave `ai_api_key:*` out.**
 
 ### Try the API
 
@@ -60,7 +61,7 @@ Uploading returns `{ lesson, warning }`. `warning` is set when little text was e
 
 ### AI generation
 
-After an upload the lesson is `processing` and a background job runs, one lesson at a time: **sections** (with 1–2 quick-check questions each) → **key points** → **key terms**. The stages run in that order (key points are written from the sections), but inside a stage the chunk calls run in parallel, up to the provider's concurrency (`AI_CONCURRENCY`). Each stage makes one AI call per chunk of lesson text (paragraphs are never split; slides/pages and headings are the preferred cut points; a slide's `Notes:` stays with its slide). Every AI reply is validated with zod and retried once if it isn't valid JSON; rate limits (429) and overloads (5xx) are retried up to 5 attempts with a growing, jittered wait. Key points state a takeaway rather than list examples; key terms are limited to domain concepts a student must be able to define (at most `KEY_TERMS_MAX`, de-duplicated across chunks).
+After an upload the lesson is `processing` and a background job runs, one lesson at a time: **sections** (with 1–2 quick-check questions each) → **key points** → **key terms**. The stages run in that order (key points are written from the sections), but inside a stage the chunk calls run in parallel, up to the provider's concurrency (`AI_CONCURRENCY`). Each stage makes one AI call per chunk of lesson text (paragraphs are never split; slides/pages and headings are the preferred cut points; a slide's `Notes:` stays with its slide). Every AI reply is validated with zod and retried once if it isn't valid JSON; rate limits (429) and overloads (5xx) are retried up to 5 attempts with a growing, jittered wait. Key points state a takeaway rather than list examples; key terms are limited to domain concepts a student must be able to define (at most `KEY_TERMS_MAX`, de-duplicated across chunks). Key terms are grounded: each comes with an `evidence` quote (at most 25 words) copied from the lesson, and a term whose quote can't be found in the lesson text (ignoring case, spacing, punctuation and line-end hyphens) is dropped and logged, so the AI can't define a term from its own knowledge. The quote is saved in `key_terms.evidence` for the Review screen.
 
 ```bash
 curl http://localhost:3001/api/lessons/1/status       # { lesson: { id, status, error }, job: { stage, status, progress: { done, total }, error } }

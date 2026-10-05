@@ -3,6 +3,7 @@ import { HttpError } from '../middleware/errors.js';
 import { chunkBlocks } from '../ai/chunk.js';
 import { mapLimit } from '../ai/pool.js';
 import { keyPointsPrompt, keyTermsPrompt, sectionsPrompt } from '../ai/prompts.js';
+import { checkEvidence, comparable } from './evidence.js';
 
 // One AI feature per function, one call per chunk of lesson text ("never one giant call"). Each takes the `ai`
 // client ({ generateJSON }), runs its chunk calls in parallel (at most `concurrency` at a time) and reports progress
@@ -31,7 +32,11 @@ const sectionsSchema = wrapArray(
   }),
 );
 const keyPointsSchema = wrapArray('key_points', z.object({ key_points: z.array(text).min(1) }));
-const keyTermsSchema = wrapArray('terms', z.object({ terms: z.array(z.object({ term: text, definition: text })) }));
+// A missing or malformed evidence quote becomes '' so that term is dropped (and logged) instead of failing the call.
+const keyTermsSchema = wrapArray(
+  'terms',
+  z.object({ terms: z.array(z.object({ term: text, definition: text, evidence: z.string().trim().catch('') })) }),
+);
 
 // The same shapes as plain JSON Schema, for providers that enforce response_format (zod still validates the reply).
 const str = { type: 'string' };
@@ -65,7 +70,12 @@ const responseSchemas = {
     name: 'key_terms',
     schema: {
       type: 'object',
-      properties: { terms: { type: 'array', items: { type: 'object', properties: { term: str, definition: str }, required: ['term', 'definition'] } } },
+      properties: {
+        terms: {
+          type: 'array',
+          items: { type: 'object', properties: { term: str, definition: str, evidence: str }, required: ['term', 'definition', 'evidence'] },
+        },
+      },
       required: ['terms'],
     },
   },
@@ -149,9 +159,10 @@ export async function generateKeyPoints({ ai, sections, chunkTokens, concurrency
   return points.slice(0, MAX_KEY_POINTS);
 }
 
-// -> [{ term, definition }], at most `maxTerms` per lesson, de-duplicated across chunks. Each chunk is asked for its
-// best few terms; the lists are interleaved best-first so a long lesson's later parts aren't crowded out by its first.
-export async function generateKeyTerms({ ai, chunks, maxTerms = 12, concurrency = 1, onProgress = () => {} }) {
+// -> [{ term, definition, evidence }], at most `maxTerms` per lesson, de-duplicated across chunks. Each chunk is asked
+// for its best few terms; the lists are interleaved best-first so a long lesson's later parts aren't crowded out by
+// its first. A term whose evidence quote isn't found in its chunk's text is dropped and reported to onDrop({ term, reason }).
+export async function generateKeyTerms({ ai, chunks, maxTerms = 12, concurrency = 1, onProgress = () => {}, onDrop = () => {} }) {
   const perChunk = Math.min(maxTerms, Math.ceil(maxTerms / chunks.length) + 2);
   const lists = await runCalls(chunks, concurrency, onProgress, async (chunk) => {
     // roughly one concept per 100 words of lesson text, between 3 and this call's share of the cap
@@ -165,7 +176,14 @@ export async function generateKeyTerms({ ai, chunks, maxTerms = 12, concurrency 
       maxTokens: 2000,
       label: partLabel('the key terms', chunk.index, chunks.length),
     });
-    return out.terms.slice(0, perChunk);
+    const sourceKey = comparable(chunk.text);
+    const grounded = [];
+    for (const t of out.terms) {
+      const check = checkEvidence({ term: t.term, evidence: t.evidence, sourceKey });
+      if (check.ok) grounded.push({ ...t, evidence: check.evidence });
+      else onDrop({ term: t.term, reason: check.reason });
+    }
+    return grounded.slice(0, perChunk);
   });
 
   const terms = [];

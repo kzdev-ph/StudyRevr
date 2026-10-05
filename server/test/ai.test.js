@@ -187,7 +187,7 @@ describe('createAiClient.generateJSON', () => {
     const f = scriptedFetch(completion('{"answer":"ok","n":1}'));
     const client = makeClient(f);
     await client.generateJSON({ system: 's', user: 'u', schema });
-    assert.deepEqual(client.stats, { calls: 1, promptTokens: 10, completionTokens: 5, jsonRetries: 0, httpRetries: 0, truncated: 0 });
+    assert.deepEqual(client.stats, { calls: 1, promptTokens: 10, completionTokens: 5, jsonRetries: 0, httpRetries: 0, truncated: 0, schemaSent: 0, schemaRejected: 0 });
   });
 });
 

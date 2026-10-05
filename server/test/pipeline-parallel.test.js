@@ -5,6 +5,7 @@ import { keyPointsPrompt, keyTermsPrompt, sectionsPrompt } from '../src/ai/promp
 import { openDb, runMigrations } from '../src/db/index.js';
 import { generateKeyTerms, targetSectionCount } from '../src/pipeline/generate.js';
 import { getJobStatus, queueJob } from '../src/pipeline/jobs.js';
+import { quoteFromPrompt } from './helpers.js';
 import { createPipelineRunner } from '../src/pipeline/runner.js';
 
 const quiet = { error() {}, warn() {}, log() {} };
@@ -17,7 +18,7 @@ function timedAi({ delay = () => 3, fail } = {}) {
   const log = { active: 0, peak: 0, started: [], finishedAtStart: [], finished: [] };
   return {
     log,
-    async generateJSON({ schema, label }) {
+    async generateJSON({ schema, label, user }) {
       log.started.push(label);
       log.finishedAtStart.push(log.finished.length);
       log.active++;
@@ -36,7 +37,8 @@ function timedAi({ delay = () => 3, fail } = {}) {
       } else if (label.startsWith('the key points') || label.startsWith('the merged')) {
         value = { key_points: [`Takeaway from ${label}.`] };
       } else {
-        value = { terms: [{ term: `Term ${n}`, definition: `Defined by ${label}.` }, { term: 'Shared', definition: 'Same everywhere.' }] };
+        const evidence = quoteFromPrompt(user);
+        value = { terms: [{ term: `Term ${n}`, definition: `Defined by ${label}.`, evidence }, { term: 'Shared', definition: 'Same everywhere.', evidence }] };
       }
       return schema.parse(value);
     },
@@ -166,8 +168,10 @@ describe('parallel pipeline', () => {
   });
 });
 
+const QUOTE = 'The lesson explains every term in plain words.';
+
 describe('generateKeyTerms', () => {
-  const chunks = (n) => Array.from({ length: n }, (_, i) => ({ index: i, text: `chunk ${i}`, tokens: 100 }));
+  const chunks = (n) => Array.from({ length: n }, (_, i) => ({ index: i, text: `Part ${i}. ${QUOTE}`, tokens: 100 }));
   const termsAi = (lists) => ({
     prompts: [],
     async generateJSON({ schema, user, system }) {
@@ -175,7 +179,7 @@ describe('generateKeyTerms', () => {
       return schema.parse({ terms: lists[i] });
     },
   });
-  const t = (term) => ({ term, definition: `${term} is defined.` });
+  const t = (term) => ({ term, definition: `${term} is defined.`, evidence: QUOTE });
 
   it('de-duplicates across chunks ignoring case and punctuation, first definition wins', async () => {
     const ai = termsAi([[t('Interactivity'), t('Reach')], [t('interactivity!'), t('Personalization')]]);
@@ -207,6 +211,39 @@ describe('generateKeyTerms', () => {
     assert.deepEqual(ai.prompts.map((p) => p.system.match(/about (\d+) terms/)[1]), ['3', '6', '12']);
   });
 
+  it('drops terms whose evidence is missing, not in the lesson, or only a title, and reports each one', async () => {
+    const lesson = [{ index: 0, text: 'MEDIA LITERACY\n\nA hypothesis is a tentative answer to a research question.', tokens: 100 }];
+    const ai = termsAi([[
+      { term: 'Hypothesis', definition: 'A tentative answer.', evidence: '"A hypothesis is a tentative answer to a research question."' },
+      { term: 'Media Literacy', definition: 'Made up.', evidence: 'MEDIA LITERACY' },
+      { term: 'Variable', definition: 'Made up.', evidence: 'A variable is anything that can change in a study.' },
+      { term: 'Theory', definition: 'No quote.', evidence: '' },
+    ]]);
+    const dropped = [];
+    const out = await generateKeyTerms({ ai, chunks: lesson, maxTerms: 12, onDrop: (d) => dropped.push(d) });
+    assert.deepEqual(out.map((x) => x.term), ['Hypothesis']);
+    assert.equal(out[0].evidence, 'A hypothesis is a tentative answer to a research question.', 'surrounding quotes are removed');
+    assert.deepEqual(dropped, [
+      { term: 'Media Literacy', reason: 'evidence is only the term or a title' },
+      { term: 'Variable', reason: 'evidence not found in the lesson text' },
+      { term: 'Theory', reason: 'no evidence quote' },
+    ]);
+  });
+
+  it('a dropped term does not use up the cap', async () => {
+    const lesson = [{ index: 0, text: QUOTE, tokens: 100 }];
+    const bad = { term: 'bad', definition: 'd', evidence: 'invented words that are nowhere' };
+    const ai = termsAi([[bad, t('a'), t('b'), t('c')]]);
+    const out = await generateKeyTerms({ ai, chunks: lesson, maxTerms: 3 });
+    assert.deepEqual(out.map((x) => x.term), ['a', 'b', 'c']);
+  });
+
+  it('a reply without an evidence field drops the term instead of failing the call', async () => {
+    const lesson = [{ index: 0, text: QUOTE, tokens: 100 }];
+    const ai = termsAi([[{ term: 'x', definition: 'd' }, t('y')]]);
+    assert.deepEqual((await generateKeyTerms({ ai, chunks: lesson })).map((x) => x.term), ['y']);
+  });
+
   it('trims a model that returns more than it was asked for', async () => {
     const ai = termsAi([Array.from({ length: 30 }, (_, i) => t(`T${i}`))]);
     assert.equal((await generateKeyTerms({ ai, chunks: chunks(1), maxTerms: 12 })).length, 12);
@@ -225,6 +262,8 @@ describe('prompts', () => {
     assert.match(system, /say what the term IS[^]*Never just list examples/);
     assert.match(system, /only names or titles a term[^]*never define a term from your own knowledge/);
     assert.match(system, /\(at most 12\)/);
+    assert.match(system, /"evidence": one sentence or phrase copied EXACTLY[^]*never use a title or heading/);
+    assert.match(system, /"evidence":"\.\.\."/);
     assert.match(system, /A concept is an idea, method, principle[^]*is NOT a concept/);
     assert.match(system, /Use ONLY the lesson text/);
     assert.match(system, /exactly "Notes:"/, 'still explains the Notes: line');

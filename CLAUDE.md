@@ -25,8 +25,14 @@ Open-source, mobile-first study app. Students upload a lesson (.docx / .pptx / .
 - Long-running generation is async: create a job, frontend polls status
 
 ## AI Layer (provider-agnostic)
-One adapter speaking the OpenAI-compatible `/v1/chat/completions` API. This covers NVIDIA NIM, Ollama (`/v1`), llama.cpp server, OpenRouter, and similar.
-- Config: `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL` (env defaults, overridable in Settings, stored in DB)
+One adapter speaking the OpenAI-compatible `/v1/chat/completions` API. This covers Google Gemini, NVIDIA NIM, Ollama (`/v1`), llama.cpp server, OpenRouter, and similar.
+- **Default provider: Google AI Studio** (Gemini, OpenAI-compatible endpoint, free tier ~15 requests/min). Key in `.env` as `GOOGLE_API_KEY`.
+- **Presets** (`server/src/ai/providers.js`): `google` (default), `nvidia-nim`, `openrouter`, `ollama`, `llamacpp`, plus `custom`. A preset is a base URL, default model, chunk tokens, concurrency, temperature (0.2), the `.env` key name and whether `response_format` json_schema is supported. Google: ~30000-token chunks, concurrency 2, json_schema on. The other presets keep small-model chunking (2400 tokens). Default model: `gemini-3.5-flash-lite` (id confirmed from Google's `/models`; a `models/` prefix is always stripped).
+- **Model resolution order, per provider:** one-off request value (e.g. test-ai body) > Settings (`settings` table) > `.env` (`AI_MODEL`) > preset default. The model is never fixed: `GET /api/settings/models` lists the provider's chat models (embedding, image, video, TTS, live/audio, ASR, rerank etc. are filtered out) and a free-text model id is always accepted if `/models` fails or is empty. The active provider and each provider's last model are saved separately (`ai_provider`, `ai_model:<provider>`), so switching providers restores that provider's model.
+- **Keys are per provider:** `GOOGLE_API_KEY`, `NVIDIA_API_KEY`, `OPENROUTER_API_KEY` in `.env`, or saved in Settings (`ai_api_key:<provider>`). Only the active provider's key is ever sent. The API returns only a "key set: yes/no" flag; keys are never logged or returned, and a backup export must exclude `ai_api_key:*`. The SQLite file holds saved keys, so it is git-ignored.
+- Optional `.env` overrides `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`, `AI_EXTRA_BODY` (JSON merged into the request body, zod-validated, ignored if invalid) apply only to the `.env` provider (`AI_PROVIDER`). Tuning: `AI_CONCURRENCY`, `AI_CHUNK_TOKENS`, `AI_TEMPERATURE`, `KEY_TERMS_MAX`.
+- Calls within one pipeline stage run in parallel up to the concurrency limit; stages stay in order (sections, key points, key terms). 429/5xx/network errors retry with growing, jittered waits (Retry-After honored).
+- **Grounded key terms:** each key term comes with an `evidence` quote (at most 25 words) copied from the lesson. In code the quote must exist in the lesson text (case, spacing, punctuation and line-end hyphens ignored) and must say more than the term or a title; otherwise the term is dropped and logged. Evidence is stored in `key_terms.evidence` for the Review UI. Key terms are domain concepts only (no list-item examples or evaluative phrases), de-duplicated across chunks, at most `KEY_TERMS_MAX` (12) per lesson.
 - Interface: `generateJSON({ system, user, schema })` → validated object
 - Separate calls per feature (sections/summary, key terms, flashcards, quiz). Never one giant call.
 - Chunk long lessons by paragraph (one line of `raw_text` = one paragraph), packing paragraphs up to the token budget so small local models (~8k context) work. Slide/page blocks and headings are soft boundaries: prefer to cut between blocks, never split a paragraph, and keep a slide's `Notes:` with its slide where it fits.
@@ -72,7 +78,7 @@ Drag-drop or pick file → progress states: Extracting → Summarizing → Flash
 - "Export CSV" of study sessions, quiz attempts, and flashcard reviews (for research analysis)
 
 ### Settings (gear icon)
-- AI provider: presets (NVIDIA NIM, Ollama, llama.cpp, OpenRouter, Custom) that prefill base URL; API key; model; "Test connection"
+- AI provider: presets (Google Gemini (default), NVIDIA NIM, OpenRouter, Ollama, llama.cpp, Custom) that prefill base URL; per-provider API key (shown only as set / not set); model picker fed by `GET /api/settings/models` with a free-text fallback; "Test connection" tests the provider + model in the form before saving
 - Quiz question count; flashcards per lesson; summary length (short / detailed); include speaker notes (`include_speaker_notes`, default on; applies to pptx uploads made after changing it)
 - Flashcard: new cards/day, max reviews/day, learning steps
 - Data: delete lesson, reset flashcard progress, export/import JSON backup
@@ -83,7 +89,7 @@ Drag-drop or pick file → progress states: Extracting → Summarizing → Flash
 - `jobs` (id, lesson_id, stage, status, error, updated_at)
 - `sections` (id, lesson_id, position, title, content, simple_version, filipino_version, check_questions JSON)
 - `key_points` (id, lesson_id, position, text)
-- `key_terms` (id, lesson_id, term, definition)
+- `key_terms` (id, lesson_id, term, definition, evidence)
 - `review_progress` (lesson_id, last_section, completed_sections JSON, updated_at)
 - `flashcards` (id, lesson_id, front, back, state, ease, interval, due_at, reps, lapses, step)
 - `flashcard_reviews` (id, flashcard_id, rating, reviewed_at, prev_interval, new_interval)
@@ -103,11 +109,13 @@ Drag-drop or pick file → progress states: Extracting → Summarizing → Flash
 - `POST /api/sessions`
 - `GET /api/stats` / `GET /api/stats/export.csv`
 - `GET /api/settings` / `PUT /api/settings` / `POST /api/settings/test-ai`
+- AI settings (backend done in Phase 2.5): `GET /api/settings/ai` / `PUT /api/settings/ai` (active provider, per-provider model/URL/key; keys never returned), `GET /api/settings/models?provider=`, `POST /api/settings/test-ai` (tests the provider + model in the body without saving)
+- `POST /api/lessons/:id/retry` (re-run a failed lesson; finished stages are kept)
 - `GET /api/backup` / `POST /api/backup`
 
 ## Build Phases
-1. Repo scaffold, Express + SQLite + migrations, upload + parsing, lessons API
-2. AI adapter, job pipeline, sections / key points / key terms generation
+1. Repo scaffold, Express + SQLite + migrations, upload + parsing, lessons API — **done**
+2. AI adapter, job pipeline, sections / key points / key terms generation — **done** (incl. Phase 2.5: provider presets with Google as default, parallel chunk calls, model selection, grounded key terms)
 3. React app shell, tab bar, upload flow, Review tab
 4. Flashcard generation + SM-2 + Flashcard tab
 5. Quiz generation + attempts + shuffle animation + Mock Quiz tab

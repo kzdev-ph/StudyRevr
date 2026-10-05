@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { bareModelId, DEFAULT_PROVIDER, inferProvider, isProviderId, PRESETS, PROVIDER_IDS } from '../ai/providers.js';
+import { bareModelId, parseTemperature, DEFAULT_PROVIDER, inferProvider, isProviderId, PRESETS, PROVIDER_IDS } from '../ai/providers.js';
 
 // Reads a boolean from the settings table; a missing or unrecognised value falls back to `fallback`.
 export function getBoolSetting(db, key, fallback) {
@@ -21,6 +21,9 @@ export function getIntSetting(db, key) {
   const n = Math.floor(Number(getSetting(db, key)));
   return Number.isFinite(n) && n > 0 ? n : undefined;
 }
+
+// A sampling temperature (0 to 2), or undefined when the row is missing or not one.
+const getTemperatureSetting = (db, key) => parseTemperature(getSetting(db, key));
 
 function setSetting(db, key, value) {
   if (value === '') db.prepare('DELETE FROM settings WHERE key = ?').run(key);
@@ -56,6 +59,7 @@ export function resolveAiConfig(db, envAi = {}, overrides = {}) {
     model: bareModelId(overrides.model || saved('model') || env.model || preset.model),
     chunkTokens: getIntSetting(db, 'ai_chunk_tokens') ?? envAi.chunkTokens ?? preset.chunkTokens,
     concurrency: getIntSetting(db, 'ai_concurrency') ?? envAi.concurrency ?? preset.concurrency,
+    temperature: getTemperatureSetting(db, 'ai_temperature') ?? envAi.temperature ?? preset.temperature,
     extraBody: env.extraBody,
     jsonSchema: preset.jsonSchema,
     needsKey: preset.needsKey,

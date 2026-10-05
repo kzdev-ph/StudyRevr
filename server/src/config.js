@@ -2,6 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 import { z } from 'zod';
+import { parseTemperature } from './ai/providers.js';
 
 export const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -58,6 +59,7 @@ export function loadConfig(env = process.env) {
       chunkTokens: positiveInt(env.AI_CHUNK_TOKENS), // lesson tokens per AI call
       concurrency: positiveInt(env.AI_CONCURRENCY), // parallel AI calls within one pipeline stage
       keyTermsMax: positiveInt(env.KEY_TERMS_MAX), // key terms kept per lesson (default 12)
+      temperature: parseTemperature(env.AI_TEMPERATURE), // sampling temperature (default 0.2, set by the preset)
     },
   };
 }

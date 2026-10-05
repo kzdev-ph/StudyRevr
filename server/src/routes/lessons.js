@@ -84,7 +84,7 @@ export function lessonsRouter(db, { maxUploadBytes }, runner) {
       lesson,
       sections: sections.map((s) => ({ ...s, check_questions: JSON.parse(s.check_questions) })),
       key_points: byLesson('SELECT id, position, text FROM key_points WHERE lesson_id = ? ORDER BY position'),
-      key_terms: byLesson('SELECT id, term, definition FROM key_terms WHERE lesson_id = ? ORDER BY id'),
+      key_terms: byLesson('SELECT id, term, definition, evidence FROM key_terms WHERE lesson_id = ? ORDER BY id'),
     });
   });
 

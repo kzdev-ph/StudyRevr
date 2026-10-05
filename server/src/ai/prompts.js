@@ -81,9 +81,10 @@ Do NOT include:
 For each term:
 - "term": 1 to 4 words, written as the lesson writes it.
 - "definition": 1 or 2 plain sentences that say what the term IS (its meaning, what it does or how it works), using only what the lesson says. Never just list examples, and do not repeat the term as its own definition.
+- "evidence": one sentence or phrase copied EXACTLY, word for word, from the lesson text (at most 25 words) that defines or explains the term. Copy it character for character: do not paraphrase, do not shorten with "...", do not join pieces from different places, and never use a title or heading as evidence. If you cannot find such a quote in the lesson, leave the term out.
 Give about ${targetTerms} terms (at most ${maxTerms}), most important first. Do not stop at the few most basic concepts, but never pad the list with examples or list items just to reach that number: fewer is better than weak ones. Reply {"terms":[]} if the text defines no real concepts.
 
 Reply with this JSON shape:
-{"terms":[{"term":"...","definition":"..."}]}`;
+{"terms":[{"term":"...","definition":"...","evidence":"..."}]}`;
   return { system, user: `${part(index, total)}${lessonText(text)}` };
 }

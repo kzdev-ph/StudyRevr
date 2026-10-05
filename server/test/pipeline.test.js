@@ -7,6 +7,7 @@ import { openDb, runMigrations } from '../src/db/index.js';
 import { failInterruptedJobs, getJobStatus, queueJob } from '../src/pipeline/jobs.js';
 import { createPipelineRunner } from '../src/pipeline/runner.js';
 import { resolveAiConfig } from '../src/services/settings.js';
+import { quoteFromPrompt } from './helpers.js';
 
 const quiet = { error() {}, warn() {}, log() {} };
 const para = (label, tokens = 50) => `${label} ${'word '.repeat(Math.max(0, (tokens * 3) / 5 - 1)).trim()}`.slice(0, tokens * 3);
@@ -36,7 +37,8 @@ function fakeAi({ fail } = {}) {
       } else if (label.startsWith('the key points') || label.startsWith('the merged')) {
         value = { key_points: [`Point ${n}a.`, `Point ${n}b.`] };
       } else {
-        value = { terms: [{ term: 'Media', definition: `Defined in call ${n}.` }, { term: `Term ${n}`, definition: 'Another definition.' }] };
+        const evidence = quoteFromPrompt(user);
+        value = { terms: [{ term: 'Media', definition: `Defined in call ${n}.`, evidence }, { term: `Term ${n}`, definition: 'Another definition.', evidence }] };
       }
       return schema.parse(value);
     },
@@ -80,6 +82,33 @@ describe('pipeline', () => {
     assert.equal(section.simple_version, null);
     assert.equal(rows('key_points', id).length, 2);
     assert.deepEqual(rows('key_terms', id).map((t) => t.term), ['Media', 'Term 3']);
+    assert.equal(rows('key_terms', id)[0].evidence, 'Photosynthesis - Plants make glucose Notes:', 'the verified quote is stored with the term');
+  });
+
+  it('drops key terms whose evidence is not in the lesson, logs each one, and still finishes', async () => {
+    const id = addLesson(slideText);
+    const ai = {
+      async generateJSON({ schema, label }) {
+        if (label.startsWith('the key terms')) {
+          return schema.parse({
+            terms: [
+              { term: 'Photosynthesis', definition: 'How plants make glucose.', evidence: 'Plants make glucose' },
+              { term: 'Chlorophyll', definition: 'A pigment.', evidence: 'Chlorophyll is the green pigment in leaves.' },
+            ],
+          });
+        }
+        if (label.startsWith('the key points')) return schema.parse({ key_points: ['p'] });
+        return schema.parse({ sections: [{ title: 't', content: 'c'.repeat(30), check_questions: [{ question: 'q', answer: 'a' }] }] });
+      },
+    };
+    const infos = [];
+    const runner = createPipelineRunner({ db, ai, log: { ...quiet, info: (m) => infos.push(m) } });
+    runner.enqueue(id);
+    await runner.idle();
+    assert.equal(getJobStatus(db, id).lesson.status, 'ready');
+    assert.deepEqual(rows('key_terms', id).map((t) => t.term), ['Photosynthesis']);
+    assert.equal(infos.length, 1);
+    assert.match(infos[0], /dropped key term "Chlorophyll" \(evidence not found in the lesson text\)/);
   });
 
   it('prompts use only-the-lesson-text and the Notes: rule, and send the lesson text', async () => {

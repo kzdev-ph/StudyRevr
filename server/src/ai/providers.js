@@ -4,8 +4,17 @@
 //   chunkTokens  lesson tokens per AI call (small local models have ~8k of context, hosted Gemini has far more)
 //   concurrency  parallel calls within one pipeline stage (Google's free tier allows ~15 requests per minute)
 //   keyEnv       the .env variable that holds this provider's API key (null: no key needed)
+//   temperature  sampling temperature for the pipeline's calls (low: faithful to the lesson, steady JSON)
 //   jsonSchema   the endpoint accepts response_format: { type: 'json_schema' } (zod still validates every reply)
 export const DEFAULT_PROVIDER = 'google';
+export const DEFAULT_TEMPERATURE = 0.2;
+
+// A sampling temperature from 0 to 2 (the range OpenAI-compatible APIs accept); anything else is undefined.
+export const parseTemperature = (value) => {
+  if (value === undefined || value === null || String(value).trim() === '') return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 && n <= 2 ? n : undefined;
+};
 
 export const PRESETS = {
   google: {
@@ -15,6 +24,7 @@ export const PRESETS = {
     model: 'gemini-3.5-flash-lite',
     chunkTokens: 30_000,
     concurrency: 2,
+    temperature: DEFAULT_TEMPERATURE,
     keyEnv: 'GOOGLE_API_KEY',
     needsKey: true,
     jsonSchema: true,
@@ -26,6 +36,7 @@ export const PRESETS = {
     model: 'deepseek-ai/deepseek-v4.1-flash',
     chunkTokens: 2_400,
     concurrency: 2,
+    temperature: DEFAULT_TEMPERATURE,
     keyEnv: 'NVIDIA_API_KEY',
     needsKey: true,
     jsonSchema: false,
@@ -37,6 +48,7 @@ export const PRESETS = {
     model: 'openrouter/auto',
     chunkTokens: 2_400,
     concurrency: 2,
+    temperature: DEFAULT_TEMPERATURE,
     keyEnv: 'OPENROUTER_API_KEY',
     needsKey: true,
     jsonSchema: false,
@@ -48,6 +60,7 @@ export const PRESETS = {
     model: 'llama3.1:8b',
     chunkTokens: 2_400,
     concurrency: 1,
+    temperature: DEFAULT_TEMPERATURE,
     keyEnv: null,
     needsKey: false,
     jsonSchema: false,
@@ -59,6 +72,7 @@ export const PRESETS = {
     model: 'local',
     chunkTokens: 2_400,
     concurrency: 1,
+    temperature: DEFAULT_TEMPERATURE,
     keyEnv: null,
     needsKey: false,
     jsonSchema: false,
@@ -71,6 +85,7 @@ export const PRESETS = {
     model: '',
     chunkTokens: 2_400,
     concurrency: 1,
+    temperature: DEFAULT_TEMPERATURE,
     keyEnv: 'AI_API_KEY',
     needsKey: false,
     jsonSchema: false,

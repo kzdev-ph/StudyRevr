@@ -56,9 +56,10 @@ export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUN
       // A lesson may legitimately define no terms; that stage re-runs on retry, which is cheap.
       saved: () => count(db, 'key_terms', lessonId) > 0,
       async run(chunks) {
-        const terms = await generateKeyTerms({ ai, chunks, maxTerms: keyTermsMax, concurrency, onProgress: progress });
-        const insert = db.prepare('INSERT INTO key_terms (lesson_id, term, definition) VALUES (?, ?, ?)');
-        db.transaction(() => terms.forEach((t) => insert.run(lessonId, t.term, t.definition)))();
+        const onDrop = ({ term, reason }) => log.info?.(`[pipeline] lesson ${lessonId}: dropped key term "${term}" (${reason})`);
+        const terms = await generateKeyTerms({ ai, chunks, maxTerms: keyTermsMax, concurrency, onProgress: progress, onDrop });
+        const insert = db.prepare('INSERT INTO key_terms (lesson_id, term, definition, evidence) VALUES (?, ?, ?, ?)');
+        db.transaction(() => terms.forEach((t) => insert.run(lessonId, t.term, t.definition, t.evidence)))();
       },
     },
   };
