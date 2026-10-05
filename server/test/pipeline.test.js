@@ -120,7 +120,7 @@ describe('pipeline', () => {
     assert.ok(seen.some((s) => s.includes('key_terms') || s.includes('the key terms')));
   });
 
-  it('splits a long lesson into several calls and carries earlier titles and terms forward', async () => {
+  it('splits a long lesson into several calls, one section list per chunk, merged in lesson order', async () => {
     const slides = Array.from({ length: 6 }, (_, i) => `Slide ${i}\n${para(`body${i}`, 100)}`);
     const id = addLesson(slides.join('\n\n'));
     const ai = fakeAi();
@@ -129,13 +129,11 @@ describe('pipeline', () => {
     const sectionCalls = ai.calls.filter((c) => c.label.startsWith('the review sections'));
     assert.ok(sectionCalls.length >= 3);
     assert.match(sectionCalls[0].user, /^This is part 1 of \d+ of the lesson\./);
-    assert.ok(!sectionCalls[0].user.includes('already written'));
-    assert.match(sectionCalls[1].user, /Sections already written for earlier parts[^]*- Section 1\n/);
     assert.equal(rows('sections', id).length, sectionCalls.length);
     assert.deepEqual(rows('sections', id).map((s) => s.position), sectionCalls.map((_, i) => i + 1));
 
     const termCalls = ai.calls.filter((c) => c.label.startsWith('the key terms'));
-    assert.match(termCalls[1].user, /Terms already found[^]*- Media/);
+    assert.ok(termCalls.length >= 3);
     const terms = rows('key_terms', id).map((t) => t.term);
     assert.equal(terms.filter((t) => t === 'Media').length, 1, 'duplicate terms across chunks are merged');
     assert.equal(terms.length, termCalls.length + 1);
@@ -223,7 +221,7 @@ describe('pipeline', () => {
     await run(ai, id);
     const { lesson, job } = getJobStatus(db, id);
     assert.equal(lesson.status, 'failed');
-    assert.match(lesson.error, /AI provider isn't set up/);
+    assert.match(lesson.error, /No API key for Google Gemini[^]*GOOGLE_API_KEY/);
     assert.equal(job.stage, 'sections');
   });
 

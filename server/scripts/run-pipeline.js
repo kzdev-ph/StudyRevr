@@ -1,14 +1,15 @@
 // Runs the lesson pipeline (extract -> sections -> key points -> key terms) on one file against your real AI provider
 // and prints what it generated, so you can judge quality. Uses a throw-away in-memory database.
 //
-//   npm run pipeline -- <file> [--summary=short|detailed] [--chunk-tokens=N]
+//   npm run pipeline -- <file> [--summary=short|detailed] [--chunk-tokens=N] [--concurrency=N]
 //
 // <file> is a path, or a (partial, case-insensitive) name of a file in test-lessons/. With no file it lists them.
-// Provider settings come from .env (AI_BASE_URL, AI_API_KEY, AI_MODEL); the key is never printed.
+// The provider comes from .env: AI_PROVIDER (default google) plus its key (GOOGLE_API_KEY, NVIDIA_API_KEY,
+// OPENROUTER_API_KEY), and optionally AI_MODEL, AI_CONCURRENCY, AI_CHUNK_TOKENS, AI_EXTRA_BODY. The key is never printed.
 import fs from 'node:fs';
 import path from 'node:path';
 import { createAiClient } from '../src/ai/client.js';
-import { chunkLesson, DEFAULT_CHUNK_TOKENS } from '../src/ai/chunk.js';
+import { chunkLesson } from '../src/ai/chunk.js';
 import { loadConfig, ROOT_DIR } from '../src/config.js';
 import { openDb, runMigrations } from '../src/db/index.js';
 import { assertSignature, fileExtension } from '../src/middleware/upload.js';
@@ -19,6 +20,7 @@ import { resolveAiConfig } from '../src/services/settings.js';
 
 const LESSONS_DIR = path.join(ROOT_DIR, 'test-lessons');
 const SUPPORTED = new Set(['.docx', '.pptx', '.pdf']);
+const USAGE = 'Usage: npm run pipeline -- <file> [--summary=short|detailed] [--chunk-tokens=N] [--concurrency=N]';
 
 const args = process.argv.slice(2);
 const flag = (name) => args.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
@@ -43,7 +45,7 @@ function fail(message) {
 
 if (!target) {
   const files = available();
-  fail(`Usage: npm run pipeline -- <file> [--summary=short|detailed] [--chunk-tokens=N]\n\nFiles in test-lessons/:\n${files.map((f) => `  ${f}`).join('\n') || '  (none)'}`);
+  fail(`${USAGE}\n\nFiles in test-lessons/:\n${files.map((f) => `  ${f}`).join('\n') || '  (none)'}`);
 }
 
 const file = findFile(target);
@@ -51,11 +53,13 @@ const ext = fileExtension(file);
 if (!SUPPORTED.has(ext)) fail(`Unsupported file type "${ext}". Use .docx, .pptx or .pdf.`);
 
 const config = loadConfig();
-const chunkTokens = Number(flag('chunk-tokens')) || config.ai.chunkTokens || DEFAULT_CHUNK_TOKENS;
-if (!config.ai.baseUrl || !config.ai.model) fail('Set AI_BASE_URL, AI_API_KEY and AI_MODEL in .env first.');
-
 const db = openDb(':memory:');
 runMigrations(db);
+const provider = resolveAiConfig(db, config.ai);
+if (provider.needsKey && !provider.apiKey) fail(`No API key for ${provider.label}. Add ${provider.keyEnv} to .env first.`);
+if (!provider.baseUrl || !provider.model) fail('Set AI_PROVIDER (and AI_BASE_URL / AI_MODEL for a custom provider) in .env first.');
+const chunkTokens = Number(flag('chunk-tokens')) || provider.chunkTokens;
+const concurrency = Number(flag('concurrency')) || provider.concurrency;
 if (flag('summary')) db.prepare("UPDATE settings SET value = ? WHERE key = 'summary_length'").run(flag('summary') === 'short' ? 'short' : 'detailed');
 
 const buffer = fs.readFileSync(file);
@@ -64,7 +68,7 @@ const { text, wordCount, pageCount } = await extractText(buffer, ext);
 const chunks = chunkLesson(text, { maxTokens: chunkTokens });
 
 console.log(`# ${path.basename(file)}`);
-console.log(`Provider: ${config.ai.baseUrl}  Model: ${config.ai.model}`);
+console.log(`Provider: ${provider.label} (${provider.baseUrl})  Model: ${provider.model}  Concurrency: ${concurrency}`);
 console.log(`Extracted ${wordCount} words${pageCount ? ` from ${pageCount} pages` : ''}; ${chunks.length} chunk(s) of ~${chunks.map((c) => c.tokens).join(', ')} tokens (budget ${chunkTokens}).`);
 
 const lessonId = Number(
@@ -73,24 +77,30 @@ const lessonId = Number(
 queueJob(db, lessonId);
 
 const client = createAiClient({ getConfig: () => resolveAiConfig(db, config.ai), timeoutMs: config.ai.timeoutMs });
+const started = Date.now();
+const secondsSince = (t) => ((Date.now() - t) / 1000).toFixed(1);
+const callTimes = [];
 const timed = {
   async generateJSON(request) {
-    const started = Date.now();
+    const callStart = Date.now();
+    const jsonRetriesBefore = client.stats.jsonRetries;
+    const startedAt = `started +${((callStart - started) / 1000).toFixed(1)}s`;
+    const tag = () => `${startedAt}${client.stats.jsonRetries > jsonRetriesBefore ? ', JSON retry' : ''}`;
     try {
       const out = await client.generateJSON(request);
-      console.error(`  ok   ${request.label} (${((Date.now() - started) / 1000).toFixed(1)}s)`);
+      callTimes.push(Date.now() - callStart);
+      console.error(`  ok   ${request.label} (${secondsSince(callStart)}s; ${tag()})`);
       return out;
     } catch (err) {
-      console.error(`  FAIL ${request.label} (${((Date.now() - started) / 1000).toFixed(1)}s): ${err.message}`);
+      console.error(`  FAIL ${request.label} (${secondsSince(callStart)}s; ${tag()}): ${err.message}`);
       throw err;
     }
   },
 };
 
-const started = Date.now();
 console.error('Running pipeline...');
-await runPipeline({ db, ai: timed, lessonId, chunkTokens });
-const seconds = ((Date.now() - started) / 1000).toFixed(1);
+await runPipeline({ db, ai: timed, lessonId, chunkTokens, concurrency, keyTermsMax: provider.keyTermsMax });
+const seconds = secondsSince(started);
 
 const { lesson, job } = getJobStatus(db, lessonId);
 if (lesson.status !== 'ready') {
@@ -113,5 +123,8 @@ const terms = db.prepare('SELECT term, definition FROM key_terms WHERE lesson_id
 console.log(`\n## Key terms (${terms.length})`);
 for (const t of terms) console.log(`- ${t.term}: ${t.definition}`);
 
-const { calls, promptTokens, completionTokens } = client.stats;
-console.log(`\nDone in ${seconds}s: ${calls} AI call(s), ${promptTokens} prompt + ${completionTokens} completion tokens.`);
+// Per-call times add up to more than the wall-clock time when calls overlap; the wall-clock time is what you wait.
+const { calls, promptTokens, completionTokens, jsonRetries, httpRetries, truncated } = client.stats;
+const avg = callTimes.length ? (callTimes.reduce((a, b) => a + b, 0) / callTimes.length / 1000).toFixed(1) : '0.0';
+console.log(`\nDone in ${seconds}s: ${calls} AI call(s) (avg ${avg}s each), ${promptTokens} prompt + ${completionTokens} completion tokens.`);
+console.log(`Retries: ${jsonRetries} invalid-JSON, ${httpRetries} rate-limit/server, ${truncated} cut-off replies.`);

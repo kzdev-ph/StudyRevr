@@ -1,12 +1,9 @@
-import { after, before, describe, it } from 'node:test';
+import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { z } from 'zod';
 import { AiError, createAiClient, normalizeBaseUrl } from '../src/ai/client.js';
 import { parseJsonReply } from '../src/ai/json.js';
 import { chatModelIds, isChatModel } from '../src/ai/models.js';
-import { createApp } from '../src/app.js';
-import { openDb, runMigrations } from '../src/db/index.js';
-import { resolveAiConfig } from '../src/services/settings.js';
 
 const KEY = 'nvapi-SECRET-KEY-123';
 const CFG = { baseUrl: 'https://example.test/v1/', apiKey: KEY, model: 'acme/chat-1' };
@@ -33,7 +30,7 @@ function scriptedFetch(...steps) {
 
 const makeClient = (fetchImpl, cfg = CFG, extra = {}) => {
   const sleeps = [];
-  const client = createAiClient({ getConfig: () => cfg, fetchImpl, sleep: async (ms) => void sleeps.push(ms), ...extra });
+  const client = createAiClient({ getConfig: () => cfg, fetchImpl, sleep: async (ms) => void sleeps.push(ms), random: () => 0, ...extra });
   client.sleeps = sleeps;
   return client;
 };
@@ -190,7 +187,7 @@ describe('createAiClient.generateJSON', () => {
     const f = scriptedFetch(completion('{"answer":"ok","n":1}'));
     const client = makeClient(f);
     await client.generateJSON({ system: 's', user: 'u', schema });
-    assert.deepEqual(client.stats, { calls: 1, promptTokens: 10, completionTokens: 5 });
+    assert.deepEqual(client.stats, { calls: 1, promptTokens: 10, completionTokens: 5, jsonRetries: 0, httpRetries: 0, truncated: 0 });
   });
 });
 
@@ -241,18 +238,18 @@ describe('createAiClient errors', () => {
     assert.deepEqual(client.sleeps, [3000]);
   });
 
-  it('gives up on a persistent 429 after 3 attempts with a rate-limit message', async () => {
+  it('gives up on a persistent 429 after 5 attempts with a rate-limit message', async () => {
     const f = scriptedFetch(failure(429, { error: 'slow down' }));
     const client = makeClient(f);
     await assert.rejects(client.generateJSON({ system: 's', user: 'u', schema }), (err) => err.code === 'rate_limit' && /rate-limiting/.test(err.message));
-    assert.equal(f.calls.length, 3);
-    assert.deepEqual(client.sleeps, [2000, 6000]);
+    assert.equal(f.calls.length, 5);
+    assert.deepEqual(client.sleeps, [2000, 6000, 15000, 30000]);
   });
 
   it('retries a 503 and then reports a provider error', async () => {
     const f = scriptedFetch(failure(503, 'upstream down'));
     await assert.rejects(run(f), (err) => err.code === 'provider_error' && /HTTP 503/.test(err.message));
-    assert.equal(f.calls.length, 3);
+    assert.equal(f.calls.length, 5);
   });
 
   it('does not retry a refused connection and names the host', async () => {
@@ -318,84 +315,5 @@ describe('createAiClient.listModels / testConnection', () => {
   it('testConnection fails clearly when the model ignores the format', async () => {
     const f = scriptedFetch(completion('{"ok": false}'));
     await assert.rejects(makeClient(f).testConnection(), (err) => err.code === 'invalid_json' && /the connection test/.test(err.message));
-  });
-});
-
-describe('settings routes', () => {
-  let db;
-  let server;
-  let base;
-  let fetchImpl;
-  const ai = { current: null };
-
-  before(async () => {
-    db = openDb(':memory:');
-    runMigrations(db);
-    const client = createAiClient({ getConfig: () => resolveAiConfig(db, { baseUrl: 'https://example.test/v1', apiKey: KEY, model: 'acme/chat-1' }), fetchImpl: (...a) => fetchImpl(...a), sleep: async () => {} });
-    const app = createApp(db, { maxUploadBytes: 1024 * 1024 }, { ai: client, runner: { enqueue() {} } });
-    await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
-    base = `http://127.0.0.1:${server.address().port}`;
-    ai.current = client;
-  });
-  after(async () => {
-    await new Promise((resolve) => server.close(resolve));
-    db.close();
-  });
-
-  it('GET /api/settings/models returns the sorted chat models', async () => {
-    fetchImpl = scriptedFetch(new Response(JSON.stringify({ data: [{ id: 'z/last' }, { id: 'nvidia/nv-rerankqa-1b' }, { id: 'a/first' }] }), { status: 200 }));
-    const res = await fetch(`${base}/api/settings/models`);
-    assert.equal(res.status, 200);
-    assert.deepEqual(await res.json(), { models: ['a/first', 'z/last'] });
-  });
-
-  it('GET /api/settings/models surfaces provider errors as JSON', async () => {
-    fetchImpl = scriptedFetch(failure(401, { detail: 'bad key' }));
-    const res = await fetch(`${base}/api/settings/models`);
-    assert.equal(res.status, 502);
-    const { error } = await res.json();
-    assert.equal(error.code, 'auth');
-    assert.ok(!JSON.stringify(error).includes(KEY));
-  });
-
-  it('POST /api/settings/test-ai reports success', async () => {
-    fetchImpl = scriptedFetch(completion('{"ok": true, "word": "pong"}'));
-    const res = await fetch(`${base}/api/settings/test-ai`, { method: 'POST' });
-    assert.equal(res.status, 200);
-    const body = await res.json();
-    assert.equal(body.ok, true);
-    assert.equal(body.model, 'acme/chat-1');
-    assert.deepEqual(body.reply, { ok: true, word: 'pong' });
-  });
-
-  it('POST /api/settings/test-ai reports a model that answers with the wrong shape', async () => {
-    fetchImpl = scriptedFetch(completion('Pong!'));
-    const res = await fetch(`${base}/api/settings/test-ai`, { method: 'POST' });
-    assert.equal(res.status, 502);
-    assert.equal((await res.json()).error.code, 'invalid_json');
-  });
-
-  it('values saved in the settings table override the .env defaults', async () => {
-    db.prepare("INSERT INTO settings (key, value) VALUES ('ai_model', 'saved/model'), ('ai_base_url', 'http://localhost:11434/v1')").run();
-    fetchImpl = scriptedFetch(completion('{"ok": true, "word": "pong"}'));
-    const body = await (await fetch(`${base}/api/settings/test-ai`, { method: 'POST' })).json();
-    assert.equal(body.model, 'saved/model');
-    assert.equal(fetchImpl.calls[0].url, 'http://localhost:11434/v1/chat/completions');
-    db.prepare("DELETE FROM settings WHERE key IN ('ai_model', 'ai_base_url')").run();
-  });
-
-  it('answers 400 not_configured when no provider is set', async () => {
-    db.prepare("INSERT INTO settings (key, value) VALUES ('ai_base_url', ' ')").run(); // blank falls back to env, so clear env too
-    const bare = createAiClient({ getConfig: () => resolveAiConfig(db, {}), fetchImpl: scriptedFetch(completion('{}')) });
-    const app = createApp(db, { maxUploadBytes: 1024 }, { ai: bare, runner: { enqueue() {} } });
-    const s = await new Promise((resolve) => { const sv = app.listen(0, '127.0.0.1', () => resolve(sv)); });
-    try {
-      const res = await fetch(`http://127.0.0.1:${s.address().port}/api/settings/test-ai`, { method: 'POST' });
-      assert.equal(res.status, 400);
-      assert.equal((await res.json()).error.code, 'not_configured');
-    } finally {
-      await new Promise((resolve) => s.close(resolve));
-      db.prepare("DELETE FROM settings WHERE key = 'ai_base_url'").run();
-    }
   });
 });

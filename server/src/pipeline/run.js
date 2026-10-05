@@ -13,7 +13,8 @@ const count = (db, table, lessonId) => db.prepare(`SELECT COUNT(*) AS c FROM ${t
 // Generates sections, key points and key terms for a lesson and saves them. A stage whose output is already saved
 // is skipped, so retrying a failed lesson continues where it stopped. Never throws: the outcome is written to the
 // job and lesson rows. `ai` is { generateJSON }.
-export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUNK_TOKENS, log = console }) {
+// `concurrency` parallel AI calls within a stage; `keyTermsMax` caps the key terms kept per lesson.
+export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUNK_TOKENS, concurrency = 1, keyTermsMax = 12, log = console }) {
   const lesson = db.prepare('SELECT id, raw_text FROM lessons WHERE id = ?').get(lessonId);
   if (!lesson) return;
   const jobId = db.prepare('SELECT id FROM jobs WHERE lesson_id = ? ORDER BY id DESC LIMIT 1').get(lessonId)?.id;
@@ -33,7 +34,7 @@ export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUN
       saved: () => count(db, 'sections', lessonId) > 0,
       async run(chunks) {
         const summaryLength = getSetting(db, 'summary_length') === 'short' ? 'short' : 'detailed';
-        const sections = await generateSections({ ai, chunks, summaryLength, onProgress: progress });
+        const sections = await generateSections({ ai, chunks, summaryLength, concurrency, onProgress: progress });
         const insert = db.prepare(
           'INSERT INTO sections (lesson_id, position, title, content, check_questions) VALUES (?, ?, ?, ?, ?)',
         );
@@ -46,7 +47,7 @@ export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUN
       saved: () => count(db, 'key_points', lessonId) > 0,
       async run() {
         const sections = db.prepare('SELECT title, content FROM sections WHERE lesson_id = ? ORDER BY position').all(lessonId);
-        const points = await generateKeyPoints({ ai, sections, chunkTokens, onProgress: progress });
+        const points = await generateKeyPoints({ ai, sections, chunkTokens, concurrency, onProgress: progress });
         const insert = db.prepare('INSERT INTO key_points (lesson_id, position, text) VALUES (?, ?, ?)');
         db.transaction(() => points.forEach((p, i) => insert.run(lessonId, i + 1, p)))();
       },
@@ -55,7 +56,7 @@ export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUN
       // A lesson may legitimately define no terms; that stage re-runs on retry, which is cheap.
       saved: () => count(db, 'key_terms', lessonId) > 0,
       async run(chunks) {
-        const terms = await generateKeyTerms({ ai, chunks, onProgress: progress });
+        const terms = await generateKeyTerms({ ai, chunks, maxTerms: keyTermsMax, concurrency, onProgress: progress });
         const insert = db.prepare('INSERT INTO key_terms (lesson_id, term, definition) VALUES (?, ?, ?)');
         db.transaction(() => terms.forEach((t) => insert.run(lessonId, t.term, t.definition)))();
       },

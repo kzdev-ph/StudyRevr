@@ -2,7 +2,7 @@
 
 Open-source, mobile-first study app. Upload a lesson (.docx / .pptx / .pdf) and get a sectioned review, Anki-style flashcards, and mock quizzes. Study activity is logged and exportable for research.
 
-> **Status:** Phase 2 of 7 — backend with AI generation (sections, key points, key terms). The React client arrives in Phase 3.
+> **Status:** Phase 2.5 of 7 — backend with AI generation (sections, key points, key terms) and switchable AI providers. The React client arrives in Phase 3.
 
 ## Running it
 
@@ -10,7 +10,7 @@ Open-source, mobile-first study app. Upload a lesson (.docx / .pptx / .pdf) and 
 
 ```bash
 npm install
-cp .env.example .env     # optional; defaults work out of the box
+cp .env.example .env     # then add your AI key (GOOGLE_API_KEY by default); uploads work without one, AI generation needs it
 npm run dev              # API on http://localhost:3001
 npm test                 # server tests
 ```
@@ -22,16 +22,28 @@ The SQLite database is created at `server/data/studyrevr.db` on first start, and
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `PORT` | `3001` | API port |
-| `DB_PATH` | `server/data/studyrevr.db` | SQLite file (relative to repo root) |
+| `DB_PATH` | `server/data/studyrevr.db` | SQLite file (relative to repo root). Git-ignored: it can hold API keys saved in Settings |
 | `MAX_UPLOAD_MB` | `20` | Upload size limit |
-
-| `AI_BASE_URL` | – | OpenAI-compatible base URL, e.g. `https://integrate.api.nvidia.com/v1` or `http://localhost:11434/v1` |
-| `AI_API_KEY` | – | Provider key (leave empty for local servers). Never logged or returned by the API |
-| `AI_MODEL` | – | Chat model id, e.g. `meta/llama-3.1-8b-instruct` |
+| `AI_PROVIDER` | `google` | `google`, `nvidia-nim`, `openrouter`, `ollama`, `llamacpp` or `custom` |
+| `GOOGLE_API_KEY` / `NVIDIA_API_KEY` / `OPENROUTER_API_KEY` | – | One key per provider; only the active provider's key is sent. Never logged or returned by the API |
+| `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL` | – | Optional overrides for the `AI_PROVIDER` provider (an older `.env` with only `AI_BASE_URL` still works: the provider is recognised from the URL) |
+| `AI_EXTRA_BODY` | – | JSON object merged into every chat request for provider options, e.g. `{"reasoning_effort":"none"}` to switch thinking off. Ignored, with a warning, if it isn't a JSON object |
+| `AI_CONCURRENCY` | preset | Parallel AI calls within one stage of a lesson |
+| `AI_CHUNK_TOKENS` | preset | Lesson text per AI call |
 | `AI_TIMEOUT_SECONDS` | `300` | Per AI request; raise it for slow local or reasoning models |
-| `AI_CHUNK_TOKENS` | `2400` | Lesson text per AI call; the default suits ~8k-context models |
+| `KEY_TERMS_MAX` | `12` | Key terms kept per lesson |
 
-Values saved in the `settings` table (`ai_base_url`, `ai_api_key`, `ai_model`, `summary_length` = `short`/`detailed`) override `.env`; the Settings screen arrives in Phase 7.
+Provider presets (base URL, default model, chunk tokens, concurrency):
+
+| Preset | Base URL | Default model | Chunk | Parallel |
+| --- | --- | --- | --- | --- |
+| `google` | `https://generativelanguage.googleapis.com/v1beta/openai` | `gemini-3.5-flash-lite` | 30000 | 2 (free tier: 15 requests/min) |
+| `nvidia-nim` | `https://integrate.api.nvidia.com/v1` | `deepseek-ai/deepseek-v4.1-flash` | 2400 | 2 |
+| `openrouter` | `https://openrouter.ai/api/v1` | `openrouter/auto` | 2400 | 2 |
+| `ollama` | `http://localhost:11434/v1` | `llama3.1:8b` | 2400 | 1 |
+| `llamacpp` | `http://localhost:8080/v1` | `local` | 2400 | 1 |
+
+Each value resolves as: a one-off request value → what is saved in the `settings` table → `.env` → the preset. The `.env` overrides (`AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`, `AI_EXTRA_BODY`) belong to the `.env` provider and are not used for any other provider you switch to. The model is never fixed: any id works, and the provider's list comes from `GET /api/settings/models`. Settings keys (the Settings screen arrives in Phase 7): `ai_provider`, and per provider `ai_model:<provider>`, `ai_base_url:<provider>`, `ai_api_key:<provider>`; plus `ai_concurrency`, `ai_chunk_tokens`, `key_terms_max`, `summary_length` (`short`/`detailed`). Switching provider brings back that provider's last model and key. **A backup export (Phase 7) must leave `ai_api_key:*` out.**
 
 ### Try the API
 
@@ -48,24 +60,34 @@ Uploading returns `{ lesson, warning }`. `warning` is set when little text was e
 
 ### AI generation
 
-After an upload the lesson is `processing` and a background job runs, one lesson at a time: **sections** (with 1–2 quick-check questions each) → **key points** → **key terms**. Each stage makes one AI call per chunk of lesson text (paragraphs are never split; slides/pages and headings are the preferred cut points; a slide's `Notes:` stays with its slide). Every AI reply is validated with zod and retried once if it isn't valid JSON.
+After an upload the lesson is `processing` and a background job runs, one lesson at a time: **sections** (with 1–2 quick-check questions each) → **key points** → **key terms**. The stages run in that order (key points are written from the sections), but inside a stage the chunk calls run in parallel, up to the provider's concurrency (`AI_CONCURRENCY`). Each stage makes one AI call per chunk of lesson text (paragraphs are never split; slides/pages and headings are the preferred cut points; a slide's `Notes:` stays with its slide). Every AI reply is validated with zod and retried once if it isn't valid JSON; rate limits (429) and overloads (5xx) are retried up to 5 attempts with a growing, jittered wait. Key points state a takeaway rather than list examples; key terms are limited to domain concepts a student must be able to define (at most `KEY_TERMS_MAX`, de-duplicated across chunks).
 
 ```bash
 curl http://localhost:3001/api/lessons/1/status       # { lesson: { id, status, error }, job: { stage, status, progress: { done, total }, error } }
 curl http://localhost:3001/api/lessons/1              # lesson + sections, key_points, key_terms once ready
 curl -X POST http://localhost:3001/api/lessons/1/retry   # re-run a failed lesson (finished stages are kept)
-curl http://localhost:3001/api/settings/models        # chat models offered by the provider, sorted
-curl -X POST http://localhost:3001/api/settings/test-ai  # tiny JSON round-trip: checks URL, key, model
 ```
 
-`status` is `processing`, `ready` or `failed`; `job.stage` is `sections`, `key_points`, `key_terms` or `done`. A job still running when the server stops is marked failed on the next start and can be retried.
+`status` is `processing`, `ready` or `failed`; `job.stage` is `sections`, `key_points`, `key_terms` or `done`; `progress.done` counts finished AI calls in the current stage. A job still running when the server stops is marked failed on the next start and can be retried.
 
-Try the pipeline on a file without the server (uses a throw-away database, prints the results):
+Provider and model (backend only; the Settings screen arrives in Phase 7). API keys go in and never come out: responses only say `keySet: true/false`.
+
+```bash
+curl http://localhost:3001/api/settings/ai                    # active provider, each provider's model / base URL, keySet flags
+curl -X PUT http://localhost:3001/api/settings/ai -H 'content-type: application/json' \
+     -d '{"provider":"google","model":"gemini-3.5-flash-lite","apiKey":"..."}'   # save (any model id; "" clears a value)
+curl "http://localhost:3001/api/settings/models?provider=google"   # chat models offered by the provider, sorted;
+                                                                   # { models: [], freeText: true, error } if it can't be listed
+curl -X POST http://localhost:3001/api/settings/test-ai -H 'content-type: application/json' \
+     -d '{"provider":"google","model":"gemini-3.5-flash-lite"}'    # tiny JSON round-trip; tries what's in the body, saves nothing
+```
+
+Try the pipeline on a file without the server (uses a throw-away database, prints the results, per-call timings and retry counts):
 
 ```bash
 npm run pipeline                                    # lists files in test-lessons/
 npm run pipeline -- Introduction-to-Media-Channels  # partial file name is fine
-npm run pipeline -- lesson.pdf --summary=short --chunk-tokens=1500
+npm run pipeline -- lesson.pdf --summary=short --chunk-tokens=1500 --concurrency=3
 ```
 
 Errors are always JSON: `{ "error": { "message": "..." } }`.

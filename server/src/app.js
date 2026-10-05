@@ -12,7 +12,14 @@ export function createApp(db, config, { ai, runner } = {}) {
     getConfig: () => resolveAiConfig(db, config.ai),
     timeoutMs: config.ai?.timeoutMs,
   });
-  runner ??= createPipelineRunner({ db, ai, chunkTokens: config.ai?.chunkTokens });
+  runner ??= createPipelineRunner({
+    db,
+    ai,
+    tuning: () => {
+      const { chunkTokens, concurrency, keyTermsMax } = resolveAiConfig(db, config.ai);
+      return { chunkTokens, concurrency, keyTermsMax };
+    },
+  });
 
   const app = express();
   app.disable('x-powered-by');
@@ -20,7 +27,7 @@ export function createApp(db, config, { ai, runner } = {}) {
 
   app.get('/api/health', (_req, res) => res.json({ ok: true }));
   app.use('/api/lessons', lessonsRouter(db, config, runner));
-  app.use('/api/settings', settingsRouter(ai));
+  app.use('/api/settings', settingsRouter({ ai, db, config }));
 
   app.use('/api', notFound);
   app.use(errorHandler(config.maxUploadBytes));
