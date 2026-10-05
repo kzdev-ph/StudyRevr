@@ -4,3 +4,6 @@ server/data/
 dist/
 *.log
 .DS_Store
+
+# Personal test files
+test-lessons/

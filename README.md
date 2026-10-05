@@ -1,6 +1,6 @@
 # StudyRevr
 
-Open-source, mobile-first study app. Upload a lesson (.docx / .pptx) and get a sectioned review, Anki-style flashcards, and mock quizzes. Study activity is logged and exportable for research.
+Open-source, mobile-first study app. Upload a lesson (.docx / .pptx / .pdf) and get a sectioned review, Anki-style flashcards, and mock quizzes. Study activity is logged and exportable for research.
 
 > **Status:** Phase 1 of 7 — backend foundation (upload, text extraction, lessons API). The React client arrives in Phase 3.
 
@@ -36,7 +36,9 @@ curl http://localhost:3001/api/lessons/1                         # one lesson, w
 curl -X DELETE http://localhost:3001/api/lessons/1               # delete
 ```
 
-Uploading returns `{ lesson, warning }`. `warning` is set when little text was extracted (for example, image-heavy slides). Old `.doc` / `.ppt` files are rejected with a "save as .docx/.pptx" message.
+Supported formats: `.docx`, `.pptx` and `.pdf` (up to `MAX_UPLOAD_MB`). Slides and PDF pages are separated by a blank line in the extracted text, and lines that repeat on most PDF pages (headers, footers, page numbers) are removed.
+
+Uploading returns `{ lesson, warning }`. `warning` is set when little text was extracted (for example, image-heavy slides). A PDF with almost no text gets "This PDF looks scanned or image-only; text can't be extracted." (there is no OCR). Old `.doc` / `.ppt` files are rejected with a "save as .docx/.pptx" message.
 
 Errors are always JSON: `{ "error": { "message": "..." } }`.
 

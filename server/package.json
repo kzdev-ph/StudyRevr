@@ -19,10 +19,12 @@
     "mammoth": "^1.13.0",
     "multer": "^2.4.0",
     "officeparser": "^8.1.0",
+    "unpdf": "^1.8.1",
     "zod": "^4.6.5"
   },
   "devDependencies": {
     "docx": "^9.8.1",
+    "pdf-lib": "^1.17.1",
     "pptxgenjs": "^4.0.1"
   }
 }

@@ -1,12 +1,12 @@
 # StudyRevr
 
-Open-source, mobile-first study app. Students upload a lesson (.docx / .pptx); an AI generates a sectioned review, flashcards (Anki-style spaced repetition), and mock quizzes. Built for a Practical Research 2 study comparing traditional studying vs AI-assisted studying, so study activity must be logged and exportable.
+Open-source, mobile-first study app. Students upload a lesson (.docx / .pptx / .pdf); an AI generates a sectioned review, flashcards (Anki-style spaced repetition), and mock quizzes. Built for a Practical Research 2 study comparing traditional studying vs AI-assisted studying, so study activity must be logged and exportable.
 
 ## Stack
 - Backend: Node.js (LTS) + Express, ES modules
 - DB: SQLite via better-sqlite3 (single file, migrations on startup)
-- Parsing: mammoth (docx), officeparser (pptx). Reject .doc/.ppt with a clear "save as docx/pptx" message.
-- Uploads: multer, 20 MB limit, extension + MIME check
+- Parsing: mammoth (docx), officeparser (pptx), unpdf (pdf, page by page; lines repeating on most pages such as headers/footers/page numbers are stripped). Pages/slides are separated by a blank line in `raw_text`. Reject .doc/.ppt with a clear "save as docx/pptx" message. Scanned/image-only PDFs are accepted but flagged with a warning (no OCR).
+- Uploads: multer, 20 MB limit, extension + MIME check + file signature check (zip `PK` for docx/pptx, `%PDF` for pdf)
 - Validation: zod for all AI JSON output and request bodies
 - Frontend: React + Vite, Recharts (charts), Motion (`motion` package, formerly Framer Motion) for animations
 - Single repo: `/server` and `/client`, root scripts to run both in dev
@@ -32,7 +32,7 @@ One adapter speaking the OpenAI-compatible `/v1/chat/completions` API. This cove
 Bottom tab bar: **Review | Flashcard | Mock Quiz | Stats**. Gear icon in header opens **Settings**. Home/upload is reachable from the header or an empty state.
 
 ### Upload
-Drag-drop or pick file → progress states: Extracting → Summarizing → Flashcards → Quiz → Done. Warn if extracted text is very short (e.g. image-heavy slides).
+Drag-drop or pick file → progress states: Extracting → Summarizing → Flashcards → Quiz → Done. Accepts .docx, .pptx and .pdf. Warn if extracted text is very short (e.g. image-heavy slides); for PDFs with almost no text, warn that it looks scanned or image-only.
 
 ### Review
 - Lesson list → lesson view

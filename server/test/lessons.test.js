@@ -2,7 +2,9 @@ import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Document, Packer, Paragraph, HeadingLevel } from 'docx';
 import PptxGenJS from 'pptxgenjs';
+import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { createApp } from '../src/app.js';
+import { stripRepeatedLines } from '../src/services/extract.js';
 import { openDb, runMigrations } from '../src/db/index.js';
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -34,6 +36,54 @@ async function makePptx(slides) {
   }
   return pptx.write({ outputType: 'nodebuffer' });
 }
+
+const PDF_MIME = 'application/pdf';
+
+// Text PDF: every page has a header, a "Page N of M" footer, and its own body lines.
+async function makeTextPdf(bodies, { header = 'StudyRevr Biology 101' } = {}) {
+  const pdf = await PDFDocument.create();
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  bodies.forEach((lines, i) => {
+    const page = pdf.addPage([612, 792]);
+    page.drawText(header, { x: 50, y: 750, size: 10, font });
+    lines.forEach((line, j) => page.drawText(line, { x: 50, y: 680 - j * 24, size: 12, font }));
+    page.drawText(`Page ${i + 1} of ${bodies.length}`, { x: 50, y: 30, size: 10, font });
+  });
+  return Buffer.from(await pdf.save());
+}
+
+// Image-only stand-in: pages exist but carry no text objects.
+async function makeBlankPdf(pages = 3) {
+  const pdf = await PDFDocument.create();
+  for (let i = 0; i < pages; i++) pdf.addPage([612, 792]);
+  return Buffer.from(await pdf.save());
+}
+
+const pdfBodies = Array.from({ length: 5 }, (_, i) =>
+  Array.from({ length: 6 }, (_, j) => `Chapter ${i + 1} paragraph ${j + 1} describes how cells divide and grow over time.`),
+);
+
+describe('stripRepeatedLines', () => {
+  it('drops headers, footers and page numbers that repeat on most pages', () => {
+    const pages = ['Course Title\nIntro text\n1', 'Course Title\nMiddle text\n2', 'Course Title\nMore text\n3'];
+    assert.deepEqual(stripRepeatedLines(pages), ['Intro text', 'Middle text', 'More text']);
+  });
+
+  it('keeps lines that repeat on only a few pages', () => {
+    const pages = ['A\nshared line', 'B\nshared line', 'C', 'D', 'E'];
+    assert.deepEqual(stripRepeatedLines(pages), pages);
+  });
+
+  it('keeps long numbered body lines that differ only in digits', () => {
+    const pages = [1, 2, 3, 4].map((n) => `Question ${n} asks why the cell membrane regulates what enters and leaves.`);
+    assert.deepEqual(stripRepeatedLines(pages), pages);
+  });
+
+  it('leaves documents under 3 pages alone', () => {
+    const pages = ['Header\nOne', 'Header\nTwo'];
+    assert.deepEqual(stripRepeatedLines(pages), pages);
+  });
+});
 
 describe('lessons API', () => {
   let db;
@@ -108,6 +158,41 @@ describe('lessons API', () => {
     assert.match(detail.lesson.raw_text, /Cell Structure/);
     assert.match(detail.lesson.raw_text, /Mitochondria produce ATP/);
     assert.equal(detail.lesson.raw_text.split('\n\n').length, 2, 'one blank-line-separated block per slide');
+  });
+
+  it('uploads a text .pdf, one block per page, with repeated headers/footers removed', async () => {
+    const res = await upload(await makeTextPdf(pdfBodies), 'biology.pdf', { mime: PDF_MIME });
+    assert.equal(res.status, 201);
+    const { lesson, warning } = await res.json();
+    assert.equal(lesson.title, 'biology');
+    assert.equal(warning, null);
+    const { raw_text: text } = (await (await fetch(`${base}/api/lessons/${lesson.id}`)).json()).lesson;
+    assert.equal(text.split('\n\n').length, 5, 'one blank-line-separated block per page');
+    assert.match(text, /Chapter 1 paragraph 1/);
+    assert.ok(text.indexOf('Chapter 2 paragraph 1') < text.indexOf('Chapter 3 paragraph 1'), 'page order kept');
+    assert.doesNotMatch(text, /StudyRevr Biology 101/);
+    assert.doesNotMatch(text, /Page \d of 5/);
+  });
+
+  it('warns that an image-only .pdf looks scanned', async () => {
+    const res = await upload(await makeBlankPdf(), 'scan.pdf', { mime: PDF_MIME });
+    assert.equal(res.status, 201);
+    const { lesson, warning } = await res.json();
+    assert.equal(lesson.word_count, 0);
+    assert.equal(warning, "This PDF looks scanned or image-only; text can't be extracted.");
+  });
+
+  it('rejects a .pdf without the %PDF signature and one that is corrupt', async () => {
+    let res = await upload(Buffer.from('definitely not a pdf'), 'fake.pdf', { mime: PDF_MIME });
+    assert.equal(res.status, 400);
+    assert.match((await res.json()).error.message, /isn't a valid \.pdf/);
+    res = await upload(Buffer.from('%PDF-1.7 garbage garbage garbage'), 'broken.pdf', { mime: PDF_MIME });
+    assert.equal(res.status, 422);
+  });
+
+  it('rejects a .pdf sent with a non-PDF MIME type', async () => {
+    const res = await upload(await makeBlankPdf(1), 'wrongmime.pdf', { mime: 'image/png' });
+    assert.equal(res.status, 400);
   });
 
   it('warns when very little text is extracted', async () => {

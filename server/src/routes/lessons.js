@@ -1,12 +1,20 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { HttpError } from '../middleware/errors.js';
-import { assertZip, createUpload, fileExtension } from '../middleware/upload.js';
+import { assertSignature, createUpload, fileExtension } from '../middleware/upload.js';
 import { extractText } from '../services/extract.js';
 
 const SHORT_TEXT_WORDS = 150;
 const SHORT_TEXT_WARNING =
   "Very little text was found in this file. Image-heavy slides can't be read, so the review may be thin. Try a text-based version.";
+
+const SCANNED_PDF_WARNING = "This PDF looks scanned or image-only; text can't be extracted.";
+const SCANNED_PDF_WORDS_PER_PAGE = 15;
+
+function lessonWarning(ext, wordCount, pageCount) {
+  if (ext === '.pdf' && (wordCount === 0 || wordCount / pageCount < SCANNED_PDF_WORDS_PER_PAGE)) return SCANNED_PDF_WARNING;
+  return wordCount < SHORT_TEXT_WORDS ? SHORT_TEXT_WARNING : null;
+}
 
 const idParam = z.object({ id: z.coerce.number().int().positive() });
 const createBody = z.object({ title: z.string().trim().min(1).max(200).optional() });
@@ -40,20 +48,19 @@ export function lessonsRouter(db, { maxUploadBytes }) {
     upload(req, res, async (err) => {
       try {
         if (err) throw err;
-        if (!req.file) throw new HttpError(400, 'Choose a .docx or .pptx file to upload.');
+        if (!req.file) throw new HttpError(400, 'Choose a .docx, .pptx or .pdf file to upload.');
         const body = createBody.safeParse(req.body ?? {});
         if (!body.success) throw new HttpError(400, 'Title must be 1-200 characters.');
 
         const filename = fixFilename(req.file.originalname);
         const ext = fileExtension(filename);
-        assertZip(req.file.buffer);
-        const { text, wordCount } = await extractText(req.file.buffer, ext);
+        assertSignature(req.file.buffer, ext);
+        const { text, wordCount, pageCount } = await extractText(req.file.buffer, ext);
 
         const title = body.data.title || filename.slice(0, -ext.length).trim() || 'Untitled lesson';
         const id = createLesson(title, filename, text, wordCount);
         const lesson = db.prepare(`SELECT ${SUMMARY_COLUMNS} FROM lessons WHERE id = ?`).get(id);
-        const warning = wordCount < SHORT_TEXT_WORDS ? SHORT_TEXT_WARNING : null;
-        res.status(201).json({ lesson, warning });
+        res.status(201).json({ lesson, warning: lessonWarning(ext, wordCount, pageCount) });
       } catch (e) {
         next(e);
       }
