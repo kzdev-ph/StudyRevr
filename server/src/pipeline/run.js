@@ -8,6 +8,15 @@ class LessonGone extends Error {}
 
 const NO_TEXT = "This file has no readable text, so there's nothing to summarize. Try a text-based version of the lesson.";
 
+const parseNumbers = (json) => {
+  try {
+    const numbers = JSON.parse(json);
+    return Array.isArray(numbers) ? numbers : null;
+  } catch {
+    return null;
+  }
+};
+
 const count = (db, table, lessonId) => db.prepare(`SELECT COUNT(*) AS c FROM ${table} WHERE lesson_id = ?`).get(lessonId).c;
 
 // Generates sections, key points and key terms for a lesson and saves them. A stage whose output is already saved
@@ -15,7 +24,7 @@ const count = (db, table, lessonId) => db.prepare(`SELECT COUNT(*) AS c FROM ${t
 // job and lesson rows. `ai` is { generateJSON }.
 // `concurrency` parallel AI calls within a stage; `keyTermsMax` caps the key terms kept per lesson.
 export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUNK_TOKENS, concurrency = 1, keyTermsMax = 12, log = console }) {
-  const lesson = db.prepare('SELECT id, raw_text FROM lessons WHERE id = ?').get(lessonId);
+  const lesson = db.prepare('SELECT id, raw_text, source_kind, source_numbers, source_total FROM lessons WHERE id = ?').get(lessonId);
   if (!lesson) return;
   const jobId = db.prepare('SELECT id FROM jobs WHERE lesson_id = ? ORDER BY id DESC LIMIT 1').get(lessonId)?.id;
   if (!jobId) return;
@@ -34,12 +43,25 @@ export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUN
       saved: () => count(db, 'sections', lessonId) > 0,
       async run(chunks) {
         const summaryLength = getSetting(db, 'summary_length') === 'short' ? 'short' : 'detailed';
-        const sections = await generateSections({ ai, chunks, summaryLength, concurrency, onProgress: progress });
+        const onDrop = ({ title, dropped }) =>
+          log.info?.(`[pipeline] lesson ${lessonId}: section "${title}" named sources that don't exist or weren't in its text; ignored: ${dropped.join(', ')}`);
+        const sections = await generateSections({
+          ai,
+          chunks,
+          sourceKind: lesson.source_kind ?? undefined,
+          sourceTotal: lesson.source_total ?? undefined,
+          summaryLength,
+          concurrency,
+          onProgress: progress,
+          onDrop,
+        });
         const insert = db.prepare(
-          'INSERT INTO sections (lesson_id, position, title, content, check_questions) VALUES (?, ?, ?, ?, ?)',
+          'INSERT INTO sections (lesson_id, position, title, content, check_questions, sources) VALUES (?, ?, ?, ?, ?, ?)',
         );
         db.transaction(() => {
-          sections.forEach((s, i) => insert.run(lessonId, i + 1, s.title, s.content, JSON.stringify(s.check_questions)));
+          sections.forEach((s, i) =>
+            insert.run(lessonId, i + 1, s.title, s.content, JSON.stringify(s.check_questions), s.sources ? JSON.stringify(s.sources) : null),
+          );
         })();
       },
     },
@@ -71,7 +93,9 @@ export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUN
 
   let stage = STAGES[0];
   try {
-    const chunks = chunkLesson(lesson.raw_text, { maxTokens: chunkTokens });
+    // Numbers are only used when there is one per block; otherwise the lesson is chunked without source labels.
+    const numbers = parseNumbers(lesson.source_numbers);
+    const chunks = chunkLesson(lesson.raw_text, { maxTokens: chunkTokens, numbers: numbers ?? undefined });
     if (!chunks.length) throw new HttpError(422, NO_TEXT);
     for (stage of STAGES) {
       if (stages[stage].saved()) continue;

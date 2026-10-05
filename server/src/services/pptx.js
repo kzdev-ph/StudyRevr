@@ -140,6 +140,8 @@ async function slidePlan(zip, slideCount) {
 
 // One block per slide: slide text, then SmartArt text, then (optionally) "Notes:" and the speaker notes.
 // Blocks are separated by a blank line; each line inside a block is one paragraph.
+// Returns { text, numbers, total }: `numbers[k]` is the slide number (deck order, from 1) of the k-th block, since a
+// slide with no text is skipped, and `total` is how many slides the deck has.
 export async function extractPptx(buffer, { includeNotes = true } = {}) {
   const ast = await OfficeParser.parseOffice(buffer, { fileType: 'pptx' });
   const slides = ast.content.filter((n) => n.type === 'slide');
@@ -155,7 +157,8 @@ export async function extractPptx(buffer, { includeNotes = true } = {}) {
   const order = plan ?? slides.map((_, i) => ({ i, part: null }));
 
   const blocks = [];
-  for (const { i, part } of order) {
+  const numbers = [];
+  for (const [position, { i, part }] of order.entries()) {
     const slide = slides[i];
     const lines = nodeLines(slide);
     if (part) {
@@ -169,7 +172,10 @@ export async function extractPptx(buffer, { includeNotes = true } = {}) {
       const notes = (await notesLines(zip, part)).filter((l) => !isNotesPlaceholder(l));
       if (notes.length) lines.push(NOTES_LABEL, ...notes);
     }
-    if (lines.length) blocks.push(lines.join('\n'));
+    if (lines.length) {
+      blocks.push(lines.join('\n'));
+      numbers.push(position + 1);
+    }
   }
-  return blocks.join('\n\n');
+  return { text: blocks.join('\n\n'), numbers, total: order.length };
 }

@@ -21,6 +21,7 @@ Open-source, mobile-first study app. Students upload a lesson (.docx / .pptx / .
 - Mobile-first CSS, dark mode via `prefers-color-scheme` + manual toggle
 - Respect `prefers-reduced-motion` (skip non-essential animations)
 - Every AI call: strict "use only the provided lesson text" instruction, zod validation, one retry on invalid JSON, clear error surfaced to UI
+- Provider errors become actionable messages (`server/src/ai/client.js`): 400 check the model in Settings (unless the body says the key is invalid, as Google's does: then the key), 401/403 check the API key in Settings, 404 model or base URL, 429 rate limited, try again shortly, timeout the provider is slow, retry. The provider's own error body is logged server-side with keys redacted and never shown in the UI.
 - Every AI prompt that receives lesson text must explain that a `Notes:` line inside a slide block marks the teacher's spoken explanation of that slide: treat it as lesson content that elaborates the slide, not as a separate topic
 - Long-running generation is async: create a job, frontend polls status
 
@@ -86,9 +87,11 @@ Drag-drop or pick file → progress states: Extracting → Summarizing → Flash
 - About: version, GitHub link, license
 
 ## Data Model
-- `lessons` (id, title, filename, raw_text, word_count, status, error, created_at)
+- `lessons` (id, title, filename, raw_text, word_count, status, error, created_at, source_kind, source_numbers JSON, source_total)
+  - `source_numbers[k]` is the real slide / page number (Word: paragraph number) of the k-th block of `raw_text`, `source_kind` is `slide` | `page` | `paragraph` and `source_total` the real count. A slide or page with no text has no block, so a block's place in `raw_text` is not its slide number. NULL on lessons uploaded before migration 005.
 - `jobs` (id, lesson_id, stage, status, error, updated_at)
-- `sections` (id, lesson_id, position, title, content, simple_version, filipino_version, check_questions JSON)
+- `sections` (id, lesson_id, position, title, content, simple_version, filipino_version, check_questions JSON, sources JSON)
+  - `sources` is the sorted list of slide / page numbers the section was written from. The sections prompt labels each block (`[Slide 3]`) and asks the model for `sources`; in code each number must be a whole number within `source_total` and the number of a block that was in that call's chunk, anything else is dropped and logged, and if nothing is left it is NULL. Original text shows exactly those slides / pages; NULL (older lessons) falls back to a vocabulary match in the client, labelled approximate.
   - `simple_version` stores JSON `{ text, example }`, `filipino_version` stores JSON `{ title, content, check_questions }`; both are made on demand and cached here, the original `content` is never changed.
   - `review_progress.last_section` and `completed_sections` are 0-based indices into the lesson's sections in order.
 - `key_points` (id, lesson_id, position, text)

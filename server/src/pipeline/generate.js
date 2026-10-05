@@ -4,6 +4,7 @@ import { chunkBlocks } from '../ai/chunk.js';
 import { mapLimit } from '../ai/pool.js';
 import { keyPointsPrompt, keyTermsMergePrompt, keyTermsPrompt, sectionsPrompt } from '../ai/prompts.js';
 import { checkEvidence, comparable } from './evidence.js';
+import { validateSources } from './sources.js';
 import { groupTerms } from './terms.js';
 
 // One AI feature per function, one call per chunk of lesson text ("never one giant call"). Each takes the `ai`
@@ -28,6 +29,8 @@ const sectionsSchema = wrapArray(
         content: text.pipe(z.string().min(20)),
         // 1-2 quick checks per section; a third is dropped rather than failing the whole reply
         check_questions: z.array(z.object({ question: text, answer: text })).min(1).transform((q) => q.slice(0, 2)),
+        // the slide / page numbers the section was written from; checked in code (see sources.js), so anything goes here
+        sources: z.array(z.unknown()).catch([]),
       }),
     ),
   }),
@@ -60,6 +63,7 @@ const responseSchemas = {
               title: str,
               content: str,
               check_questions: { type: 'array', items: { type: 'object', properties: { question: str, answer: str }, required: ['question', 'answer'] } },
+              sources: { type: 'array', items: { type: 'integer' } },
             },
             required: ['title', 'content', 'check_questions'],
           },
@@ -114,12 +118,15 @@ async function runCalls(items, concurrency, onProgress, call, extraCalls = 0) {
 // Tokens are estimated as chars / 3 and English words average about 6 characters, so words ~ tokens / 2.
 export const targetSectionCount = (tokens) => Math.max(1, Math.round(tokens / 2 / WORDS_PER_SECTION));
 
-// -> [{ title, content, check_questions: [{ question, answer }] }] in lesson order
-export async function generateSections({ ai, chunks, summaryLength = 'detailed', concurrency = 1, onProgress = () => {} }) {
-  const results = await runCalls(chunks, concurrency, onProgress, (chunk) => {
+// -> [{ title, content, check_questions: [{ question, answer }], sources }] in lesson order. `sources` is the sorted
+// list of slide / page numbers the section was written from, or null when they aren't known: the lesson has no
+// numbers (chunks come without `numbers`), or the model named none that survive the check against the lesson's real
+// count (`sourceTotal`) and the blocks it was shown. onDrop({ title, dropped }) reports refused numbers.
+export async function generateSections({ ai, chunks, sourceKind, sourceTotal, summaryLength = 'detailed', concurrency = 1, onProgress = () => {}, onDrop = () => {} }) {
+  const results = await runCalls(chunks, concurrency, onProgress, async (chunk) => {
     const targetSections = targetSectionCount(chunk.tokens);
-    const { system, user } = sectionsPrompt({ text: chunk.text, index: chunk.index, total: chunks.length, summaryLength, targetSections });
-    return ai.generateJSON({
+    const { system, user } = sectionsPrompt({ text: chunk.text, parts: chunk.parts, kind: sourceKind, index: chunk.index, total: chunks.length, summaryLength, targetSections });
+    const out = await ai.generateJSON({
       system,
       user,
       schema: sectionsSchema,
@@ -127,6 +134,14 @@ export async function generateSections({ ai, chunks, summaryLength = 'detailed',
       maxTokens: Math.min(16_000, Math.max(4000, targetSections * 450 + 1000)),
       label: partLabel('the review sections', chunk.index, chunks.length),
     });
+    return {
+      sections: out.sections.map(({ sources, ...section }) => {
+        if (!chunk.numbers) return { ...section, sources: null };
+        const checked = validateSources(sources, { allowed: new Set(chunk.numbers), total: sourceTotal });
+        if (checked.dropped.length) onDrop({ title: section.title, dropped: checked.dropped });
+        return { ...section, sources: checked.numbers };
+      }),
+    };
   });
   const sections = results.flatMap((out) => out.sections);
   if (!sections.length) {

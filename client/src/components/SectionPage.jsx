@@ -85,7 +85,7 @@ export default function SectionPage({ lesson, section, variant, busy, failure, s
 
       {variant === 'filipino' && !busy && filipino && <Prose text={filipino.content} />}
 
-      {showSource && <SourcePanel section={section} rawText={lesson.raw_text} filename={lesson.filename} />}
+      {showSource && <SourcePanel section={section} lesson={lesson} />}
 
       {showing && !busy && <QuickCheck key={section.id} questions={questions} />}
     </div>

@@ -57,3 +57,46 @@ export function matchSource(sectionText, rawText) {
   }
   return picked.sort((a, b) => a.index - b.index).map((b) => ({ index: b.index, text: blocks[b.index] }));
 }
+
+// ---- exact sources -----------------------------------------------------------------------------------------------
+// New lessons record the real slide / page / paragraph number of every block of the file, and each section records
+// the numbers it was written from. These helpers turn that into the blocks to show. They return null when a lesson
+// has no such record (it was made earlier), and the caller falls back to matchSource.
+
+const KIND_WORDS = { slide: ['slide', 'slides'], page: ['page', 'pages'], paragraph: ['paragraph', 'paragraphs'] };
+
+// Every block of the file with its real number: [{ number, text }], or null when the numbers can't be trusted
+// (none recorded, or they don't line up with the blocks).
+export function numberedBlocks(rawText, source) {
+  const blocks = splitBlocks(rawText);
+  if (!Array.isArray(source?.numbers) || source.numbers.length !== blocks.length) return null;
+  return blocks.map((text, i) => ({ number: source.numbers[i], text }));
+}
+
+// The blocks a section was written from: [{ number, text }] in file order, or null when there is no exact record
+// (or none of the recorded numbers has text in the file).
+export function exactSource(sources, rawText, source) {
+  if (!Array.isArray(sources) || !sources.length) return null;
+  const all = numberedBlocks(rawText, source);
+  const exact = all?.filter((b) => sources.includes(b.number));
+  return exact?.length ? exact : null;
+}
+
+// [3, 4, 5, 8] -> "3–5, 8"
+export function formatNumbers(numbers) {
+  const sorted = [...new Set(numbers)].sort((a, b) => a - b);
+  const runs = [];
+  for (const n of sorted) {
+    const last = runs.at(-1);
+    if (last && n === last[1] + 1) last[1] = n;
+    else runs.push([n, n]);
+  }
+  return runs.map(([from, to]) => (from === to ? `${from}` : to === from + 1 ? `${from}, ${to}` : `${from}–${to}`)).join(', ');
+}
+
+// "Slide 3", "Slides 3–5, 8", "Page 2" ...
+export function sourceLabel(kind, numbers) {
+  const [one, many] = KIND_WORDS[kind] ?? KIND_WORDS.slide;
+  const word = numbers.length === 1 ? one : many;
+  return `${word[0].toUpperCase()}${word.slice(1)} ${formatNumbers(numbers)}`;
+}

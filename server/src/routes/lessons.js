@@ -39,10 +39,12 @@ export function lessonsRouter(db, { maxUploadBytes }, runner) {
 
   // The lesson starts as 'processing' with a queued job; text extraction is already done at this point.
   const insertLesson = db.prepare(
-    `INSERT INTO lessons (title, filename, raw_text, word_count, status) VALUES (?, ?, ?, ?, 'processing')`,
+    `INSERT INTO lessons (title, filename, raw_text, word_count, status, source_kind, source_numbers, source_total)
+     VALUES (?, ?, ?, ?, 'processing', ?, ?, ?)`,
   );
-  const createLesson = db.transaction((title, filename, text, wordCount) => {
-    const id = Number(insertLesson.run(title, filename, text, wordCount).lastInsertRowid);
+  const createLesson = db.transaction((title, filename, text, wordCount, source) => {
+    const numbers = source.numbers ? JSON.stringify(source.numbers) : null;
+    const id = Number(insertLesson.run(title, filename, text, wordCount, source.kind, numbers, source.total).lastInsertRowid);
     queueJob(db, id);
     return id;
   });
@@ -70,10 +72,10 @@ export function lessonsRouter(db, { maxUploadBytes }, runner) {
         const ext = fileExtension(filename);
         assertSignature(req.file.buffer, ext);
         const includeNotes = getBoolSetting(db, 'include_speaker_notes', true);
-        const { text, wordCount, pageCount } = await extractText(req.file.buffer, ext, { includeNotes });
+        const { text, wordCount, pageCount, source } = await extractText(req.file.buffer, ext, { includeNotes });
 
         const title = body.data.title || filename.slice(0, -ext.length).trim() || 'Untitled lesson';
-        const id = createLesson(title, filename, text, wordCount);
+        const id = createLesson(title, filename, text, wordCount, source);
         const lesson = db.prepare(`SELECT ${SUMMARY_COLUMNS} FROM lessons WHERE id = ?`).get(id);
         runner.enqueue(id);
         res.status(201).json({ lesson, warning: lessonWarning(ext, wordCount, pageCount) });
@@ -88,17 +90,20 @@ export function lessonsRouter(db, { maxUploadBytes }, runner) {
   });
 
   router.get('/:id', (req, res) => {
-    const lesson = db.prepare('SELECT * FROM lessons WHERE id = ?').get(parseId(req));
-    if (!lesson) throw new HttpError(404, 'Lesson not found.');
+    const { source_kind, source_numbers, source_total, ...lesson } = db.prepare('SELECT * FROM lessons WHERE id = ?').get(parseId(req)) ?? {};
+    if (!lesson.id) throw new HttpError(404, 'Lesson not found.');
     const byLesson = (sql) => db.prepare(sql).all(lesson.id);
-    const sections = byLesson('SELECT id, position, title, content, simple_version, filipino_version, check_questions FROM sections WHERE lesson_id = ? ORDER BY position');
+    const sections = byLesson('SELECT id, position, title, content, simple_version, filipino_version, check_questions, sources FROM sections WHERE lesson_id = ? ORDER BY position');
     res.json({
-      lesson,
+      // where raw_text's blocks came from: numbers[k] is the slide / page / paragraph number of the k-th block.
+      // null for a lesson made before section sources were recorded.
+      lesson: { ...lesson, source: source_numbers ? { kind: source_kind, total: source_total, numbers: JSON.parse(source_numbers) } : null },
       sections: sections.map((s) => ({
         ...s,
         simple_version: parseSimple(s.simple_version),
         filipino_version: parseFilipino(s.filipino_version),
         check_questions: JSON.parse(s.check_questions),
+        sources: s.sources ? JSON.parse(s.sources) : null,
       })),
       key_points: byLesson('SELECT id, position, text FROM key_points WHERE lesson_id = ? ORDER BY position'),
       key_terms: byLesson('SELECT id, term, definition, evidence FROM key_terms WHERE lesson_id = ? ORDER BY id'),

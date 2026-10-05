@@ -33,6 +33,8 @@
   --gutter: 16px;
   --header-h: 56px;
   --tabbar-h: 64px;
+  --lessonnav-h: 3.875rem; /* the sticky Previous / Next bar in a lesson */
+  --lessonnav-gap: 10px; /* its distance above the tab bar (or the bottom edge on a wide screen) */
   --rail-w: 224px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 

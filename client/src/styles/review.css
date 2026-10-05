@@ -269,6 +269,12 @@
 .source__block p + p {
   margin-top: 4px;
 }
+.source__label {
+  margin-bottom: 4px;
+  color: var(--ink-2);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
 .source__notes {
   margin-top: 10px !important;
   color: var(--ink-2);
@@ -372,9 +378,17 @@
 }
 
 /* previous / next, pinned above the tab bar */
+/* The bar floats over the page while there is more below it. The content ends with room for the bar, and the bar's
+   own slot (its negative top margin) sits inside that room, so the last line of text always ends above it. */
+.review__body {
+  padding-bottom: calc(var(--lessonnav-h) + var(--safe-bottom) + 12px);
+}
 .lesson-nav {
   position: sticky;
-  bottom: calc(var(--tabbar-h) + var(--safe-bottom) + 10px);
+  bottom: calc(var(--tabbar-h) + var(--safe-bottom) + var(--lessonnav-gap));
+  box-sizing: border-box;
+  min-height: var(--lessonnav-h);
+  margin-top: calc(-1 * var(--lessonnav-h));
   z-index: 10;
   display: flex;
   justify-content: space-between;
@@ -542,5 +556,24 @@
 @media (min-width: 56rem) {
   .lesson-nav {
     bottom: 16px;
+  }
+}
+
+/* Anything the browser scrolls into view (a focused answer box, a tabbed-to button, a jump link) stops below the
+   sticky header and above the fixed tab bar and the Previous / Next bar instead of landing under them. */
+html {
+  scroll-padding-top: calc(var(--header-h) + 12px); /* the sticky header */
+  scroll-padding-bottom: calc(var(--tabbar-h) + var(--safe-bottom) + 16px);
+}
+html:has(.lesson-nav) {
+  scroll-padding-bottom: calc(var(--tabbar-h) + var(--safe-bottom) + var(--lessonnav-gap) + var(--lessonnav-h) + 16px);
+}
+@media (min-width: 56rem) {
+  html,
+  html:has(.lesson-nav) {
+    scroll-padding-bottom: calc(16px + var(--lessonnav-h) + 16px);
+  }
+  html:not(:has(.lesson-nav)) {
+    scroll-padding-bottom: 16px;
   }
 }

@@ -55,9 +55,13 @@ function splitBlock(block, budget) {
 }
 
 // Packs blocks (strings, possibly multi-line) into chunks of at most `maxTokens`. Returns [{ index, text, tokens }].
-export function chunkBlocks(blocks, { maxTokens = DEFAULT_CHUNK_TOKENS } = {}) {
-  const units = blocks.flatMap((b) => splitBlock(b, maxTokens));
-  const cost = (u) => estimateTokens(u) + SEPARATOR_TOKENS;
+// `numbers` (optional) gives the slide / page number of each block, in the same order. Each chunk then also has
+// `parts` ([{ text, number }], the pieces in order; a block cut in two gives two parts with the same number) and
+// `numbers` (the distinct block numbers it holds), so a caller can say where each piece of a chunk came from.
+export function chunkBlocks(blocks, { maxTokens = DEFAULT_CHUNK_TOKENS, numbers } = {}) {
+  const numbered = Array.isArray(numbers) && numbers.length === blocks.length;
+  const units = blocks.flatMap((b, i) => splitBlock(b, maxTokens).map((text) => ({ text, number: numbered ? numbers[i] : undefined })));
+  const cost = (u) => estimateTokens(u.text) + SEPARATOR_TOKENS;
   const sum = (arr) => arr.reduce((n, u) => n + cost(u), 0);
 
   const groups = [];
@@ -70,7 +74,7 @@ export function chunkBlocks(blocks, { maxTokens = DEFAULT_CHUNK_TOKENS } = {}) {
       // instead so a heading never ends a chunk with its content in the next one.
       let cut = cur.length;
       for (let i = cur.length - 1; i >= 1; i--) {
-        if (isHeadingLike(cur[i]) && sum(cur.slice(0, i)) >= maxTokens / 2 && sum(cur.slice(i)) + unitCost <= maxTokens) {
+        if (isHeadingLike(cur[i].text) && sum(cur.slice(0, i)) >= maxTokens / 2 && sum(cur.slice(i)) + unitCost <= maxTokens) {
           cut = i;
           break;
         }
@@ -84,9 +88,14 @@ export function chunkBlocks(blocks, { maxTokens = DEFAULT_CHUNK_TOKENS } = {}) {
   }
   if (cur.length) groups.push(cur);
 
-  return groups.map((units, index) => {
-    const text = units.join('\n\n');
-    return { index, text, tokens: estimateTokens(text) };
+  return groups.map((group, index) => {
+    const text = group.map((u) => u.text).join('\n\n');
+    const chunk = { index, text, tokens: estimateTokens(text) };
+    if (numbered) {
+      chunk.parts = group.map(({ text: partText, number }) => ({ text: partText, number }));
+      chunk.numbers = [...new Set(group.map((u) => u.number))];
+    }
+    return chunk;
   });
 }
 

@@ -197,16 +197,16 @@ describe('pipeline', () => {
     const id = addLesson(slideText);
     const broken = fakeAi({
       fail: (label) => {
-        if (label === 'the key points') throw new AiError('rate_limit', 'The AI provider is rate-limiting requests (HTTP 429). Wait a minute, then try again.');
+        if (label === 'the key points') throw new AiError('rate_limit', 'The AI provider is rate limiting requests (HTTP 429). Try again shortly.');
       },
     });
     await run(broken, id);
 
     let status = getJobStatus(db, id);
     assert.equal(status.lesson.status, 'failed');
-    assert.match(status.lesson.error, /rate-limiting/);
+    assert.match(status.lesson.error, /rate limiting/);
     assert.deepEqual({ stage: status.job.stage, status: status.job.status }, { stage: 'key_points', status: 'failed' });
-    assert.match(status.job.error, /rate-limiting/);
+    assert.match(status.job.error, /rate limiting/);
     assert.equal(rows('sections', id).length, 1, 'sections were saved before the failure');
     assert.equal(rows('key_points', id).length, 0);
 

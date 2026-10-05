@@ -45,6 +45,7 @@ export function createAiClient({
   timeoutMs = DEFAULT_TIMEOUT_MS,
   retryDelaysMs = DEFAULT_RETRY_DELAYS_MS,
   onRetry = () => {}, // ({ reason, waitMs, attempt }) before each wait, e.g. for a progress log
+  log = console, // gets the provider's error body (keys redacted) when a request fails
 } = {}) {
   // jsonRetries: replies re-asked because they were not valid JSON; httpRetries: requests repeated after a 429 / 5xx /
   // dropped connection; truncated: replies cut off by max_tokens; schemaSent / schemaRejected: requests that carried
@@ -82,6 +83,7 @@ export function createAiClient({
     return {
       baseUrl,
       host,
+      keyEnv: cfg.keyEnv ?? null,
       apiKey: cfg.apiKey || '',
       model: cfg.model || '',
       extraBody: cfg.extraBody && typeof cfg.extraBody === 'object' ? cfg.extraBody : undefined,
@@ -91,37 +93,65 @@ export function createAiClient({
     };
   }
 
-  // Keeps the key out of anything we show or log, even if a provider echoes it back.
-  const redact = (text, apiKey) => (apiKey ? String(text).split(apiKey).join('***') : String(text));
+  // Keeps keys out of anything we show or log: the configured key exactly, and the shapes keys take when a provider
+  // echoes one back (a Bearer header, Google AIza..., sk-..., nvapi-..., key=... in a URL).
+  const redact = (text, apiKey) => {
+    let out = String(text);
+    if (apiKey) out = out.split(apiKey).join('***');
+    return out
+      .replace(/\bBearer\s+[\w.~+/=-]+/gi, 'Bearer ***')
+      .replace(/\b(?:AIza|sk-|nvapi-)[\w-]{8,}/g, '***')
+      .replace(/\b(api[_-]?key|key|token)=[^\s&"']+/gi, '$1=***');
+  };
 
-  async function describeFailure(res, cfg) {
-    let detail = '';
+  // The provider's error text, redacted, on one line. `detail` is the short readable reason, `body` is everything it
+  // sent (for the server log).
+  async function readFailureBody(res, cfg) {
+    let text = '';
     try {
-      const text = await res.text();
-      try {
-        const body = JSON.parse(text);
-        detail = body?.error?.message ?? body?.detail ?? body?.message ?? (typeof body?.error === 'string' ? body.error : '');
-        if (typeof detail !== 'string') detail = JSON.stringify(detail);
-      } catch {
-        detail = text;
-      }
+      text = await res.text();
     } catch {
       // no readable body
     }
-    detail = redact(detail, cfg.apiKey).replace(/\s+/g, ' ').trim().slice(0, 300);
-    const suffix = detail ? ` Provider said: ${detail}` : '';
+    let detail = text;
+    try {
+      const parsed = JSON.parse(text);
+      detail = parsed?.error?.message ?? parsed?.[0]?.error?.message ?? parsed?.detail ?? parsed?.message ?? (typeof parsed?.error === 'string' ? parsed.error : text);
+      if (typeof detail !== 'string') detail = JSON.stringify(detail);
+    } catch {
+      // not JSON: the plain text is the detail
+    }
+    const oneLine = (s) => redact(s, cfg.apiKey).replace(/\s+/g, ' ').trim();
+    return { detail: oneLine(detail).slice(0, 300), body: oneLine(text).slice(0, 2000) };
+  }
+
+  // Messages tell the person what to change. The provider's own wording goes to the server log, not to the screen.
+  async function describeFailure(res, cfg) {
+    const { detail, body } = await readFailureBody(res, cfg);
     const s = res.status;
-    if (s === 401 || s === 403) return new AiError('auth', `The AI provider rejected the API key (HTTP ${s}). Check the key in Settings or .env.${suffix}`);
-    if (s === 404) return new AiError('not_found', `The AI provider couldn't find that endpoint or model (HTTP 404). Check the base URL and model name.${suffix}`);
-    if (s === 429) return new AiError('rate_limit', `The AI provider is rate-limiting requests (HTTP 429). Wait a minute, then try again.${suffix}`);
-    if (s >= 500) return new AiError('provider_error', `The AI provider had a problem (HTTP ${s}). Try again in a moment.${suffix}`);
-    const tooLong = /context|token|too long|maximum/i.test(detail) ? " The model's context window may be too small; try a model with a larger one." : '';
-    return new AiError('bad_request', `The AI provider rejected the request (HTTP ${s}).${tooLong}${suffix}`);
+    log.warn?.(`[ai] ${cfg.host} answered HTTP ${s} for model "${cfg.model || '(none)'}": ${body || '(empty body)'}`);
+    const keyHint = cfg.keyEnv ? ` (or ${cfg.keyEnv} in .env)` : '';
+    let failure;
+    // Google answers an invalid key with 400 "API key not valid" instead of 401, so a 400 is read before it is blamed on the model.
+    if (s === 401 || s === 403 || (s === 400 && /valid api key|api[ _-]?key (?:not valid|is invalid|invalid|expired)|API_KEY_INVALID|invalid api key|incorrect api key|missing api key/i.test(body))) {
+      failure = new AiError('auth', `The AI provider rejected the API key (HTTP ${s}). Check the API key in Settings${keyHint}.`);
+    } else if (s === 404) {
+      failure = new AiError('not_found', `The AI provider couldn't find that model or endpoint (HTTP 404). Check the model in Settings, and the base URL if you use a custom one.`);
+    } else if (s === 429) {
+      failure = new AiError('rate_limit', `The AI provider is rate limiting requests (HTTP 429). Try again shortly.`);
+    } else if (s >= 500) {
+      failure = new AiError('provider_error', `The AI provider had a problem (HTTP ${s}). Try again in a moment.`);
+    } else {
+      const tooLong = /context|token|too long|maximum/i.test(detail) ? " If the model's context window is too small, pick one with a larger window." : '';
+      failure = new AiError('bad_request', `The AI provider rejected the request (HTTP ${s}). Check the model in Settings.${tooLong}`);
+    }
+    failure.detail = detail;
+    return failure;
   }
 
   function describeNetworkError(err, cfg) {
     if (err?.name === 'TimeoutError' || err?.name === 'AbortError') {
-      return new AiError('timeout', `The AI provider didn't answer within ${Math.round(cfg.timeoutMs / 1000)} seconds. It may be overloaded or the model too slow.`, 504);
+      return new AiError('timeout', `The AI provider is slow: it didn't answer within ${Math.round(cfg.timeoutMs / 1000)} seconds. Retry, or pick a faster model in Settings.`, 504);
     }
     const code = err?.cause?.code ?? err?.code;
     if (code === 'ECONNREFUSED') return new AiError('network', `Couldn't connect to the AI provider at ${cfg.host}. Is it running, and is the base URL right?`);

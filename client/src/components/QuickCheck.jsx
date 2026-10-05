@@ -23,7 +23,7 @@ function Question({ question, answer }) {
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           rows={2}
-          placeholder="Write your answer here (optional)"
+          placeholder="Type your answer…"
           disabled={revealed}
         />
       </label>

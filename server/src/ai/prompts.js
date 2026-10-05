@@ -28,7 +28,32 @@ const part = (index, total) => (total > 1 ? `This is part ${index + 1} of ${tota
 
 const lessonText = (text) => `<lesson_text>\n${text}\n</lesson_text>`;
 
-export function sectionsPrompt({ text, index, total, summaryLength, targetSections = 3 }) {
+const UNIT_LABEL = { slide: 'Slide', page: 'Page', paragraph: 'Paragraph' };
+
+// The lesson text with a label line above each block ("[Slide 3]"), so the model can say which slides a section
+// used. A block that was cut in two (a long slide) keeps one label: its second piece follows on the next line.
+export function labelledText(parts, kind) {
+  const word = UNIT_LABEL[kind] ?? UNIT_LABEL.slide;
+  let out = '';
+  parts.forEach((p, i) => {
+    out += i === 0 ? '' : p.number === parts[i - 1].number ? '\n' : '\n\n';
+    if (i === 0 || p.number !== parts[i - 1].number) out += `[${word} ${p.number}]\n`;
+    out += p.text;
+  });
+  return out;
+}
+
+// `parts` + `kind` (from the chunker, when the lesson records its slide / page numbers) make the model name its
+// sources: the numbers of the blocks each section was written from. Without them the text goes in unlabelled.
+export function sectionsPrompt({ text, parts, kind = 'slide', index, total, summaryLength, targetSections = 3 }) {
+  const word = (UNIT_LABEL[kind] ?? UNIT_LABEL.slide).toLowerCase();
+  const sourcesRule = parts
+    ? `
+- "sources": the numbers of the ${word}s this section is written from, as whole numbers in ascending order. Each block of the lesson text starts with a label line such as [${UNIT_LABEL[kind] ?? UNIT_LABEL.slide} 3]; the label is not lesson text, and you take the numbers from those labels. List a ${word} only if the section really uses its content, and never a number that is not on a label in the text you were given.`
+    : '';
+  const shape = parts
+    ? '{"sections":[{"title":"...","content":"...","check_questions":[{"question":"...","answer":"..."}],"sources":[3,4]}]}'
+    : '{"sections":[{"title":"...","content":"...","check_questions":[{"question":"...","answer":"..."}]}]}';
   const system = `${LESSON_RULES}
 
 Task: turn the lesson text into a study review made of bite-sized sections.
@@ -36,13 +61,13 @@ Task: turn the lesson text into a study review made of bite-sized sections.
 - Skip filler with no study value (cover slide, "Thank you", "Any questions?", page numbers).
 - "title": short and specific, at most 8 words.
 - "content": ${LENGTH_GUIDE[summaryLength] ?? LENGTH_GUIDE.detailed}. Plain text in short paragraphs; use lines that start with "- " for lists. No markdown headings, no bold or asterisks. Explain it clearly in your own words but stay faithful to the lesson.
-- "check_questions": 1 or 2 quick questions that test understanding of that section (why / how / what), each with a short answer (1 or 2 sentences) that the section's content supports.
+- "check_questions": 1 or 2 quick questions that test understanding of that section (why / how / what), each with a short answer (1 or 2 sentences) that the section's content supports.${sourcesRule}
 
 Reply with this JSON shape:
-{"sections":[{"title":"...","content":"...","check_questions":[{"question":"...","answer":"..."}]}]}
+${shape}
 If the text has nothing worth studying, reply {"sections":[]}.`;
 
-  return { system, user: `${part(index, total)}${lessonText(text)}` };
+  return { system, user: `${part(index, total)}${lessonText(parts ? labelledText(parts, kind) : text)}` };
 }
 
 export function keyPointsPrompt({ text, index, total, consolidate = false }) {

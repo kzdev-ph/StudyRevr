@@ -16,7 +16,7 @@ export function Header({ settingsActive }) {
         <LogoMark />
         <span>StudyRevr</span>
       </a>
-      <a className="icon-btn" href={paths.tab('settings')} aria-label="Settings" aria-current={settingsActive ? 'page' : undefined}>
+      <a className="icon-btn" href={paths.tab('settings')} aria-label="Settings" title="Settings" aria-current={settingsActive ? 'page' : undefined}>
         <GearIcon />
       </a>
     </header>

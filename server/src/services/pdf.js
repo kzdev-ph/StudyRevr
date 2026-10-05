@@ -62,7 +62,10 @@ function endsParagraph(a, b, width, seam) {
 
 // Takes one string per page, returns one block per page: one paragraph per line. A paragraph that runs over
 // a page seam stays whole and belongs to the page it starts on; pages left empty are dropped.
-export function reflowPdfPages(pages) {
+export const reflowPdfPages = (pages) => reflowPdfPagesNumbered(pages).map((b) => b.text);
+
+// The same blocks with their page number (from 1), which differs from the block's place when a page was dropped.
+export function reflowPdfPagesNumbered(pages) {
   const lines = [];
   pages.forEach((page, pageIndex) => {
     const text = page.replace(BULLET_INLINE, '$1\n$2 ');
@@ -86,13 +89,15 @@ export function reflowPdfPages(pages) {
       current = null;
     }
   });
-  return perPage.map((paragraphs) => paragraphs.join('\n')).filter(Boolean);
+  return perPage.map((paragraphs, i) => ({ page: i + 1, text: paragraphs.join('\n') })).filter((b) => b.text);
 }
 
-// Returns { text, pageCount }. Pages are separated by a blank line; each line in a page is one paragraph.
+// Returns { text, pageCount, numbers }. Pages are separated by a blank line; each line in a page is one paragraph.
+// numbers[k] is the page number of the k-th block.
 export async function extractPdf(buffer) {
   const pdf = await getDocumentProxy(new Uint8Array(buffer));
   const { text } = await extractPdfPages(pdf, { mergePages: false });
   const pages = stripRepeatedLines(text.map((p) => normalizeText(p).replace(/\n{2,}/g, '\n')));
-  return { text: reflowPdfPages(pages).join('\n\n'), pageCount: text.length };
+  const blocks = reflowPdfPagesNumbered(pages);
+  return { text: blocks.map((b) => b.text).join('\n\n'), pageCount: text.length, numbers: blocks.map((b) => b.page) };
 }

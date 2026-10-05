@@ -30,8 +30,10 @@ function scriptedFetch(...steps) {
 
 const makeClient = (fetchImpl, cfg = CFG, extra = {}) => {
   const sleeps = [];
-  const client = createAiClient({ getConfig: () => cfg, fetchImpl, sleep: async (ms) => void sleeps.push(ms), random: () => 0, ...extra });
+  const logs = [];
+  const client = createAiClient({ getConfig: () => cfg, fetchImpl, sleep: async (ms) => void sleeps.push(ms), random: () => 0, log: { warn: (m) => logs.push(m) }, ...extra });
   client.sleeps = sleeps;
+  client.logs = logs;
   return client;
 };
 
@@ -211,22 +213,60 @@ describe('createAiClient errors', () => {
     const client = makeClient(f);
     await assert.rejects(client.generateJSON({ system: 's', user: 'u', schema }), (err) => {
       assert.equal(err.code, 'auth');
-      assert.match(err.message, /rejected the API key \(HTTP 401\)/);
+      assert.match(err.message, /rejected the API key \(HTTP 401\)\. Check the API key in Settings/);
       assert.ok(!err.message.includes(KEY), 'key must be redacted');
-      assert.match(err.message, /Authorization failed for key \*\*\*/);
       return true;
     });
     assert.equal(f.calls.length, 1);
     assert.deepEqual(client.sleeps, []);
   });
 
-  it('maps 404 to a base URL / model hint', async () => {
-    await assert.rejects(run(scriptedFetch(failure(404, { error: { message: 'model not found' } }))), (err) => err.code === 'not_found' && /base URL and model name/.test(err.message) && /model not found/.test(err.message));
+  it('maps 403 to the same API-key message', async () => {
+    await assert.rejects(run(scriptedFetch(failure(403, { error: { message: 'forbidden' } }))), (err) => err.code === 'auth' && /HTTP 403.*API key in Settings/.test(err.message));
+  });
+
+  it('points a 401 at the .env variable of the provider when it has one', async () => {
+    await assert.rejects(run(scriptedFetch(failure(401, {})), { ...CFG, keyEnv: 'GOOGLE_API_KEY' }), (err) => /GOOGLE_API_KEY in \.env/.test(err.message));
+  });
+
+  it('logs the provider error body on the server with the key redacted, and keeps it off the screen', async () => {
+    const f = scriptedFetch(failure(401, { error: { message: `Incorrect key ${KEY}, Bearer abc.def-123 and AIzaSyDUMMYDUMMYDUMMY1234` } }));
+    const client = makeClient(f);
+    await assert.rejects(client.generateJSON({ system: 's', user: 'u', schema }), (err) => {
+      assert.ok(!/Incorrect key|Provider said/.test(err.message), 'the provider wording is not shown');
+      assert.match(err.detail, /Incorrect key \*\*\*/);
+      return true;
+    });
+    assert.equal(client.logs.length, 1);
+    assert.match(client.logs[0], /example\.test answered HTTP 401 for model "acme\/chat-1"/);
+    assert.match(client.logs[0], /Incorrect key \*\*\*, Bearer \*\*\* and \*\*\*/);
+    for (const secret of [KEY, 'abc.def-123', 'AIzaSyDUMMY']) assert.ok(!client.logs[0].includes(secret), `${secret} must not be logged`);
+  });
+
+  it('maps 400 to a "check the model" message', async () => {
+    const f = scriptedFetch(failure(400, { error: { message: 'model "nope" is not supported' } }));
+    await assert.rejects(run(f), (err) => err.code === 'bad_request' && /HTTP 400.*Check the model in Settings/.test(err.message));
+    assert.equal(f.calls.length, 1);
+  });
+
+  it('reads a 400 that says the key is invalid (Google does this) as a key problem, not a model problem', async () => {
+    // both wordings Google has been seen to use for a wrong key; the second is its current reply, copied from a real call
+    for (const message of ['API key not valid. Please pass a valid API key.', 'Please pass a valid API key']) {
+      const body = [{ error: { code: 400, message, status: 'INVALID_ARGUMENT' } }];
+      const f = scriptedFetch(failure(400, body));
+      const client = makeClient(f, { ...CFG, jsonSchema: true });
+      await assert.rejects(client.generateJSON({ system: 's', user: 'u', schema, responseSchema: { name: 'x', schema: { type: 'object' } } }), (err) => err.code === 'auth' && /API key in Settings/.test(err.message) && !/model/.test(err.message));
+      assert.equal(f.calls.length, 1, 'no second try without response_format: the key is the problem');
+    }
+  });
+
+  it('maps 404 to a model / base URL hint', async () => {
+    await assert.rejects(run(scriptedFetch(failure(404, { error: { message: 'model not found' } }))), (err) => err.code === 'not_found' && /Check the model in Settings/.test(err.message) && /base URL/.test(err.message));
   });
 
   it('adds a context-window hint to a 400 about token limits', async () => {
     const f = scriptedFetch(failure(400, { error: { message: "This model's maximum context length is 4096 tokens" } }));
-    await assert.rejects(run(f), (err) => err.code === 'bad_request' && /context window may be too small/.test(err.message));
+    await assert.rejects(run(f), (err) => err.code === 'bad_request' && /context window is too small/.test(err.message) && /Check the model in Settings/.test(err.message));
     assert.equal(f.calls.length, 1);
   });
 
@@ -241,7 +281,7 @@ describe('createAiClient errors', () => {
   it('gives up on a persistent 429 after 5 attempts with a rate-limit message', async () => {
     const f = scriptedFetch(failure(429, { error: 'slow down' }));
     const client = makeClient(f);
-    await assert.rejects(client.generateJSON({ system: 's', user: 'u', schema }), (err) => err.code === 'rate_limit' && /rate-limiting/.test(err.message));
+    await assert.rejects(client.generateJSON({ system: 's', user: 'u', schema }), (err) => err.code === 'rate_limit' && /rate limiting requests \(HTTP 429\)\. Try again shortly/.test(err.message));
     assert.equal(f.calls.length, 5);
     assert.deepEqual(client.sleeps, [2000, 6000, 15000, 30000]);
   });
@@ -269,7 +309,7 @@ describe('createAiClient errors', () => {
   it('retries a timeout once, then reports it (504) with the configured wait', async () => {
     const timeout = () => { throw Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' }); };
     const f = scriptedFetch(timeout);
-    await assert.rejects(run(f, { ...CFG, timeoutMs: 60_000 }), (err) => err.code === 'timeout' && err.status === 504 && /didn't answer within 60 seconds/.test(err.message));
+    await assert.rejects(run(f, { ...CFG, timeoutMs: 60_000 }), (err) => err.code === 'timeout' && err.status === 504 && /provider is slow.*within 60 seconds.*Retry/.test(err.message));
     assert.equal(f.calls.length, 2, 'one retry, not five');
   });
 

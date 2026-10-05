@@ -133,12 +133,12 @@ describe('parallel pipeline', () => {
     const id = addLesson(longLesson());
     const ai = timedAi({
       delay: (label) => (label.includes('part 2 of') ? 2 : 25),
-      fail: (label) => { if (label.includes('part 2 of')) throw new AiError('rate_limit', 'The AI provider is rate-limiting requests (HTTP 429). Wait a minute, then try again.'); },
+      fail: (label) => { if (label.includes('part 2 of')) throw new AiError('rate_limit', 'The AI provider is rate limiting requests (HTTP 429). Try again shortly.'); },
     });
     await run(ai, id, { chunkTokens: 250, concurrency: 4 });
     const failed = getJobStatus(db, id);
     assert.equal(failed.lesson.status, 'failed');
-    assert.match(failed.lesson.error, /rate-limiting/);
+    assert.match(failed.lesson.error, /rate limiting/);
     assert.equal(failed.job.stage, 'sections');
     const progressAtFailure = failed.job.progress;
     assert.equal(rows('sections', id).length, 0);

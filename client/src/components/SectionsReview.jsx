@@ -92,7 +92,7 @@ export default function SectionsReview({ lesson, sections, progress, keyTermCoun
       </div>
 
       <AnimatePresence mode="wait" custom={dir} initial={false}>
-        <motion.div key={index} custom={dir} variants={slide} initial="enter" animate="center" exit="exit" transition={{ duration: 0.16 }}>
+        <motion.div className="review__body" key={index} custom={dir} variants={slide} initial="enter" animate="center" exit="exit" transition={{ duration: 0.16 }}>
           {atEnd ? (
             <EndCard lessonId={lesson.id} sectionCount={count} termCount={keyTermCount} onRestart={() => goTo(0)} />
           ) : (
