@@ -36,7 +36,7 @@ curl http://localhost:3001/api/lessons/1                         # one lesson, w
 curl -X DELETE http://localhost:3001/api/lessons/1               # delete
 ```
 
-Supported formats: `.docx`, `.pptx` and `.pdf` (up to `MAX_UPLOAD_MB`). Slides and PDF pages are separated by a blank line in the extracted text, and lines that repeat on most PDF pages (headers, footers, page numbers) are removed.
+Supported formats: `.docx`, `.pptx` and `.pdf` (up to `MAX_UPLOAD_MB`). Slides and PDF pages are separated by a blank line in the extracted text, with one paragraph per line inside each. For PowerPoint files this includes bullet lists, tables, SmartArt text and (by default) speaker notes under a `Notes:` line; set the `include_speaker_notes` row in the `settings` table to `false` to leave notes out of future uploads. For PDFs, lines that repeat on most pages (headers, footers, page numbers) are removed and wrapped lines are rejoined into paragraphs.
 
 Uploading returns `{ lesson, warning }`. `warning` is set when little text was extracted (for example, image-heavy slides). A PDF with almost no text gets "This PDF looks scanned or image-only; text can't be extracted." (there is no OCR). Old `.doc` / `.ppt` files are rejected with a "save as .docx/.pptx" message.
 

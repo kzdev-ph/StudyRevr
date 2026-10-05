@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { HttpError } from '../middleware/errors.js';
 import { assertSignature, createUpload, fileExtension } from '../middleware/upload.js';
 import { extractText } from '../services/extract.js';
+import { getBoolSetting } from '../services/settings.js';
 
 const SHORT_TEXT_WORDS = 150;
 const SHORT_TEXT_WARNING =
@@ -55,7 +56,8 @@ export function lessonsRouter(db, { maxUploadBytes }) {
         const filename = fixFilename(req.file.originalname);
         const ext = fileExtension(filename);
         assertSignature(req.file.buffer, ext);
-        const { text, wordCount, pageCount } = await extractText(req.file.buffer, ext);
+        const includeNotes = getBoolSetting(db, 'include_speaker_notes', true);
+        const { text, wordCount, pageCount } = await extractText(req.file.buffer, ext, { includeNotes });
 
         const title = body.data.title || filename.slice(0, -ext.length).trim() || 'Untitled lesson';
         const id = createLesson(title, filename, text, wordCount);

@@ -5,7 +5,10 @@ Open-source, mobile-first study app. Students upload a lesson (.docx / .pptx / .
 ## Stack
 - Backend: Node.js (LTS) + Express, ES modules
 - DB: SQLite via better-sqlite3 (single file, migrations on startup)
-- Parsing: mammoth (docx), officeparser (pptx), unpdf (pdf, page by page; lines repeating on most pages such as headers/footers/page numbers are stripped). Pages/slides are separated by a blank line in `raw_text`. Reject .doc/.ppt with a clear "save as docx/pptx" message. Scanned/image-only PDFs are accepted but flagged with a warning (no OCR).
+- Parsing: mammoth (docx), officeparser + jszip (pptx), unpdf (pdf). Reject .doc/.ppt with a clear "save as docx/pptx" message. Scanned/image-only PDFs are accepted but flagged with a warning (no OCR).
+- `raw_text` format: blocks separated by a blank line, one paragraph per line inside a block. A block is a pptx slide or a PDF page (a paragraph that runs over a page seam stays whole, in the page it starts on); for docx every paragraph is its own block. Word count and the low-text warning are computed on this final text.
+  - pptx slide block: slide text (bullets as `- item`, numbered as `1. item`, table rows as `a | b`), then SmartArt text read from `ppt/diagrams`, then, when the `include_speaker_notes` setting is true (default; `settings` table, no UI until Phase 7), a line `Notes:` followed by the speaker notes. Slides are emitted in deck order.
+  - pdf: lines repeating on most pages (headers/footers/page numbers) are stripped; wrapped lines are reflowed into paragraphs, `word-`/`next` line-end hyphens are joined (hyphen kept), inline `»`/`•` bullets get their own line, and a page that starts lowercase after an unterminated sentence is merged into the previous paragraph.
 - Uploads: multer, 20 MB limit, extension + MIME check + file signature check (zip `PK` for docx/pptx, `%PDF` for pdf)
 - Validation: zod for all AI JSON output and request bodies
 - Frontend: React + Vite, Recharts (charts), Motion (`motion` package, formerly Framer Motion) for animations
@@ -18,6 +21,7 @@ Open-source, mobile-first study app. Students upload a lesson (.docx / .pptx / .
 - Mobile-first CSS, dark mode via `prefers-color-scheme` + manual toggle
 - Respect `prefers-reduced-motion` (skip non-essential animations)
 - Every AI call: strict "use only the provided lesson text" instruction, zod validation, one retry on invalid JSON, clear error surfaced to UI
+- Every AI prompt that receives lesson text must explain that a `Notes:` line inside a slide block marks the teacher's spoken explanation of that slide: treat it as lesson content that elaborates the slide, not as a separate topic
 - Long-running generation is async: create a job, frontend polls status
 
 ## AI Layer (provider-agnostic)
@@ -25,7 +29,7 @@ One adapter speaking the OpenAI-compatible `/v1/chat/completions` API. This cove
 - Config: `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL` (env defaults, overridable in Settings, stored in DB)
 - Interface: `generateJSON({ system, user, schema })` → validated object
 - Separate calls per feature (sections/summary, key terms, flashcards, quiz). Never one giant call.
-- Chunk long lessons by slide/heading so small local models (~8k context) work
+- Chunk long lessons by paragraph (one line of `raw_text` = one paragraph), packing paragraphs up to the token budget so small local models (~8k context) work. Slide/page blocks and headings are soft boundaries: prefer to cut between blocks, never split a paragraph, and keep a slide's `Notes:` with its slide where it fits.
 - Request JSON only; strip code fences before parsing
 
 ## Screens
@@ -69,7 +73,7 @@ Drag-drop or pick file → progress states: Extracting → Summarizing → Flash
 
 ### Settings (gear icon)
 - AI provider: presets (NVIDIA NIM, Ollama, llama.cpp, OpenRouter, Custom) that prefill base URL; API key; model; "Test connection"
-- Quiz question count; flashcards per lesson; summary length (short / detailed)
+- Quiz question count; flashcards per lesson; summary length (short / detailed); include speaker notes (`include_speaker_notes`, default on; applies to pptx uploads made after changing it)
 - Flashcard: new cards/day, max reviews/day, learning steps
 - Data: delete lesson, reset flashcard progress, export/import JSON backup
 - About: version, GitHub link, license

@@ -4,7 +4,7 @@ import { Document, Packer, Paragraph, HeadingLevel } from 'docx';
 import PptxGenJS from 'pptxgenjs';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { createApp } from '../src/app.js';
-import { stripRepeatedLines } from '../src/services/extract.js';
+import { reflowPdfPages, stripRepeatedLines } from '../src/services/pdf.js';
 import { openDb, runMigrations } from '../src/db/index.js';
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
