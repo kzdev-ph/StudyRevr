@@ -1,0 +1,93 @@
+import { useEffect, useRef } from 'react';
+import Notice from './Notice.jsx';
+import Prose from './Prose.jsx';
+import QuickCheck from './QuickCheck.jsx';
+import SourcePanel from './SourcePanel.jsx';
+import { SimplerIcon, SourceIcon, TranslateIcon } from './Icons.jsx';
+
+const WORKING = {
+  simple: 'Rewriting this section in simpler words…',
+  filipino: 'Translating this section to Filipino/Taglish…',
+};
+
+function Skeleton({ label }) {
+  return (
+    <div className="skeleton" role="status" aria-live="polite">
+      <p className="skeleton__label">{label}</p>
+      <span className="skeleton__line" />
+      <span className="skeleton__line" />
+      <span className="skeleton__line skeleton__line--short" />
+      <span className="skeleton__line" />
+      <span className="skeleton__line skeleton__line--short" />
+    </div>
+  );
+}
+
+// One section of the review. `variant` is 'summary' | 'simple' | 'filipino'; a rewrite is made on the first tap and
+// then kept, so tapping the button again just shows it. The stored summary is never changed.
+export default function SectionPage({ lesson, section, variant, busy, failure, showSource, focusTitle, onVariant, onRetry, onToggleSource }) {
+  const title = useRef(null);
+  useEffect(() => {
+    if (focusTitle) title.current?.focus({ preventScroll: true });
+  }, [focusTitle, section.id]);
+
+  const simple = section.simple_version;
+  const filipino = section.filipino_version;
+  const showing = variant === 'simple' ? simple : variant === 'filipino' ? filipino : true;
+  const heading = variant === 'filipino' && filipino?.title ? filipino.title : section.title;
+  const questions = variant === 'filipino' && filipino?.check_questions?.length ? filipino.check_questions : section.check_questions;
+
+  return (
+    <div className="page">
+      <h2 className="page__title" ref={title} tabIndex={-1}>
+        {heading}
+      </h2>
+
+      <div className="tools" role="group" aria-label="Ways to read this section">
+        <button type="button" className="chip-btn" aria-pressed={variant === 'simple'} onClick={() => onVariant('simple')}>
+          <SimplerIcon size={18} /> Explain simpler
+        </button>
+        <button type="button" className="chip-btn" aria-pressed={variant === 'filipino'} onClick={() => onVariant('filipino')}>
+          <TranslateIcon size={18} /> Filipino/Taglish
+        </button>
+        <button type="button" className="chip-btn" aria-pressed={showSource} onClick={onToggleSource}>
+          <SourceIcon size={18} /> Original text
+        </button>
+      </div>
+
+      {variant === 'summary' && <Prose text={section.content} />}
+
+      {variant !== 'summary' && busy && <Skeleton label={WORKING[variant]} />}
+
+      {variant !== 'summary' && !busy && failure && (
+        <Notice
+          action={
+            <button type="button" className="btn btn--quiet btn--small" onClick={onRetry}>
+              Try again
+            </button>
+          }
+        >
+          {failure}
+        </Notice>
+      )}
+
+      {variant === 'simple' && !busy && simple && (
+        <>
+          <Prose text={simple.text} />
+          {simple.example && (
+            <aside className="example">
+              <p className="example__label">An everyday way to picture it</p>
+              <Prose text={simple.example} />
+            </aside>
+          )}
+        </>
+      )}
+
+      {variant === 'filipino' && !busy && filipino && <Prose text={filipino.content} />}
+
+      {showSource && <SourcePanel section={section} rawText={lesson.raw_text} filename={lesson.filename} />}
+
+      {showing && !busy && <QuickCheck key={section.id} questions={questions} />}
+    </div>
+  );
+}

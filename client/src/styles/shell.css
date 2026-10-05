@@ -1,0 +1,138 @@
+/* App frame: header on top, a bottom tab bar on phones that becomes a left rail from 56rem. */
+
+.app {
+  min-height: 100dvh;
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--header-h);
+  padding: 0 calc(var(--gutter) - 8px) 0 var(--gutter);
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+}
+
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  font-family: var(--font-read);
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.main {
+  width: 100%;
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 20px var(--gutter) calc(var(--tabbar-h) + var(--safe-bottom) + 28px);
+}
+
+/* ---- tab bar ---- */
+.tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  height: calc(var(--tabbar-h) + var(--safe-bottom));
+  padding-bottom: var(--safe-bottom);
+  background: var(--sheet);
+  border-top: 1px solid var(--line);
+}
+
+.tab {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  color: var(--ink-2);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.tab:hover {
+  color: var(--ink);
+}
+.tab[aria-current='page'] {
+  color: var(--ink);
+}
+.tab__icon,
+.tab__label {
+  position: relative;
+  z-index: 1;
+}
+/* the highlighter swipe: a short stroke behind the active tab's icon */
+.tab__mark {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  width: 52px;
+  height: 28px;
+  margin-left: -26px;
+  border-radius: 14px;
+  background: var(--hi);
+}
+.tab[aria-current='page'] .tab__icon {
+  color: var(--on-hi);
+}
+
+@media (min-width: 56rem) {
+  .app {
+    display: grid;
+    grid-template-columns: var(--rail-w) minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+  }
+  .header {
+    grid-column: 1 / -1;
+    padding: 0 20px;
+  }
+  .tabbar {
+    position: sticky;
+    top: calc(var(--header-h) + 20px);
+    grid-row: 2;
+    align-self: start;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    height: auto;
+    padding: 0 12px 0 16px;
+    background: transparent;
+    border-top: 0;
+  }
+  .tab {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 12px;
+    min-height: 46px;
+    padding: 0 14px;
+    border-radius: 12px;
+    font-size: 0.9375rem;
+  }
+  .tab__mark {
+    inset: 0;
+    width: auto;
+    height: auto;
+    margin: 0;
+    border-radius: 12px;
+  }
+  .tab[aria-current='page'] .tab__label {
+    color: var(--on-hi);
+  }
+  .main {
+    grid-row: 2;
+    padding: 28px 32px 64px;
+    margin: 0;
+    max-width: 52rem;
+  }
+}

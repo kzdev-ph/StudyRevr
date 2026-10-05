@@ -3,6 +3,7 @@ import { errorHandler, notFound } from './middleware/errors.js';
 import { createAiClient } from './ai/client.js';
 import { createPipelineRunner } from './pipeline/runner.js';
 import { lessonsRouter } from './routes/lessons.js';
+import { sectionsRouter } from './routes/sections.js';
 import { settingsRouter } from './routes/settings.js';
 import { resolveAiConfig } from './services/settings.js';
 
@@ -26,6 +27,7 @@ export function createApp(db, config, { ai, runner } = {}) {
 
   app.get('/api/health', (_req, res) => res.json({ ok: true }));
   app.use('/api/lessons', lessonsRouter(db, config, runner));
+  app.use('/api/sections', sectionsRouter({ ai, db }));
   app.use('/api/settings', settingsRouter({ ai, db, config }));
 
   app.use('/api', notFound);

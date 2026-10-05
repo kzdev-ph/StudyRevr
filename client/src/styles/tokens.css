@@ -1,0 +1,102 @@
+/* StudyRevr design tokens.
+   Ink on paper: a navy ink for text and actions, a highlighter yellow for "you are here", and the red margin rule of
+   a school notebook. Light and dark follow the device; Settings can force one through [data-theme]. */
+
+:root {
+  --paper: #f4f5fa;
+  --sheet: #ffffff;
+  --ink: #161a3c;
+  --ink-2: #4f5578;
+  --line: #dbdfef;
+  --line-strong: #bfc5df;
+
+  --accent: #3040d8;
+  --accent-hover: #2432b8;
+  --on-accent: #ffffff;
+  --accent-wash: #e9ebff;
+
+  --hi: #ffe55c;
+  --hi-soft: #fff4b3;
+  --on-hi: #161a3c;
+  --margin: #ec5b78;
+
+  --ok: #17794f;
+  --ok-wash: #e1f3e9;
+  --warn: #7d4a00;
+  --warn-wash: #fff0d1;
+  --danger: #b3263e;
+  --danger-wash: #fde6ea;
+
+  --font-ui: 'Hanken Grotesk Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-read: 'Literata Variable', Georgia, 'Times New Roman', serif;
+
+  --gutter: 16px;
+  --header-h: 56px;
+  --tabbar-h: 64px;
+  --rail-w: 224px;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 18px;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --paper: #0e1126;
+    --sheet: #171b38;
+    --ink: #eceeff;
+    --ink-2: #a3a9d3;
+    --line: #2a3058;
+    --line-strong: #3d4577;
+
+    --accent: #8f9cff;
+    --accent-hover: #aab4ff;
+    --on-accent: #0e1126;
+    --accent-wash: #232a5c;
+
+    --hi: #f2d94a;
+    --hi-soft: #4a4420;
+    --on-hi: #161a3c;
+    --margin: #d9657d;
+
+    --ok: #6fd3a2;
+    --ok-wash: #173a2c;
+    --warn: #f2c46d;
+    --warn-wash: #3d2f10;
+    --danger: #ff8fa1;
+    --danger-wash: #4a1d27;
+
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --paper: #0e1126;
+  --sheet: #171b38;
+  --ink: #eceeff;
+  --ink-2: #a3a9d3;
+  --line: #2a3058;
+  --line-strong: #3d4577;
+
+  --accent: #8f9cff;
+  --accent-hover: #aab4ff;
+  --on-accent: #0e1126;
+  --accent-wash: #232a5c;
+
+  --hi: #f2d94a;
+  --hi-soft: #4a4420;
+  --on-hi: #161a3c;
+  --margin: #d9657d;
+
+  --ok: #6fd3a2;
+  --ok-wash: #173a2c;
+  --warn: #f2c46d;
+  --warn-wash: #3d2f10;
+  --danger: #ff8fa1;
+  --danger-wash: #4a1d27;
+
+  color-scheme: dark;
+}

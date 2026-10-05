@@ -113,3 +113,34 @@ Reply with this JSON shape:
 {"terms":[{"term":"...","definition":"...","evidence":"..."}]}`;
   return { system, user: `${part(index, total)}${lessonText(text)}` };
 }
+
+// On-demand rewrites of one finished review section (our own text, not the teacher's slides, so REVIEW_RULES apply).
+// The "example" is the one place a student-life comparison is allowed; it may not add facts about the topic.
+export function simplifyPrompt({ title, content }) {
+  const system = `${REVIEW_RULES}
+
+Task: a student finds this section of a study review hard to follow. Explain it again in a simpler way.
+- "simple": the same ideas in short sentences and everyday words, as if explaining to a younger student. Explain any technical word right where you use it, using only what the section says. Keep every main idea. Plain text: put each paragraph and each list item on its own line, separated by line breaks; list items start with "- ". No markdown headings, no bold or asterisks. Not longer than the section.
+- "example": one everyday comparison or situation from a student's daily life (1 to 3 sentences) that shows the main idea. It may only illustrate ideas that are in the section: add no new facts, names or numbers about the topic. Write it as plain sentences, with no label like "Example:".
+
+Reply with this JSON shape:
+{"simple":"...","example":"..."}`;
+  return { system, user: `Section title: ${title}\n<section>\n${content}\n</section>` };
+}
+
+// keyTerms: the lesson's key-term names, so the model keeps exactly those words in English.
+// checkQuestions: [{ question, answer }]; the reply must give the same number back, in the same order.
+export function translatePrompt({ title, content, checkQuestions, keyTerms }) {
+  const system = `${REVIEW_RULES}
+
+Task: re-explain this section of a study review in Filipino, the way Filipino students talk: natural Taglish, mixing English words where that is how people say it. Translate the title, the content and each quick-check question and its answer.
+- Keep technical terms in English. ${keyTerms.length ? `These are the lesson's key terms; always keep them in English: ${keyTerms.join('; ')}. ` : ''}The first time a technical term appears in a text, write the English term followed by its Filipino meaning in parentheses, for example "hypothesis (hinuha)". After that, use the English term alone.
+- Say exactly what the section says: do not add, remove or change any fact, number or name.
+- Keep the same layout: short paragraphs, and lines that start with "- " stay list lines. No markdown headings, no bold or asterisks.
+- Return the same number of quick-check questions, in the same order.
+
+Reply with this JSON shape:
+{"title":"...","content":"...","check_questions":[{"question":"...","answer":"..."}]}`;
+  const questions = checkQuestions.map((q, i) => `${i + 1}. Question: ${q.question}\n   Answer: ${q.answer}`).join('\n');
+  return { system, user: `Section title: ${title}\n<section>\n${content}\n</section>\nQuick-check questions:\n${questions || '(none)'}` };
+}

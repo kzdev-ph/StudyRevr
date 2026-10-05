@@ -1,0 +1,42 @@
+import { CardsIcon, QuizIcon } from './Icons.jsx';
+import { paths } from '../lib/router.js';
+
+// What to do after the last section. Flashcards and quizzes are placeholders until those screens exist.
+export default function EndCard({ lessonId, sectionCount, termCount, onRestart }) {
+  return (
+    <section className="endcard" aria-labelledby="whats-next">
+      <h2 id="whats-next" className="endcard__title">
+        What’s next
+      </h2>
+      <p className="endcard__lede">
+        You’ve read all {sectionCount} {sectionCount === 1 ? 'section' : 'sections'}. Now make it stick.
+      </p>
+      <div className="endcard__actions">
+        <a className="endcard__action" href={paths.tab('flashcards')}>
+          <CardsIcon size={26} />
+          <span>
+            <strong>Study flashcards</strong>
+            <small>Flip through the lesson’s cards.</small>
+          </span>
+        </a>
+        <a className="endcard__action" href={paths.tab('quiz')}>
+          <QuizIcon size={26} />
+          <span>
+            <strong>Take a mock quiz</strong>
+            <small>Test yourself on the whole lesson.</small>
+          </span>
+        </a>
+      </div>
+      <div className="endcard__more">
+        {termCount > 0 && (
+          <a className="link-btn" href={paths.lesson(lessonId, 'terms')}>
+            Go over the key terms
+          </a>
+        )}
+        <button type="button" className="link-btn" onClick={onRestart}>
+          Read the sections again
+        </button>
+      </div>
+    </section>
+  );
+}

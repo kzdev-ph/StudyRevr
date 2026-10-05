@@ -89,6 +89,8 @@ Drag-drop or pick file → progress states: Extracting → Summarizing → Flash
 - `lessons` (id, title, filename, raw_text, word_count, status, error, created_at)
 - `jobs` (id, lesson_id, stage, status, error, updated_at)
 - `sections` (id, lesson_id, position, title, content, simple_version, filipino_version, check_questions JSON)
+  - `simple_version` stores JSON `{ text, example }`, `filipino_version` stores JSON `{ title, content, check_questions }`; both are made on demand and cached here, the original `content` is never changed.
+  - `review_progress.last_section` and `completed_sections` are 0-based indices into the lesson's sections in order.
 - `key_points` (id, lesson_id, position, text)
 - `key_terms` (id, lesson_id, term, definition, evidence)
 - `review_progress` (lesson_id, last_section, completed_sections JSON, updated_at)
@@ -117,7 +119,7 @@ Drag-drop or pick file → progress states: Extracting → Summarizing → Flash
 ## Build Phases
 1. Repo scaffold, Express + SQLite + migrations, upload + parsing, lessons API — **done**
 2. AI adapter, job pipeline, sections / key points / key terms generation — **done** (incl. Phase 2.5: provider presets with Google as default, parallel chunk calls, model selection, grounded key terms)
-3. React app shell, tab bar, upload flow, Review tab
+3. React app shell, tab bar, upload flow, Review tab — **done** (incl. `POST /api/sections/:id/simplify|translate` and review-progress save/load)
 4. Flashcard generation + SM-2 + Flashcard tab
 5. Quiz generation + attempts + shuffle animation + Mock Quiz tab
 6. Session logging + Stats tab + CSV export

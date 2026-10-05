@@ -2,7 +2,7 @@
 
 Open-source, mobile-first study app. Upload a lesson (.docx / .pptx / .pdf) and get a sectioned review, Anki-style flashcards, and mock quizzes. Study activity is logged and exportable for research.
 
-> **Status:** Phase 2.5 of 7 — backend with AI generation (sections, key points, key terms) and switchable AI providers. The React client arrives in Phase 3.
+> **Status:** Phase 3 of 7 — React app with the lesson library, upload, processing screen and the Review tab (sections, quick checks, simpler / Filipino-Taglish rewrites, key points, key terms, original text, resume). Flashcard, Mock Quiz, Stats and Settings are placeholders until their phases.
 
 ## Running it
 
@@ -11,8 +11,9 @@ Open-source, mobile-first study app. Upload a lesson (.docx / .pptx / .pdf) and 
 ```bash
 npm install
 cp .env.example .env     # then add your AI key (GOOGLE_API_KEY by default); uploads work without one, AI generation needs it
-npm run dev              # API on http://localhost:3001
-npm test                 # server tests
+npm run dev              # API on http://localhost:3001 and the app on http://localhost:5173 (Vite proxies /api)
+npm test                 # server and client tests
+npm run build            # production build of the client into client/dist
 ```
 
 The SQLite database is created at `server/data/studyrevr.db` on first start, and migrations run automatically.
@@ -91,11 +92,22 @@ npm run pipeline -- Introduction-to-Media-Channels  # partial file name is fine
 npm run pipeline -- lesson.pdf --summary=short --chunk-tokens=1500 --concurrency=3
 ```
 
+### Review endpoints
+
+```bash
+curl -X POST http://localhost:3001/api/sections/1/simplify    # { section_id, kind, version: { text, example }, cached }
+curl -X POST http://localhost:3001/api/sections/1/translate   # { ..., version: { title, content, check_questions } }
+curl -X PUT http://localhost:3001/api/lessons/1/review-progress -H 'content-type: application/json'      -d '{"last_section":2,"completed_sections":[0,1]}'      # 0-based indices into the lesson's sections
+curl http://localhost:3001/api/lessons/1/review-progress      # { review_progress: { last_section, completed_sections, updated_at } | null }
+```
+
+`simplify` and `translate` call the active AI provider once per section and kind, save the result in the `sections` row (`simple_version`, `filipino_version`, as JSON) and answer from that cache afterwards; two taps at the same time share one call. `simplify` gives a plain-words rewrite plus an everyday example; `translate` gives natural Filipino/Taglish for the title, content and quick-check questions, keeping the lesson's key terms in English with the Filipino meaning in parentheses. The stored summary is never changed. `GET /api/lessons/:id` returns both versions (or `null`) on each section, and the saved `review_progress`.
+
 Errors are always JSON: `{ "error": { "message": "..." } }`.
 
 ## Project layout
 
 ```
 server/   Express + SQLite API (ES modules)
-client/   React + Vite app (placeholder until Phase 3)
+client/   React + Vite app (hash routes, Motion, no UI library); client/test has the unit tests for its pure helpers
 ```
