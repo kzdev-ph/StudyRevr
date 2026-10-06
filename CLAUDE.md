@@ -140,7 +140,7 @@ Drag-drop or pick file → progress states: Extracting → Summarizing → Flash
 2. AI adapter, job pipeline, sections / key points / key terms generation — **done** (incl. Phase 2.5: provider presets with Google as default, parallel chunk calls, model selection, grounded key terms)
 3. React app shell, tab bar, upload flow, Review tab — **done** (incl. `POST /api/sections/:id/simplify|translate` and review-progress save/load)
 4. Flashcard generation + SM-2 + Flashcard tab — **done**
-5. Quiz generation + attempts + shuffle animation + Mock Quiz tab
+5. Quiz generation + attempts + shuffle animation + Mock Quiz tab — **done**
 6. Session logging + Stats tab + CSV export
 7. Settings, backup/import, polish, README, LICENSE (MIT)
 
