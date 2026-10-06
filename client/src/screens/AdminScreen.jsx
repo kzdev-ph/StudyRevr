@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import AdminAiSettings from '../components/AdminAiSettings.jsx';
+import AdminBackup from '../components/AdminBackup.jsx';
 import AdminPin from '../components/AdminPin.jsx';
 import { ChevronLeft } from '../components/Icons.jsx';
 import LessonRow from '../components/LessonRow.jsx';
@@ -14,7 +16,8 @@ import { setWarning } from '../lib/warnings.js';
 
 const POLL_MS = 3000;
 // The CSV files, named as they are in the zip.
-const FILES = ['summary', 'sessions', 'flashcard_reviews', 'due_reviews', 'quiz_attempts', 'quiz_answers', 'events'];
+const FILES = ['summary', 'sessions', 'flashcard_reviews', 'due_reviews', 'quiz_attempts', 'quiz_answers', 'events', 'ai_calls'];
+const RUNNING = ['queued', 'running'];
 
 // Lessons: upload, retry (on the lesson's page), delete. Students only read and study them. With a participant code
 // in use (P00 for the researcher), an upload opens the lesson's progress page; without one it stays in the list.
@@ -36,8 +39,10 @@ function LessonsSection({ participant }) {
     load(controller.signal);
     return () => controller.abort();
   }, [load]);
-  // keep refreshing while a lesson is being prepared or its quiz answers are being made
-  const anyProcessing = lessons?.some((l) => l.status === 'processing' || ['queued', 'running'].includes(l.quiz_options?.status));
+  // keep refreshing while a lesson is being prepared, or its quiz answers or simpler / Taglish versions are being made
+  const anyProcessing = lessons?.some(
+    (l) => l.status === 'processing' || RUNNING.includes(l.quiz_options?.status) || RUNNING.includes(l.section_versions?.status),
+  );
   useEffect(() => {
     if (!anyProcessing) return undefined;
     const timer = setInterval(() => load(), POLL_MS);
@@ -72,6 +77,16 @@ function LessonsSection({ participant }) {
     }
   };
 
+  const prepareVersions = async (id) => {
+    setProblem(null);
+    try {
+      await api.prepareVersions(id);
+    } catch (err) {
+      setProblem(err.message);
+    }
+    await load();
+  };
+
   const makeQuizOptions = async (id) => {
     setProblem(null);
     try {
@@ -92,7 +107,7 @@ function LessonsSection({ participant }) {
       {lessons?.length > 0 && (
         <ul className="lessons">
           {lessons.map((lesson) => (
-            <LessonRow key={lesson.id} lesson={lesson} onDelete={remove} onMakeQuizOptions={makeQuizOptions} />
+            <LessonRow key={lesson.id} lesson={lesson} onDelete={remove} onMakeQuizOptions={makeQuizOptions} onPrepareVersions={prepareVersions} />
           ))}
         </ul>
       )}
@@ -239,7 +254,7 @@ function ExportSection() {
       <h2 id="admin-export" className="admin-section__title">
         Research export
       </h2>
-      <p className="muted">CSV files with participant codes only. No settings or API keys are ever included. README.txt in the zip explains every column.</p>
+      <p className="muted">CSV files with participant codes only. No settings or API keys (yours or students’) are ever included. README.txt in the zip explains every column.</p>
       <label className="check-row">
         <input type="checkbox" checked={includeP00} onChange={(e) => setIncludeP00(e.target.checked)} />
         Include P00 (your test data)
@@ -309,6 +324,8 @@ export default function AdminScreen() {
       <LessonsSection participant={participant} />
       <ParticipantsSection />
       <ExportSection />
+      <AdminAiSettings />
+      <AdminBackup />
     </section>
   );
 }

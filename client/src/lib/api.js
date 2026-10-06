@@ -57,6 +57,7 @@ async function request(path, { method = 'GET', body, form, signal, admin = false
 }
 
 // A file from an admin export: fetched with the PIN header (a plain link can't send it), then saved via a blob link.
+// Without `filename`, the name the server gives (Content-Disposition) is used. -> the file name saved
 async function download(path, filename) {
   let res;
   try {
@@ -69,12 +70,14 @@ async function download(path, filename) {
     if (res.status === 401) onRefused(data?.error?.code);
     throw new ApiError(data?.error?.message ?? `The server answered with an error (${res.status}).`, res.status);
   }
+  const name = filename ?? /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? 'download';
   const url = URL.createObjectURL(await res.blob());
-  const link = Object.assign(document.createElement('a'), { href: url, download: filename });
+  const link = Object.assign(document.createElement('a'), { href: url, download: name });
   document.body.append(link);
   link.click();
   link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  return name;
 }
 
 // Fire-and-forget logging: never interrupts studying, and still goes out when the page is closing (keepalive).
@@ -94,6 +97,8 @@ export const api = {
   // makes the AI wrong answers for the quiz (the retry for that step, and for lessons made before it existed)
   makeQuizOptions: (id) => request(`/lessons/${id}/quiz-options`, { method: 'POST', admin: true }),
   deleteLesson: (id) => request(`/lessons/${id}`, { method: 'DELETE', admin: true }),
+  // makes the shared Explain simpler and Filipino/Taglish versions of every section ahead of study day
+  prepareVersions: (id) => request(`/lessons/${id}/section-versions`, { method: 'POST', admin: true }),
   simplifySection: (id) => request(`/sections/${id}/simplify`, { method: 'POST' }),
   translateSection: (id) => request(`/sections/${id}/translate`, { method: 'POST' }),
   saveProgress: (id, progress) => request(`/lessons/${id}/review-progress`, { method: 'PUT', body: progress }),
@@ -121,6 +126,12 @@ export const api = {
   logEvent: (type, extra = {}) => quietly(request('/events', { method: 'POST', body: { type, ...extra }, keepalive: true })),
   getStats: (signal) => request('/stats', { signal }),
 
+  // the student's AI choice for Explain simpler and Filipino/Taglish (Settings, when admin allows own keys)
+  myAi: (signal) => request('/my-ai', { signal }),
+  myAiModels: (provider, apiKey) => request('/my-ai/models', { method: 'POST', body: { provider, apiKey: apiKey || undefined } }),
+  saveMyKey: ({ provider, model, apiKey }) => request('/my-ai/key', { method: 'POST', body: { provider, model, apiKey } }),
+  removeMyKey: () => request('/my-ai/key', { method: 'DELETE' }),
+
   // admin (the PIN header is added once admin is unlocked)
   unlockAdmin: (pin) =>
     fetch('/api/admin/unlock', { method: 'POST', headers: { 'x-admin-pin': pin } }).then(
@@ -136,6 +147,15 @@ export const api = {
   adminParticipants: (signal) => request('/admin/participants', { signal, admin: true }),
   addParticipants: (codes) => request('/admin/participants', { method: 'POST', body: { codes }, admin: true }),
   adminStats: (code, signal) => request(`/admin/participants/${encodeURIComponent(code)}/stats`, { signal, admin: true }),
+  // admin settings: new cards per day, the student-key switch, and the AI provider (the app's Default)
+  appSettings: (signal) => request('/settings', { signal, admin: true }),
+  saveAppSettings: (body) => request('/settings', { method: 'PUT', body, admin: true }),
+  aiSettings: (signal) => request('/settings/ai', { signal, admin: true }),
+  saveAiSettings: (body) => request('/settings/ai', { method: 'PUT', body, admin: true }),
+  aiModels: (provider, signal) => request(`/settings/models?provider=${encodeURIComponent(provider)}`, { signal, admin: true }),
+  testAi: (body) => request('/settings/test-ai', { method: 'POST', body, admin: true }),
+  downloadBackup: () => download('/admin/backup'),
+  lastBackup: (signal) => request('/admin/backup/last', { signal, admin: true }),
   downloadExport: (file, includeP00) => {
     const q = includeP00 ? '?include_p00=1' : '';
     return file === 'all' ? download(`/admin/export.zip${q}`, 'studyrevr-export.zip') : download(`/admin/export/${file}.csv${q}`, `${file}.csv`);

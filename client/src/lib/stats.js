@@ -7,6 +7,7 @@ export const ACTIVITIES = [
 ];
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 // Study time in words: "0 min", "12 min", "1 h 5 min". Rounded to the minute (under a minute shows "<1 min").
 export function studyTime(ms) {
@@ -28,6 +29,15 @@ export function weekRows(days) {
     row.total = Math.round((row.reading + row.flashcards + row.quiz) * 10) / 10;
     return row;
   });
+}
+
+// "Most active day: Tuesday (35 min)." for the week's study days ({ date, reading_ms, flashcards_ms, quiz_ms }); null
+// when there was no study time. A tie goes to the earlier day.
+export function mostActiveDay(days) {
+  const total = (d) => ACTIVITIES.reduce((sum, { key }) => sum + (d[`${key}_ms`] ?? 0), 0);
+  const best = days.reduce((top, d) => (total(d) > (top ? total(top) : 0) ? d : top), null);
+  if (!best) return null;
+  return `Most active day: ${WEEKDAY_NAMES[new Date(`${best.date}T00:00:00Z`).getUTCDay()]} (${studyTime(total(best))}).`;
 }
 
 export const pct = (value) => (value === null || value === undefined ? '–' : `${Math.round(value)}%`);

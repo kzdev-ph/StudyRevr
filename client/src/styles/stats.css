@@ -179,6 +179,10 @@ details.table-view summary {
   font-variant-numeric: tabular-nums;
 }
 
+/* the sitting's peak: the share answered Good or Easy */
+.recap__item--peak {
+  background: var(--accent-wash);
+}
 /* a labelled group around the recap's dl */
 .recap-group {
   width: 100%;

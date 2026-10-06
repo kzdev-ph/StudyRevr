@@ -51,3 +51,12 @@
   color: var(--accent);
   font-weight: 700;
 }
+.admin-sub {
+  font-size: 1.0625rem;
+  font-weight: 700;
+}
+.admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}

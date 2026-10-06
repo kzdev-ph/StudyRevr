@@ -49,7 +49,7 @@ export function formatDuration(ms) {
 // this is the first finished one).
 export function bestLine(percentNow, previousBest) {
   if (previousBest === null || previousBest === undefined) return 'Your first score on this lesson.';
-  if (percentNow > previousBest) return `New best! Your previous best was ${previousBest}%.`;
+  if (percentNow > previousBest) return `New best. Your previous best was ${previousBest}%.`;
   return `Your best on this lesson: ${previousBest}%.`;
 }
 

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { cardsLine, pct, studyTime, weekday, weekRows } from '../src/lib/stats.js';
+import { cardsLine, mostActiveDay, pct, studyTime, weekday, weekRows } from '../src/lib/stats.js';
 import { sessionRecap } from '../src/lib/flashcards.js';
 import { normalizeCode } from '../src/lib/participant.js';
 
@@ -43,5 +43,16 @@ describe('participant codes (client)', () => {
   it('normalizes like the server', () => {
     for (const typed of ['P07', 'p7', ' P 7 ', 'P007']) assert.equal(normalizeCode(typed), 'P07');
     for (const bad of ['', '07', 'Ana', 'P1234']) assert.equal(normalizeCode(bad), null);
+  });
+});
+
+describe('mostActiveDay (Stats week summary)', () => {
+  const day = (date, reading = 0, flashcards = 0, quiz = 0) => ({ date, reading_ms: reading * 60_000, flashcards_ms: flashcards * 60_000, quiz_ms: quiz * 60_000 });
+  it('names the day with the most study time, all activities together', () => {
+    assert.equal(mostActiveDay([day('2026-10-05', 10), day('2026-10-06', 5, 20, 10), day('2026-10-07', 30)]), 'Most active day: Tuesday (35 min).');
+  });
+  it('a tie goes to the earlier day; no study time says nothing', () => {
+    assert.equal(mostActiveDay([day('2026-10-05', 10), day('2026-10-06', 10)]), 'Most active day: Monday (10 min).');
+    assert.equal(mostActiveDay([day('2026-10-05'), day('2026-10-06')]), null);
   });
 });

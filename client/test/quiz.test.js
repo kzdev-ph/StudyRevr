@@ -48,7 +48,7 @@ describe('quiz wording', () => {
   });
   it('compares with the best earlier score', () => {
     assert.equal(bestLine(70, null), 'Your first score on this lesson.');
-    assert.equal(bestLine(90, 80), 'New best! Your previous best was 80%.');
+    assert.equal(bestLine(90, 80), 'New best. Your previous best was 80%.');
     assert.equal(bestLine(80, 80), 'Your best on this lesson: 80%.');
   });
   it('describes a lesson row', () => {

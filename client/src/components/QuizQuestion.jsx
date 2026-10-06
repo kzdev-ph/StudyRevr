@@ -70,7 +70,8 @@ export default function QuizQuestion({ question: q, feedback, onAnswer, busy }) 
             {feedback.correct ? <CheckIcon size={20} /> : <CloseIcon size={20} />}
             {feedback.correct ? 'Correct' : 'Not quite'}
           </p>
-          {(!feedback.correct || tf) && (
+          {/* a true / false answer names the right answer, unless that is the statement just shown (a correct True) */}
+          {(!feedback.correct || (tf && feedback.answer_text !== q.statement)) && (
             <p className="quiz-feedback__answer">
               {tf ? (q.kind === 'term' ? `${q.question} means: ` : 'The right answer: ') : 'The right answer: '}
               <strong>{feedback.answer_text}</strong>

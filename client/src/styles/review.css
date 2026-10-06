@@ -272,7 +272,7 @@
 .source__label {
   margin-bottom: 4px;
   color: var(--ink-2);
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   font-weight: 700;
 }
 .source__notes {
@@ -576,4 +576,7 @@ html:has(.lesson-nav) {
   html:not(:has(.lesson-nav)) {
     scroll-padding-bottom: 16px;
   }
+}
+.fallback-note {
+  font-size: 0.875rem;
 }

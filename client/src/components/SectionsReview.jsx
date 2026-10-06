@@ -26,6 +26,7 @@ export default function SectionsReview({ lesson, sections, progress, keyTermCoun
   const [showSource, setShowSource] = useState(false);
   const [busy, setBusy] = useState({});
   const [failure, setFailure] = useState({});
+  const [note, setNote] = useState({}); // `${sectionId}:${kind}` -> the line shown when a fallback AI answered
 
   useSavedProgress(lesson.id, Math.min(index, count - 1), completed, saved);
 
@@ -60,8 +61,9 @@ export default function SectionsReview({ lesson, sections, progress, keyTermCoun
     setBusy((b) => ({ ...b, [key]: true }));
     setFailure((f) => ({ ...f, [key]: null }));
     try {
-      const { version } = await (kind === 'simple' ? api.simplifySection(target.id) : api.translateSection(target.id));
+      const { version, fallback } = await (kind === 'simple' ? api.simplifySection(target.id) : api.translateSection(target.id));
       onVersion(target.id, kind, version);
+      setNote((n) => ({ ...n, [key]: fallback?.note ?? null }));
     } catch (err) {
       setFailure((f) => ({ ...f, [key]: err.message }));
     } finally {
@@ -104,6 +106,7 @@ export default function SectionsReview({ lesson, sections, progress, keyTermCoun
               variant={variant}
               busy={Boolean(busy[key])}
               failure={failure[key]}
+              note={note[key]}
               showSource={showSource}
               focusTitle={navigated}
               onVariant={chooseVariant}

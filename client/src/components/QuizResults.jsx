@@ -50,9 +50,7 @@ export default function QuizResults({ results, onRetake, busy, headingRef }) {
         <p className="muted">Retake asks the same questions in a new order.</p>
       </div>
 
-      {all ? (
-        <p className="muted">You got every question right.</p>
-      ) : (
+      {all ? null : (
         <section className="stack stack--tight" aria-labelledby="quiz-missed">
           <h2 id="quiz-missed" className="decks-head quiz-missed__head">
             Missed {missed.length === 1 ? 'question' : `questions (${missed.length})`}

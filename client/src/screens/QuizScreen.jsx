@@ -31,7 +31,8 @@ function QuizAction({ row }) {
       </a>
     );
   }
-  if (!row.questions) return <span className="deck__total">Needs 2+ cards</span>;
+  // one card: the line under the title already says why ("Only 1 flashcard. A quiz needs 2.")
+  if (!row.questions) return row.cards === 1 ? null : <span className="deck__total">Needs 2+ cards</span>;
   return (
     <a className="btn btn--primary" href={paths.quiz(row.lesson_id)} aria-label={`Start the quiz on ${prettyTitle(row.title)}`}>
       Start
@@ -101,7 +102,7 @@ export default function QuizScreen() {
           <li key={row.lesson_id} className="deck">
             <div className="deck__main">
               <span className="deck__title">{prettyTitle(row.title)}</span>
-              <span className="deck__total">{lessonQuizLine(row) || (row.cards === 1 ? 'Only 1 flashcard' : row.status === 'ready' && !row.cards ? 'No flashcards yet' : ' ')}</span>
+              <span className="deck__total">{lessonQuizLine(row) || (row.cards === 1 ? 'Only 1 flashcard. A quiz needs 2.' : row.status === 'ready' && !row.cards ? 'No flashcards yet' : ' ')}</span>
             </div>
             <QuizAction row={row} />
           </li>
