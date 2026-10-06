@@ -32,21 +32,15 @@ const keyTermNames = (db, lessonId) => db.prepare('SELECT term FROM key_terms WH
 // concurrency for the wrong-answers batches.
 export function quizRouter({ db, ai, clock = () => new Date(), random = Math.random, tuning = () => ({ concurrency: 1 }), log = console }) {
   const router = Router();
-  const making = new Map(); // lesson id -> the running ensureDistractors, so two quick starts share one AI call
-
   const lessonOr404 = (lessonId) => {
     const lesson = db.prepare('SELECT id, title, status FROM lessons WHERE id = ?').get(lessonId);
     if (!lesson) throw new HttpError(404, 'Lesson not found.');
     return lesson;
   };
 
-  const distractorsFor = (lessonId) => {
-    if (!making.has(lessonId)) {
-      const run = ensureDistractors({ db, ai, lessonId, concurrency: tuning().concurrency ?? 1, now: clock, log }).finally(() => making.delete(lessonId));
-      making.set(lessonId, run);
-    }
-    return making.get(lessonId);
-  };
+  // Normally made when the lesson was processed; this fills in whatever is still missing (older lessons, a failed
+  // stage). Two quick starts, or a start during an admin retry, share one AI call.
+  const distractorsFor = (lessonId) => ensureDistractors({ db, ai, lessonId, concurrency: tuning().concurrency ?? 1, now: clock, log });
 
   // One row per lesson for the Mock Quiz tab: how many questions it supports and the best finished score.
   router.get('/quiz', (req, res) => {

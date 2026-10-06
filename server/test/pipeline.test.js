@@ -40,6 +40,9 @@ function fakeAi({ fail } = {}) {
         value = keepAllCandidates(user);
       } else if (label.startsWith('the key points') || label.startsWith('the merged')) {
         value = { key_points: [`Point ${n}a.`, `Point ${n}b.`] };
+      } else if (label.startsWith('the quiz answer options')) {
+        const numbers = [...user.matchAll(/^\[(\d+)\] Question:/gm)].map((m) => Number(m[1]));
+        value = { items: numbers.map((n) => ({ n, wrong: ['Wrong one.', 'Wrong two.', 'Wrong three.'] })) };
       } else if (label.startsWith('the flashcards')) {
         value = { cards: [{ question: `What does call ${n} ask?`, answer: 'Something from the lesson.', evidence: quoteFromPrompt(user, 8) }] };
       } else {
@@ -80,7 +83,7 @@ describe('pipeline', () => {
     assert.equal(status.lesson.status, 'ready');
     assert.equal(status.lesson.error, null);
     assert.deepEqual({ stage: status.job.stage, status: status.job.status, error: status.job.error }, { stage: 'done', status: 'done', error: null });
-    assert.deepEqual(ai.calls.map((c) => c.label), ['the review sections', 'the key points', 'the key terms', 'the flashcards']);
+    assert.deepEqual(ai.calls.map((c) => c.label), ['the review sections', 'the key points', 'the key terms', 'the flashcards', 'the quiz answer options']);
 
     const [section] = rows('sections', id);
     assert.equal(section.position, 1);
@@ -229,7 +232,7 @@ describe('pipeline', () => {
     assert.equal(getJobStatus(db, id).lesson.status, 'processing');
     const healthy = fakeAi();
     await run(healthy, id);
-    assert.deepEqual(healthy.calls.map((c) => c.label), ['the key points', 'the key terms', 'the flashcards'], 'sections are not regenerated');
+    assert.deepEqual(healthy.calls.map((c) => c.label), ['the key points', 'the key terms', 'the flashcards', 'the quiz answer options'], 'sections are not regenerated');
     status = getJobStatus(db, id);
     assert.equal(status.lesson.status, 'ready');
     assert.equal(status.lesson.error, null);

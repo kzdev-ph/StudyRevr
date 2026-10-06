@@ -1,6 +1,7 @@
 import { chunkLesson, DEFAULT_CHUNK_TOKENS } from '../ai/chunk.js';
 import { HttpError } from '../middleware/errors.js';
 import { flashcardsMax } from '../flashcards/config.js';
+import { cardsNeedingDistractors, ensureDistractors } from '../quiz/distractors.js';
 import { getSetting } from '../services/settings.js';
 import { generateFlashcards } from './flashcards.js';
 import { generateKeyPoints, generateKeyTerms, generateSections } from './generate.js';
@@ -21,7 +22,7 @@ const parseNumbers = (json) => {
 
 const count = (db, table, lessonId) => db.prepare(`SELECT COUNT(*) AS c FROM ${table} WHERE lesson_id = ?`).get(lessonId).c;
 
-// Generates sections, key points, key terms and flashcards for a lesson and saves them, starting at the job's stage.
+// Generates sections, key points, key terms, flashcards and quiz wrong answers for a lesson and saves them, starting at the job's stage.
 // A stage whose output is already saved is skipped, so retrying a failed lesson continues where it stopped. Never
 // throws: the outcome is written to the job and lesson rows. A lesson that was already ready (flashcards made later
 // for an older lesson) stays ready even if this run fails; only its job records the failure. `ai` is { generateJSON }.
@@ -133,6 +134,15 @@ export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUN
         );
       },
     },
+    quiz_options: {
+      // Concept cards still without wrong answers; none (or no concept cards) means nothing to do.
+      saved: () => cardsNeedingDistractors(db, lessonId).length === 0,
+      async run() {
+        const { error } = await ensureDistractors({ db, ai, lessonId, concurrency, log, onProgress: progress });
+        // batches that worked are saved, so a retry only asks for the rest
+        if (error) throw new HttpError(502, `The quiz answer options couldn’t be made: ${error}`);
+      },
+    },
   };
 
   let stage = STAGES[0];
@@ -157,7 +167,10 @@ export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUN
     if (!(err instanceof HttpError)) log.error(`[pipeline] lesson ${lessonId} failed in ${stage}:`, err);
     try {
       updateJob({ stage, status: 'failed', error: message });
-      if (!wasReady) db.prepare(`UPDATE lessons SET status = 'failed', error = ? WHERE id = ?`).run(message, lessonId);
+      // The review and cards are complete by the quiz_options stage, so its failure leaves the lesson ready; the job
+      // keeps the error for admin to retry, and the quiz makes the missing options when first started.
+      if (stage === 'quiz_options') db.prepare(`UPDATE lessons SET status = 'ready', error = NULL WHERE id = ?`).run(lessonId);
+      else if (!wasReady) db.prepare(`UPDATE lessons SET status = 'failed', error = ? WHERE id = ?`).run(message, lessonId);
     } catch (inner) {
       if (!(inner instanceof LessonGone)) throw inner;
     }

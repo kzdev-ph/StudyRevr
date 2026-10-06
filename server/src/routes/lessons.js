@@ -5,6 +5,7 @@ import { participantOf, requireParticipant } from '../middleware/participant.js'
 import { assertSignature, createUpload, fileExtension } from '../middleware/upload.js';
 import { extractText } from '../services/extract.js';
 import { getJobStatus, queueJob } from '../pipeline/jobs.js';
+import { cardsNeedingDistractors } from '../quiz/distractors.js';
 import { parseFilipino, parseSimple } from '../services/section-versions.js';
 import { getBoolSetting } from '../services/settings.js';
 
@@ -30,6 +31,8 @@ const progressBody = z.object({
 });
 
 const SUMMARY_COLUMNS = 'id, title, filename, word_count, status, error, created_at';
+
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 // multer decodes multipart filenames as latin1; recover UTF-8 names (e.g. "Aralin 1 Ñ.docx").
 const fixFilename = (name) => Buffer.from(name, 'latin1').toString('utf8');
@@ -91,8 +94,26 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin) {
     });
   });
 
+  // `quiz_options`: concept cards still without AI wrong answers (`missing`) and, when the last job was making them,
+  // its `status` (queued | running | done | failed) and `error`. Admin uses it to show progress and a retry button.
   router.get('/', (_req, res) => {
-    res.json({ lessons: db.prepare(`SELECT ${SUMMARY_COLUMNS} FROM lessons ORDER BY created_at DESC, id DESC`).all() });
+    const missing = new Map(
+      db
+        .prepare(
+          `SELECT f.lesson_id, COUNT(*) AS missing FROM flashcards f LEFT JOIN quiz_distractors d ON d.flashcard_id = f.id
+           WHERE f.kind = 'concept' AND d.flashcard_id IS NULL GROUP BY f.lesson_id`,
+        )
+        .all()
+        .map((r) => [r.lesson_id, r.missing]),
+    );
+    const lessons = db.prepare(`SELECT ${SUMMARY_COLUMNS} FROM lessons ORDER BY created_at DESC, id DESC`).all();
+    res.json({
+      lessons: lessons.map((lesson) => {
+        const { job } = getJobStatus(db, lesson.id);
+        const own = job?.stage === 'quiz_options';
+        return { ...lesson, quiz_options: { missing: missing.get(lesson.id) ?? 0, status: own ? job.status : null, error: own ? job.error : null } };
+      }),
+    });
   });
 
   // review_progress is the participant's own, or null when no participant is sent (the admin's lesson list)
@@ -165,9 +186,57 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin) {
     res.status(202).json(getJobStatus(db, id));
   });
 
+  // Makes the AI wrong answers for the quiz: the retry for a failed quiz_options stage, and the way to fill them in
+  // for a lesson made before that stage existed. The lesson stays readable while it runs.
+  router.post('/:id/quiz-options', requireAdmin, (req, res) => {
+    const id = parseId(req);
+    const lesson = db.prepare('SELECT status FROM lessons WHERE id = ?').get(id);
+    if (!lesson) throw new HttpError(404, 'Lesson not found.');
+    if (lesson.status === 'processing') throw new HttpError(409, 'This lesson is still being prepared; its quiz answer options are made at the end.');
+    if (lesson.status === 'failed') throw new HttpError(409, 'Retry this lesson first; its quiz answer options are made when it finishes.');
+    const { job } = getJobStatus(db, id);
+    if (job && ['queued', 'running'].includes(job.status)) throw new HttpError(409, 'This lesson is already being worked on.');
+    if (!cardsNeedingDistractors(db, id).length) throw new HttpError(409, 'This lesson has no flashcards that still need quiz answer options.');
+    db.transaction(() => queueJob(db, id, { stage: 'quiz_options', keepLesson: true }))();
+    runner.enqueue(id);
+    res.status(202).json(getJobStatus(db, id));
+  });
+
+  // What other participants have recorded on a lesson (P00, the researcher's test data, doesn't count). Cards, quiz
+  // attempts and their answers are deleted with the lesson; study sessions and events stay but lose their lesson.
+  const participantRecords = (lessonId) => {
+    const count = (from) => db.prepare(`SELECT COUNT(*) AS n FROM ${from} AND p.code <> 'P00'`).get(lessonId).n;
+    return {
+      flashcard_answers: count('flashcard_reviews r JOIN flashcards f ON f.id = r.flashcard_id JOIN participants p ON p.id = r.participant_id WHERE f.lesson_id = ?'),
+      quiz_attempts: count('quiz_attempts a JOIN participants p ON p.id = a.participant_id WHERE a.lesson_id = ?'),
+      quiz_answers: count('quiz_answers qa JOIN quiz_attempts a ON a.id = qa.attempt_id JOIN participants p ON p.id = a.participant_id WHERE a.lesson_id = ?'),
+      sessions: count('study_sessions s JOIN participants p ON p.id = s.participant_id WHERE s.lesson_id = ?'),
+      events: count('events e JOIN participants p ON p.id = e.participant_id WHERE e.lesson_id = ?'),
+    };
+  };
+
+  // A lesson that participants have studied can't be deleted: it would take their answers and quiz attempts with it
+  // and cut their sessions off from the lesson, which the research export needs.
   router.delete('/:id', requireAdmin, (req, res) => {
-    const { changes } = db.prepare('DELETE FROM lessons WHERE id = ?').run(parseId(req));
-    if (!changes) throw new HttpError(404, 'Lesson not found.');
+    const id = parseId(req);
+    if (!db.prepare('SELECT 1 FROM lessons WHERE id = ?').get(id)) throw new HttpError(404, 'Lesson not found.');
+    const records = participantRecords(id);
+    if (Object.values(records).some((n) => n > 0)) {
+      const removed = [
+        records.flashcard_answers && plural(records.flashcard_answers, 'flashcard answer'),
+        records.quiz_attempts && `${plural(records.quiz_attempts, 'quiz attempt')} (${plural(records.quiz_answers, 'quiz answer')})`,
+      ].filter(Boolean);
+      const unlinked = [records.sessions && plural(records.sessions, 'study session'), records.events && plural(records.events, 'event')].filter(Boolean);
+      const effects = [
+        removed.length && `remove ${removed.join(' and ')}`,
+        unlinked.length && `cut ${unlinked.join(' and ')} off from the lesson`,
+      ].filter(Boolean);
+      throw new HttpError(409, `This lesson can’t be deleted: participants have studied it. Deleting it would ${effects.join(' and ')}. Export the research data first if you need a copy.`, {
+        code: 'lesson_has_records',
+        records,
+      });
+    }
+    db.prepare('DELETE FROM lessons WHERE id = ?').run(id);
     res.status(204).end();
   });
 

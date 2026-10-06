@@ -54,7 +54,7 @@ Each value resolves as: a one-off request value → what is saved in the `settin
 1. In `.env`, set `ADMIN_PIN` (at least 6 characters students can't guess) and your AI key. Without `ADMIN_PIN`, admin is off.
 2. `npm run study` builds the app and starts the server. It prints the addresses phones can open, e.g. `http://192.168.1.20:3001`. On Termux, run it the same way; keep the phone awake. The host and the phones must be on the same Wi-Fi.
 3. On any device, open that address, tap **Researcher admin** under the code box (or Settings › Researcher admin), and enter the PIN. In **Admin**:
-   - **Lessons**: upload every lesson and wait until it is ready (students cannot upload, retry, delete or make cards).
+   - **Lessons**: upload every lesson and wait until it is ready; the last step makes the quiz answer options, so students never wait on the AI when they start a quiz (if that step fails the lesson is still usable; use **Retry quiz answers** on its row). Students cannot upload, retry, delete or make cards. A lesson that participants (other than P00) have answered or logged study time on cannot be deleted; the app tells you how many records it would remove.
    - **Participants**: add the codes, e.g. `P01-P10`. Students can only type a code that is on this list; P00 (made by the Phase 6 migration) holds your own earlier test data.
    - **Research export**: `Download all (zip)` or single CSVs; tick **Include P00** to include your test data. `README.txt` in the zip explains every column.
 4. Each student opens the address on their phone and types their code. The code stays on that phone until **Settings › Switch participant**. The header shows the code in use.

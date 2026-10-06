@@ -53,14 +53,14 @@ export const studyFetch = (url, init = {}) => globalThis.fetch(url, { ...init, h
 //   const t = await startStudyApp({ now: '2026-10-05T04:00:00.000Z' });
 //   await t.call('POST', '/api/sessions', { as: 'P01', body: {...} })   // as: participant code; pin: admin PIN
 //   t.now = '...'  moves the clock;  await t.close()
-export async function startStudyApp({ now = '2026-10-05T04:00:00.000Z', adminPin = TEST_PIN, ai, random, db: given } = {}) {
+export async function startStudyApp({ now = '2026-10-05T04:00:00.000Z', adminPin = TEST_PIN, ai, random, runner = { enqueue() {} }, db: given } = {}) {
   const { openDb, runMigrations } = await import('../src/db/index.js');
   const { createApp } = await import('../src/app.js');
   const db = given ?? openDb(':memory:');
   if (!given) runMigrations(db);
   const t = { db, now };
   ai ??= { async generateJSON() { throw new Error('no AI in this test'); } };
-  const app = createApp(db, { maxUploadBytes: 1024 * 1024, adminPin, clientDist: null }, { ai, runner: { enqueue() {} }, clock: () => new Date(t.now), random });
+  const app = createApp(db, { maxUploadBytes: 1024 * 1024, adminPin, clientDist: null }, { ai, runner, clock: () => new Date(t.now), random });
   const server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
   const base = `http://127.0.0.1:${server.address().port}`;
   t.base = base;

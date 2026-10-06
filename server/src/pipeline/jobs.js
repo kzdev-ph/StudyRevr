@@ -1,7 +1,9 @@
 // Job bookkeeping. One `jobs` row per lesson run: `stage` is where it is (or stopped), `status` is
 // queued | running | done | failed. The lesson row mirrors the outcome (processing | ready | failed).
 
-export const STAGES = ['sections', 'key_points', 'key_terms', 'flashcards'];
+// `quiz_options` (the AI's wrong answers for the mock quiz) comes last. A lesson stays usable if it fails: only the
+// job records the failure, and the quiz makes the options itself when first started.
+export const STAGES = ['sections', 'key_points', 'key_terms', 'flashcards', 'quiz_options'];
 
 // Marks the lesson as processing and (re)starts its job at `stage` (default: the first). Call inside the caller's
 // transaction when creating a lesson; also used to retry a failed lesson. `keepLesson` leaves a ready lesson ready

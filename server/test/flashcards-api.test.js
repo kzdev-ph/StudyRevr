@@ -246,8 +246,8 @@ describe('flashcards API', () => {
   describe('making cards for an existing lesson', () => {
     const grounded = () => ({ cards: [{ question: 'What does the researcher change on purpose?', answer: 'The independent variable.', evidence: 'The independent variable is the factor the researcher changes on purpose.' }] });
 
-    it('runs only the flashcards stage and keeps the lesson ready the whole time', async () => {
-      await start(grounded);
+    it('makes the cards and then their quiz answer options, keeping the lesson ready the whole time', async () => {
+      await start((label, user) => (label === 'the quiz answer options' ? { items: [...user.matchAll(/^\[(\d+)\] Question:/gm)].map((m) => ({ n: Number(m[1]), wrong: ['x', 'y', 'z'] })) } : grounded()));
       const id = addLesson('Inquiry');
       db.prepare('INSERT INTO key_terms (lesson_id, term, definition, evidence) VALUES (?, ?, ?, ?)').run(id, 'Random sampling', 'Everyone has an equal chance to be chosen.', 'Random sampling gives every member of the population an equal chance to be chosen.');
       const res = await send('POST', `/api/lessons/${id}/flashcards/generate`);
@@ -256,7 +256,7 @@ describe('flashcards API', () => {
       assert.deepEqual([res.body.job.stage, res.body.job.status], ['flashcards', 'queued']);
 
       await runner.idle();
-      assert.deepEqual(ai.calls.map((c) => c.label), ['the flashcards']);
+      assert.deepEqual(ai.calls.map((c) => c.label), ['the flashcards', 'the quiz answer options']);
       assert.equal(getJobStatus(db, id).lesson.status, 'ready');
       const cards = db.prepare('SELECT kind, front, evidence FROM flashcards WHERE lesson_id = ? ORDER BY position').all(id);
       assert.deepEqual(cards.map((c) => [c.kind, c.front]), [['term', 'Random sampling'], ['concept', 'What does the researcher change on purpose?']]);

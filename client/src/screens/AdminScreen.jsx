@@ -41,7 +41,8 @@ function LessonsSection({ participant }) {
     load(controller.signal);
     return () => controller.abort();
   }, [load]);
-  const anyProcessing = lessons?.some((l) => l.status === 'processing');
+  // keep refreshing while a lesson is being prepared or its quiz answers are being made
+  const anyProcessing = lessons?.some((l) => l.status === 'processing' || ['queued', 'running'].includes(l.quiz_options?.status));
   useEffect(() => {
     if (!anyProcessing) return undefined;
     const timer = setInterval(() => load(), POLL_MS);
@@ -75,6 +76,16 @@ function LessonsSection({ participant }) {
     }
   };
 
+  const makeQuizOptions = async (id) => {
+    setProblem(null);
+    try {
+      await api.makeQuizOptions(id);
+    } catch (err) {
+      setProblem(err.message);
+    }
+    await load();
+  };
+
   return (
     <section className="admin-section" aria-labelledby="admin-lessons">
       <h2 id="admin-lessons" className="admin-section__title">
@@ -85,11 +96,11 @@ function LessonsSection({ participant }) {
       {lessons?.length > 0 && (
         <ul className="lessons" aria-label="Lessons">
           {lessons.map((lesson) => (
-            <LessonRow key={lesson.id} lesson={lesson} onDelete={remove} />
+            <LessonRow key={lesson.id} lesson={lesson} onDelete={remove} onMakeQuizOptions={makeQuizOptions} />
           ))}
         </ul>
       )}
-      <p className="muted">Deleting a lesson removes its review, cards, quizzes and everyone’s answers on them. Study time already logged is kept.</p>
+      <p className="muted">A lesson can only be deleted until a participant (other than P00) has answered its cards or quizzes or logged study time on it; after that Delete is blocked and tells you what it would remove. Export the data first if you need a copy.</p>
     </section>
   );
 }

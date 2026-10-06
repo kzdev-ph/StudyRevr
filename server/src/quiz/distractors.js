@@ -3,8 +3,9 @@ import { mapLimit } from '../ai/pool.js';
 import { distractorsPrompt } from '../ai/prompts.js';
 import { usableWrong } from './build.js';
 
-// Wrong answer options for a lesson's concept cards: made by the AI the first time the lesson is quizzed, saved in
-// quiz_distractors and reused from then on. Cards are sent in batches of at most BATCH_SIZE so each call stays well
+// Wrong answer options for a lesson's concept cards: made by the AI as the last step of lesson processing (the
+// pipeline's `quiz_options` stage), saved in quiz_distractors and reused from then on. Starting a quiz calls the same
+// function as a fallback for any card still without them (an older lesson, or a failed stage). Cards are sent in batches of at most BATCH_SIZE so each call stays well
 // inside the provider's timeout. A batch that fails is not saved, so the next quiz asks again; a batch that worked but
 // gave nothing usable for a card saves [] for it (that card is asked as true / false).
 
@@ -53,9 +54,21 @@ async function makeBatch({ ai, cards, keyTerms }) {
   }));
 }
 
-// Makes and saves wrong answers for every concept card of the lesson that has none.
+const running = new WeakMap(); // db -> Map(lesson id -> the running makeDistractors)
+
+// Makes and saves wrong answers for every concept card of the lesson that has none. While a run for the lesson is in
+// flight, another call (a quiz started during a retry, two quick starts) waits for it instead of asking the AI again.
+// `onProgress({ done, total })` counts finished batches; it is only passed on to the call that starts the run.
 // -> { made: number of cards saved, error: message of the first failed batch, or null }
-export async function ensureDistractors({ db, ai, lessonId, concurrency = 1, batchSize = BATCH_SIZE, now = () => new Date(), log = console }) {
+export function ensureDistractors(options) {
+  const { db, lessonId } = options;
+  if (!running.has(db)) running.set(db, new Map());
+  const byLesson = running.get(db);
+  if (!byLesson.has(lessonId)) byLesson.set(lessonId, makeDistractors(options).finally(() => byLesson.delete(lessonId)));
+  return byLesson.get(lessonId);
+}
+
+async function makeDistractors({ db, ai, lessonId, concurrency = 1, batchSize = BATCH_SIZE, now = () => new Date(), log = console, onProgress }) {
   const cards = cardsNeedingDistractors(db, lessonId);
   if (!cards.length) return { made: 0, error: null };
   const keyTerms = db.prepare('SELECT term FROM key_terms WHERE lesson_id = ? ORDER BY id').all(lessonId).map((t) => t.term);
@@ -65,6 +78,8 @@ export async function ensureDistractors({ db, ai, lessonId, concurrency = 1, bat
   const save = db.prepare('INSERT OR REPLACE INTO quiz_distractors (flashcard_id, choices, made_at) VALUES (?, ?, ?)');
   let made = 0;
   let error = null;
+  let done = 0;
+  onProgress?.({ done, total: batches.length });
   await mapLimit(batches, concurrency, async (batch) => {
     try {
       const results = await makeBatch({ ai, cards: batch, keyTerms });
@@ -80,6 +95,7 @@ export async function ensureDistractors({ db, ai, lessonId, concurrency = 1, bat
       error ??= err.message;
       log.warn(`[quiz] lesson ${lessonId}: wrong answers for ${batch.length} card(s) failed: ${err.message}`);
     }
+    onProgress?.({ done: ++done, total: batches.length });
   });
   return { made, error };
 }

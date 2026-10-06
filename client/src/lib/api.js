@@ -91,6 +91,8 @@ export const api = {
     return request('/lessons', { method: 'POST', form, admin: true });
   },
   retryLesson: (id) => request(`/lessons/${id}/retry`, { method: 'POST', admin: true }),
+  // makes the AI wrong answers for the quiz (the retry for that step, and for lessons made before it existed)
+  makeQuizOptions: (id) => request(`/lessons/${id}/quiz-options`, { method: 'POST', admin: true }),
   deleteLesson: (id) => request(`/lessons/${id}`, { method: 'DELETE', admin: true }),
   simplifySection: (id) => request(`/sections/${id}/simplify`, { method: 'POST' }),
   translateSection: (id) => request(`/sections/${id}/translate`, { method: 'POST' }),

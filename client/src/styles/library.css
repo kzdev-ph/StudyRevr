@@ -51,12 +51,13 @@
 }
 .lesson {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px;
   border-bottom: 1px solid var(--line);
 }
 .lesson__link {
-  flex: 1;
+  flex: 1 1 0;
   min-width: 0;
   display: flex;
   align-items: center;
@@ -89,6 +90,32 @@
 .lesson__chevron {
   flex: none;
   color: var(--ink-2);
+}
+.lesson__extra {
+  flex: 1 0 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 0 0 12px;
+}
+.lesson__extra-text {
+  flex: 1 1 14rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-2);
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+.lesson__extra--failed {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--danger-wash);
+}
+.lesson__extra--failed .lesson__extra-text {
+  color: var(--danger);
 }
 .lesson--confirm {
   flex-direction: column;
@@ -127,6 +154,11 @@
 }
 
 /* processing */
+.processing__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
 .processing__title {
   margin-top: 4px;
   overflow-wrap: anywhere;
