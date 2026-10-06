@@ -1,24 +1,12 @@
 import { Bar, BarChart, CartesianGrid, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { prettyTitle } from '../lib/format.js';
+import { paths } from '../lib/router.js';
 import { ACTIVITIES, cardsLine, pct, studyTime, weekRows } from '../lib/stats.js';
 
-const AXIS = { fill: 'var(--ink-2)', fontSize: 12 };
+const AXIS = { fill: 'var(--ink-2)', fontSize: 14 };
 
 function Swatch({ color }) {
   return <span className="swatch" style={{ '--swatch': color }} aria-hidden="true" />;
-}
-
-function Legend({ items }) {
-  return (
-    <div className="legend">
-      {items.map((it) => (
-        <span key={it.label} className="legend__item">
-          <Swatch color={it.color} />
-          {it.label}
-        </span>
-      ))}
-    </div>
-  );
 }
 
 function WeekTip({ active, payload }) {
@@ -39,7 +27,7 @@ function WeekTip({ active, payload }) {
 }
 
 // Study time this week: a tile per activity, then minutes per day stacked by activity (with a table view).
-function WeekCard({ week }) {
+function WeekCard({ week, own }) {
   const rows = weekRows(week.days);
   const { totals } = week;
   const empty = totals.total_ms === 0;
@@ -49,7 +37,7 @@ function WeekCard({ week }) {
         Study time this week
       </h2>
       <dl className="stat-tiles">
-        <div className="stat-tile">
+        <div className="stat-tile stat-tile--total">
           <dt>Total</dt>
           <dd>{studyTime(totals.total_ms)}</dd>
         </div>
@@ -63,10 +51,18 @@ function WeekCard({ week }) {
         ))}
       </dl>
       {empty ? (
-        <p className="muted">No study time yet this week. Time counts while you read, study flashcards or take a quiz.</p>
+        <>
+          <p className="muted">No study time yet this week. Time counts while you read, study flashcards or take a quiz.</p>
+          {own && (
+            <div>
+              <a className="link-btn" href={paths.library()}>
+                Open a lesson
+              </a>
+            </div>
+          )}
+        </>
       ) : (
         <>
-          <Legend items={ACTIVITIES} />
           <div className="stats-chart" aria-hidden="true">
             <ResponsiveContainer>
               <BarChart data={rows} margin={{ top: 18, right: 4, bottom: 0, left: -18 }} barCategoryGap="22%">
@@ -86,7 +82,7 @@ function WeekCard({ week }) {
                     isAnimationActive={false}
                   >
                     {i === ACTIVITIES.length - 1 && (
-                      <LabelList dataKey="total" position="top" fill="var(--ink-2)" fontSize={12} formatter={(v) => (v >= 1 ? Math.round(v) : v > 0 ? '<1' : '')} />
+                      <LabelList dataKey="total" position="top" fill="var(--ink-2)" fontSize={14} formatter={(v) => (v >= 1 ? Math.round(v) : v > 0 ? '<1' : '')} />
                     )}
                   </Bar>
                 ))}
@@ -95,7 +91,7 @@ function WeekCard({ week }) {
           </div>
           <details className="table-view">
             <summary>Show as a table</summary>
-            <div className="table-wrap">
+            <div className="table-wrap" role="region" aria-label="Study time per day" tabIndex={0}>
               <table className="data-table">
                 <thead>
                   <tr>
@@ -128,7 +124,7 @@ function WeekCard({ week }) {
   );
 }
 
-function CardsCard({ cards, dueTomorrow }) {
+function CardsCard({ cards, dueTomorrow, own }) {
   return (
     <section className="stats-card" aria-labelledby="stats-cards">
       <h2 id="stats-cards" className="stats-card__title">
@@ -152,14 +148,29 @@ function CardsCard({ cards, dueTomorrow }) {
           <dd className="stat-tile__note">{cardsLine(cards.all)}</dd>
         </div>
       </dl>
+      {own && cards.all.reviewed === 0 && (
+        <div>
+          <a className="link-btn" href={paths.tab('flashcards')}>
+            Study flashcards
+          </a>
+        </div>
+      )}
     </section>
   );
 }
 
-const SCORE_SERIES = [
-  { key: 'first_pct', label: 'First try', color: 'var(--series-reading)' },
-  { key: 'best_pct', label: 'Best', color: 'var(--series-flashcards)' },
-];
+// Not the activity colours above (reading / flashcards / quiz time): those would mean two things on one screen.
+const FIRST_TRY = { label: 'First try', color: 'var(--ink-2)' };
+const BEST = { label: 'Best', color: 'var(--accent)' };
+
+// One bar when only one quiz is finished (its first try is also its best), two otherwise.
+const scoreRows = (q) =>
+  q.attempts === 1
+    ? [{ name: 'Score', value: q.best_pct, color: BEST.color }]
+    : [
+        { name: FIRST_TRY.label, value: q.first_pct, color: FIRST_TRY.color },
+        { name: BEST.label, value: q.best_pct, color: BEST.color },
+      ];
 
 // First and best finished quiz score per lesson: one small chart per lesson, so long titles stay readable.
 function QuizCard({ quiz }) {
@@ -172,17 +183,16 @@ function QuizCard({ quiz }) {
         <p className="muted">Finish a mock quiz to see your first and best score per lesson.</p>
       ) : (
         <>
-          <Legend items={SCORE_SERIES} />
           <ul className="quiz-scores">
             {quiz.map((q) => {
-              const rows = SCORE_SERIES.map((s) => ({ name: s.label, value: q[s.key], color: s.color }));
+              const rows = scoreRows(q);
               return (
                 <li key={q.lesson_id}>
                   <p className="quiz-scores__title">{prettyTitle(q.title)}</p>
                   <p className="visually-hidden">
-                    First try {pct(q.first_pct)}, best {pct(q.best_pct)}, {q.attempts} finished {q.attempts === 1 ? 'quiz' : 'quizzes'}.
+                    {q.attempts === 1 ? `Score ${pct(q.best_pct)}, 1 finished quiz.` : `First try ${pct(q.first_pct)}, best ${pct(q.best_pct)}, ${q.attempts} finished quizzes.`}
                   </p>
-                  <div className="stats-chart stats-chart--small" aria-hidden="true">
+                  <div className={`stats-chart stats-chart--small${rows.length === 1 ? ' stats-chart--one' : ''}`} aria-hidden="true">
                     <ResponsiveContainer>
                       <BarChart data={rows} layout="vertical" margin={{ top: 0, right: 44, bottom: 0, left: 0 }} barCategoryGap="18%">
                         <XAxis type="number" domain={[0, 100]} hide />
@@ -191,7 +201,7 @@ function QuizCard({ quiz }) {
                           {rows.map((r) => (
                             <Cell key={r.name} fill={r.color} />
                           ))}
-                          <LabelList dataKey="value" position="right" fill="var(--ink)" fontSize={13} fontWeight={650} formatter={(v) => pct(v)} />
+                          <LabelList dataKey="value" position="right" fill="var(--ink)" fontSize={14} fontWeight={650} formatter={(v) => pct(v)} />
                         </Bar>
                       </BarChart>
                     </ResponsiveContainer>
@@ -210,11 +220,12 @@ function QuizCard({ quiz }) {
 }
 
 // Everything the Stats tab shows for one participant (also used by admin to look at a participant).
-export default function StatsView({ stats }) {
+// `own`: the participant's own Stats tab (empty states link to what to do next; admin's view has no such links).
+export default function StatsView({ stats, own = false }) {
   return (
     <div className="stats stack">
-      <WeekCard week={stats.week} />
-      <CardsCard cards={stats.cards} dueTomorrow={stats.due_tomorrow} />
+      <WeekCard week={stats.week} own={own} />
+      <CardsCard cards={stats.cards} dueTomorrow={stats.due_tomorrow} own={own} />
       <QuizCard quiz={stats.quiz} />
     </div>
   );

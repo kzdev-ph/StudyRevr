@@ -414,6 +414,9 @@
 .done__icon {
   color: var(--ok);
 }
+.done__icon--empty {
+  color: var(--ink-2);
+}
 .done__title {
   font-family: var(--font-read);
   font-size: 1.5rem;

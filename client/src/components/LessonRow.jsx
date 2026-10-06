@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChevronRight, TrashIcon } from './Icons.jsx';
 import { prettyTitle } from '../lib/format.js';
 import { quizOptionsNotice } from '../lib/quizOptions.js';
@@ -60,6 +60,16 @@ function QuizOptions({ lesson, onMake }) {
 export default function LessonRow({ lesson, onDelete, onMakeQuizOptions }) {
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const trash = useRef(null);
+  const keep = useRef(null);
+  const wasConfirming = useRef(false);
+
+  // The button that was pressed is replaced, so focus follows: to "Keep it" (the safe choice), and back to Delete.
+  useEffect(() => {
+    if (confirming) keep.current?.focus();
+    else if (wasConfirming.current) trash.current?.focus();
+    wasConfirming.current = confirming;
+  }, [confirming]);
 
   const remove = async () => {
     setDeleting(true);
@@ -72,10 +82,10 @@ export default function LessonRow({ lesson, onDelete, onMakeQuizOptions }) {
     return (
       <li className="lesson lesson--confirm">
         <p className="lesson__ask">
-          Delete <strong>{prettyTitle(lesson.title)}</strong>? Its review, cards and quizzes go with it.
+          Delete <strong>{prettyTitle(lesson.title)}</strong>? Its review, cards and quizzes go with it. This can’t be undone.
         </p>
         <div className="lesson__confirm-actions">
-          <button type="button" className="btn btn--quiet" onClick={() => setConfirming(false)} disabled={deleting}>
+          <button type="button" className="btn btn--quiet" ref={keep} onClick={() => setConfirming(false)} disabled={deleting}>
             Keep it
           </button>
           <button type="button" className="btn btn--danger" onClick={remove} disabled={deleting}>
@@ -99,7 +109,7 @@ export default function LessonRow({ lesson, onDelete, onMakeQuizOptions }) {
         <ChevronRight size={20} className="lesson__chevron" />
       </a>
       {onDelete && (
-        <button type="button" className="icon-btn" onClick={() => setConfirming(true)} aria-label={`Delete ${prettyTitle(lesson.title)}`}>
+        <button type="button" className="icon-btn" ref={trash} onClick={() => setConfirming(true)} aria-label={`Delete ${prettyTitle(lesson.title)}`}>
           <TrashIcon size={20} />
         </button>
       )}

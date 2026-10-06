@@ -25,7 +25,14 @@
   padding: 12px 14px;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  background: var(--sheet);
+  background: var(--paper);
+}
+/* the week's total leads its three parts */
+.stat-tile--total {
+  grid-column: 1 / -1;
+}
+.stat-tile--total dd {
+  font-size: 2rem;
 }
 .stat-tile dt {
   display: flex;
@@ -77,19 +84,6 @@
 }
 .stats-chart--small {
   height: 92px;
-}
-
-.legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 16px;
-  font-size: 0.875rem;
-  color: var(--ink-2);
-}
-.legend__item {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
 }
 
 .chart-tip {
@@ -183,4 +177,12 @@ details.table-view summary {
   font-size: 1.125rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+}
+
+/* a labelled group around the recap's dl */
+.recap-group {
+  width: 100%;
+}
+.stats-chart--one {
+  height: 52px;
 }

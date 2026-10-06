@@ -34,6 +34,6 @@ export const pct = (value) => (value === null || value === undefined ? '–' : `
 
 // "84 cards, 76% Good or Easy" / "No cards yet"
 export function cardsLine({ reviewed, good_easy_pct: goodEasy }) {
-  if (!reviewed) return 'No cards yet';
+  if (!reviewed) return 'No cards answered yet';
   return `${reviewed} ${reviewed === 1 ? 'card' : 'cards'}, ${pct(goodEasy)} Good or Easy`;
 }

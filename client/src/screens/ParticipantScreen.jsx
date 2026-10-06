@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { LogoMark } from '../components/Icons.jsx';
 import Notice from '../components/Notice.jsx';
 import { api } from '../lib/api.js';
@@ -12,11 +12,16 @@ export default function ParticipantScreen() {
   const [text, setText] = useState('');
   const [problem, setProblem] = useState(null);
   const [checking, setChecking] = useState(false);
+  const input = useRef(null);
 
   const submit = async (event) => {
     event.preventDefault();
     const code = normalizeCode(text);
-    if (!code) return setProblem('Codes look like P01. Check the code your teacher gave you.');
+    if (!code) {
+      setProblem('Codes look like P01. Check the code your teacher gave you.');
+      input.current?.focus();
+      return;
+    }
     setChecking(true);
     setProblem(null);
     try {
@@ -51,6 +56,7 @@ export default function ParticipantScreen() {
               placeholder="P01"
               aria-describedby={problem ? 'gate-problem' : 'gate-hint'}
               aria-invalid={problem ? true : undefined}
+              ref={input}
               autoFocus
             />
           </label>
@@ -63,7 +69,7 @@ export default function ParticipantScreen() {
               Your teacher gave you a code like P01. No password needed.
             </p>
           )}
-          <button type="submit" className="btn btn--primary" disabled={checking || !text.trim()}>
+          <button type="submit" className="btn btn--primary" disabled={checking}>
             {checking ? 'Checking…' : 'Start studying'}
           </button>
         </form>

@@ -19,7 +19,7 @@ export function Header({ settingsActive, participant }) {
       </a>
       {participant && (
         <div className="header__end">
-          <a className="participant-chip" href={paths.tab('settings')} aria-label={`Studying as ${participant}. Settings`} title="Switch participant in Settings">
+          <a className="participant-chip" href={paths.tab('settings')} aria-label={`Studying as ${participant}. Switch participant`} title="Switch participant in Settings">
             <span>{participant}</span>
           </a>
           <a className="icon-btn" href={paths.tab('settings')} aria-label="Settings" title="Settings" aria-current={settingsActive ? 'page' : undefined}>

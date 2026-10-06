@@ -7,6 +7,7 @@ import { api } from '../lib/api.js';
 export default function StatsScreen() {
   const [stats, setStats] = useState(null);
   const [error, setError] = useState(null);
+  const [attempt, setAttempt] = useState(0);
   const logged = useRef(false);
 
   useEffect(() => {
@@ -20,14 +21,37 @@ export default function StatsScreen() {
       (err) => err.name !== 'AbortError' && setError(err.message),
     );
     return () => controller.abort();
-  }, []);
+  }, [attempt]);
+
+  const retry = () => {
+    setError(null);
+    setAttempt((n) => n + 1);
+  };
+  const loading = !stats && !error;
 
   return (
     <section className="stack">
       <h1 className="screen-title">Your stats</h1>
-      {error && <Notice>{error}</Notice>}
-      {!stats && !error && <p className="muted" aria-live="polite">Adding up your study time…</p>}
-      {stats && <StatsView stats={stats} />}
+      {error && (
+        <Notice
+          action={
+            <button type="button" className="btn btn--quiet btn--small" onClick={retry}>
+              Try again
+            </button>
+          }
+        >
+          {error}
+        </Notice>
+      )}
+      {loading && (
+        <p className="muted" aria-hidden="true">
+          Adding up your study time…
+        </p>
+      )}
+      <p className="visually-hidden" role="status">
+        {loading ? 'Adding up your study time…' : ''}
+      </p>
+      {stats && <StatsView stats={stats} own />}
     </section>
   );
 }

@@ -32,7 +32,7 @@ export default function AdminPin() {
           type="password"
           value={pin}
           onChange={(e) => setPin(e.target.value)}
-          autoComplete="off"
+          autoComplete="current-password"
           aria-invalid={problem ? true : undefined}
           aria-describedby="admin-pin-note"
           autoFocus
@@ -40,7 +40,7 @@ export default function AdminPin() {
       </label>
       {problem && <Notice>{problem}</Notice>}
       <p id="admin-pin-note" className="muted">
-        For the researcher. The PIN is set in the server’s .env file (ADMIN_PIN).
+        Ask the researcher for the PIN.
       </p>
       <div>
         <button type="submit" className="btn btn--primary" disabled={checking || !pin}>

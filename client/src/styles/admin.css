@@ -44,6 +44,10 @@
   accent-color: var(--accent);
 }
 .data-table a {
+  display: inline-block;
+  /* a taller tap target than the text, without changing the row height */
+  margin: -10px -6px;
+  padding: 10px 6px;
   color: var(--accent);
   font-weight: 700;
 }

@@ -117,7 +117,7 @@ Drag-drop or pick file → progress states (admin's processing page): review sec
 - Study time this week: tiles (total, reading, flashcards, quiz) and a stacked bar per day Mon–Sun (Recharts) with a "Show as a table" view.
 - Flashcards: reviewed this week, % Good or Easy this week, due tomorrow (cards whose `due_at` falls in the next study day), all-time line.
 - Quiz scores: first and best finished score per lesson (abandoned attempts not counted), one small horizontal bar chart per lesson.
-- Chart colours are existing tokens via `--series-reading` (accent), `--series-flashcards` (margin), `--series-quiz` (warn) in `stats.css`; every value is also written out (tiles, labels, table).
+- Chart colours are existing tokens via `--series-reading` (accent), `--series-flashcards` (margin), `--series-quiz` (warn) in `stats.css` for study time; every value is also written out (tiles, labels, table). The quiz-score bars do not reuse those (they would mean two things on one screen): Best is `--accent`, First try is `--ink-2`, and a lesson with one finished quiz shows a single "Score" bar.
 - Flashcard done card recap: cards studied this sitting, active time, % Good/Easy (undone answers removed; `sessionRecap` in `lib/flashcards.js`).
 
 ### Research export (admin only)
@@ -191,5 +191,13 @@ Phase 7 carry-over from the Phase 5 quiz audit (Low findings, not fixed yet):
 - Quiz tab: the "Preparing" / "Making cards" chips change silently; add a polite live region.
 - Copy repeats: "Needs 2+ cards" next to "Only 1 flashcard"; "You got every question right." under a 10 of 10 score; a correct True answer repeats the statement; drop the exclamation in "New best!".
 - Small text carries meaning (0.8125rem tags, key boxes, `dt`): raise to 0.875rem.
+
+Phase 7 carry-over from the Phase 6 audit (Low findings, not fixed yet):
+- Gate: `autoFocus` opens the phone keyboard over the card and button (skip it on touch devices); the wordmark is `aria-hidden`, so nothing names the app (add a visually-hidden "StudyRevr" to the h1 or `<title>`); `NOT_LISTED` uses a straight `'` where the rest of the app uses `’`; the card is plain and uses no `--hi` / `--margin` notebook motif (e.g. a `--margin` rule down its left edge).
+- Done card recap: it is the peak of the sitting but reads as a flat strip; give the Good or Easy tile `--accent-wash`.
+- Stats: a missing percentage shows "–" (a screen reader says "dash"; use "No answers yet" or an `aria-label`); each lesson's quiz title is a `<p>` (make it an `<h3>`); stacked segments differ by hue only (the table covers it; add a one-line summary such as "Most active day: Tue"); the chart tooltip is hover-only (acceptable, the data is in the tiles and table).
+- `.btn--small` is 40px (Lock admin, export CSV buttons); the project target is 44px.
+- base.css `:focus-visible` forces `border-radius: 4px`, which squares the focus ring on the pill-shaped `.participant-chip` (same cause as the `.quiz-opt` item above).
+- Admin: "Add" should read "Add codes"; the `npm run participant:delete -- P07` hint should be in `<code>`; the "Added P08." message is plain muted text (use `--ok`) and its empty `aria-live` paragraph adds a blank 12px gap.
 
 Work one phase at a time. At the end of each phase: run it, fix errors, summarize what was built and how to test it, then stop.

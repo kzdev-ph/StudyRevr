@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import AdminPin from '../components/AdminPin.jsx';
 import { ChevronLeft } from '../components/Icons.jsx';
 import LessonRow from '../components/LessonRow.jsx';
 import Notice from '../components/Notice.jsx';
 import UploadZone from '../components/UploadZone.jsx';
+import { useFocusWhen } from '../hooks/useFocusWhen.js';
 import { lockAdmin, useAdminPin } from '../lib/admin.js';
 import { api } from '../lib/api.js';
 import { pct } from '../lib/stats.js';
@@ -12,15 +13,8 @@ import { navigate, paths } from '../lib/router.js';
 import { setWarning } from '../lib/warnings.js';
 
 const POLL_MS = 3000;
-const FILES = [
-  { id: 'summary', label: 'Summary' },
-  { id: 'sessions', label: 'Sessions' },
-  { id: 'flashcard_reviews', label: 'Flashcard reviews' },
-  { id: 'due_reviews', label: 'Due reviews (planning)' },
-  { id: 'quiz_attempts', label: 'Quiz attempts' },
-  { id: 'quiz_answers', label: 'Quiz answers' },
-  { id: 'events', label: 'Events' },
-];
+// The CSV files, named as they are in the zip.
+const FILES = ['summary', 'sessions', 'flashcard_reviews', 'due_reviews', 'quiz_attempts', 'quiz_answers', 'events'];
 
 // Lessons: upload, retry (on the lesson's page), delete. Students only read and study them. With a participant code
 // in use (P00 for the researcher), an upload opens the lesson's progress page; without one it stays in the list.
@@ -28,6 +22,7 @@ function LessonsSection({ participant }) {
   const [lessons, setLessons] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [problem, setProblem] = useState(null);
+  const heading = useRef(null);
 
   const load = useCallback(async (signal) => {
     try {
@@ -71,6 +66,7 @@ function LessonsSection({ participant }) {
     try {
       await api.deleteLesson(id);
       setLessons((list) => list.filter((l) => l.id !== id));
+      heading.current?.focus(); // the deleted row had focus
     } catch (err) {
       setProblem(err.message);
     }
@@ -88,19 +84,19 @@ function LessonsSection({ participant }) {
 
   return (
     <section className="admin-section" aria-labelledby="admin-lessons">
-      <h2 id="admin-lessons" className="admin-section__title">
+      <h2 id="admin-lessons" className="admin-section__title" tabIndex={-1} ref={heading}>
         Lessons
       </h2>
       {problem && <Notice onDismiss={() => setProblem(null)}>{problem}</Notice>}
       <UploadZone onFile={upload} onReject={setProblem} busy={uploading} empty={lessons?.length === 0} />
       {lessons?.length > 0 && (
-        <ul className="lessons" aria-label="Lessons">
+        <ul className="lessons">
           {lessons.map((lesson) => (
             <LessonRow key={lesson.id} lesson={lesson} onDelete={remove} onMakeQuizOptions={makeQuizOptions} />
           ))}
         </ul>
       )}
-      <p className="muted">A lesson can only be deleted until a participant (other than P00) has answered its cards or quizzes or logged study time on it; after that Delete is blocked and tells you what it would remove. Export the data first if you need a copy.</p>
+      <p className="muted">Delete is blocked once a participant (other than P00) has studied a lesson. Export the data first if you need a copy.</p>
     </section>
   );
 }
@@ -177,20 +173,20 @@ function ParticipantsSection() {
       </p>
       {problem && <Notice onDismiss={() => setProblem(null)}>{problem}</Notice>}
       {data && (
-        <div className="table-wrap">
+        <div className="table-wrap" role="region" aria-label="Participants and their summary" tabIndex={0}>
           <table className="data-table">
             <caption className="visually-hidden">Participants and their summary</caption>
             <thead>
               <tr>
                 <th scope="col">Code</th>
                 <th scope="col">Days active</th>
-                <th scope="col">Study min</th>
-                <th scope="col">On time</th>
-                <th scope="col">Cards</th>
-                <th scope="col">Good/Easy</th>
-                <th scope="col">Quiz 1st</th>
+                <th scope="col">Study time (min)</th>
+                <th scope="col">On-time rate</th>
+                <th scope="col">Cards reviewed</th>
+                <th scope="col">Good or Easy</th>
+                <th scope="col">Quiz first try</th>
                 <th scope="col">Stats views</th>
-                <th scope="col">Retakes</th>
+                <th scope="col">Quiz retakes</th>
               </tr>
             </thead>
             <tbody>
@@ -224,11 +220,14 @@ function ExportSection() {
   const [includeP00, setIncludeP00] = useState(false);
   const [busy, setBusy] = useState(null);
   const [problem, setProblem] = useState(null);
+  const [done, setDone] = useState('');
   const get = async (file) => {
     setBusy(file);
     setProblem(null);
+    setDone('');
     try {
       await api.downloadExport(file, includeP00);
+      setDone(`Downloaded ${file === 'all' ? 'studyrevr-export.zip' : `${file}.csv`}.`);
     } catch (err) {
       setProblem(err.message);
     } finally {
@@ -246,6 +245,14 @@ function ExportSection() {
         Include P00 (your test data)
       </label>
       {problem && <Notice onDismiss={() => setProblem(null)}>{problem}</Notice>}
+      <p className="visually-hidden" role="status">
+        {busy ? 'Preparing the download…' : done}
+      </p>
+      {done && (
+        <p className="muted" aria-hidden="true">
+          {done}
+        </p>
+      )}
       <div>
         <button type="button" className="btn btn--primary" onClick={() => get('all')} disabled={busy !== null}>
           {busy === 'all' ? 'Preparing…' : 'Download all (zip)'}
@@ -253,8 +260,8 @@ function ExportSection() {
       </div>
       <div className="export-buttons">
         {FILES.map((f) => (
-          <button key={f.id} type="button" className="btn btn--quiet btn--small" onClick={() => get(f.id)} disabled={busy !== null}>
-            {busy === f.id ? 'Preparing…' : `${f.label}.csv`}
+          <button key={f} type="button" className="btn btn--quiet btn--small" onClick={() => get(f)} disabled={busy !== null}>
+            {busy === f ? 'Preparing…' : `${f}.csv`}
           </button>
         ))}
       </div>
@@ -266,6 +273,7 @@ function ExportSection() {
 export default function AdminScreen() {
   const pin = useAdminPin();
   const participant = useParticipant();
+  const heading = useFocusWhen(Boolean(pin)); // after the PIN is accepted the form is gone; focus moves to the page
   const back = participant ? (
     <a className="back" href={paths.tab('settings')}>
       <ChevronLeft size={18} /> Settings
@@ -280,7 +288,9 @@ export default function AdminScreen() {
     return (
       <section className="stack">
         {back}
-        <h1 className="screen-title">Admin</h1>
+        <h1 className="screen-title" tabIndex={-1} ref={heading}>
+          Admin
+        </h1>
         <AdminPin />
       </section>
     );
@@ -289,14 +299,16 @@ export default function AdminScreen() {
     <section className="stack">
       {back}
       <div className="admin-head">
-        <h1 className="screen-title">Admin</h1>
+        <h1 className="screen-title" tabIndex={-1} ref={heading}>
+          Admin
+        </h1>
         <button type="button" className="btn btn--quiet btn--small" onClick={lockAdmin}>
           Lock admin
         </button>
       </div>
+      <LessonsSection participant={participant} />
       <ParticipantsSection />
       <ExportSection />
-      <LessonsSection participant={participant} />
     </section>
   );
 }

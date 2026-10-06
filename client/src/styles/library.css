@@ -148,6 +148,10 @@
   background: var(--accent-wash);
   color: var(--accent);
 }
+.chip--admin {
+  background: var(--accent-wash);
+  color: var(--accent);
+}
 .chip--failed {
   background: var(--danger-wash);
   color: var(--danger);

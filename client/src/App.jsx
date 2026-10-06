@@ -78,6 +78,16 @@ export default function App() {
     mainRef.current?.focus({ preventScroll: true });
   }, [screenKey]);
 
+  // Signing in from the code screen replaces it with the app: move focus to the new screen, not to nothing.
+  const hadParticipant = useRef(participant);
+  useEffect(() => {
+    if (participant && !hadParticipant.current) {
+      window.scrollTo({ top: 0 });
+      mainRef.current?.focus({ preventScroll: true });
+    }
+    hadParticipant.current = participant;
+  }, [participant]);
+
   // Until this device knows who is studying, only the code screen (and the researcher's admin) can open.
   if (!participant && !adminRoute) {
     return (

@@ -25,7 +25,7 @@ describe('stats helpers', () => {
   it('percentages and the cards line', () => {
     assert.equal(pct(null), '–');
     assert.equal(pct(66.7), '67%');
-    assert.equal(cardsLine({ reviewed: 0, good_easy_pct: null }), 'No cards yet');
+    assert.equal(cardsLine({ reviewed: 0, good_easy_pct: null }), 'No cards answered yet');
     assert.equal(cardsLine({ reviewed: 1, good_easy_pct: 100 }), '1 card, 100% Good or Easy');
   });
 });

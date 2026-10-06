@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import FlipCard from '../components/FlipCard.jsx';
-import { CheckIcon, ChevronLeft, UndoIcon } from '../components/Icons.jsx';
+import { CardsIcon, CheckIcon, ChevronLeft, UndoIcon } from '../components/Icons.jsx';
 import Notice from '../components/Notice.jsx';
 import { Counts } from './FlashcardsScreen.jsx';
 import { useStudySession } from '../hooks/useStudySession.js';
@@ -261,20 +261,22 @@ function UndoBar({ undone, onUndo, disabled }) {
 function Recap({ recap }) {
   if (!recap.cards) return null;
   return (
-    <dl className="recap" aria-label="This session">
-      <div className="recap__item">
-        <dt>Cards studied</dt>
-        <dd>{recap.cards}</dd>
-      </div>
-      <div className="recap__item">
-        <dt>Time</dt>
-        <dd>{formatDuration(recap.timeMs)}</dd>
-      </div>
-      <div className="recap__item">
-        <dt>Good or Easy</dt>
-        <dd>{recap.goodEasyPct}%</dd>
-      </div>
-    </dl>
+    <div className="recap-group" role="group" aria-label="This session">
+      <dl className="recap">
+        <div className="recap__item">
+          <dt>Cards studied</dt>
+          <dd>{recap.cards}</dd>
+        </div>
+        <div className="recap__item">
+          <dt>Active time</dt>
+          <dd>{formatDuration(recap.timeMs)}</dd>
+        </div>
+        <div className="recap__item">
+          <dt>Good or Easy answers</dt>
+          <dd>{recap.goodEasyPct}%</dd>
+        </div>
+      </dl>
+    </div>
   );
 }
 
@@ -284,7 +286,7 @@ function DoneCard({ state, recap, deck, headingRef }) {
   const soon = state.next_due_at && Date.parse(state.next_due_at) - Date.now() < REFRESH_WITHIN_MS;
   return (
     <div className="done">
-      <CheckIcon size={36} className="done__icon" />
+      {empty ? <CardsIcon size={36} className="done__icon done__icon--empty" /> : <CheckIcon size={36} className="done__icon" />}
       <h2 className="done__title" tabIndex={-1} ref={headingRef}>{empty ? 'No cards in this deck yet' : soon ? 'Done for now' : 'Done for today'}</h2>
       <p className="done__text">
         {empty
