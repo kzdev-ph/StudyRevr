@@ -8,7 +8,7 @@
 // OPENROUTER_API_KEY), and optionally AI_MODEL, AI_CONCURRENCY, AI_CHUNK_TOKENS, AI_EXTRA_BODY. The key is never printed.
 import fs from 'node:fs';
 import path from 'node:path';
-import { createAiClient } from '../src/ai/client.js';
+import { createAiClient, describeAttempt } from '../src/ai/client.js';
 import { chunkLesson } from '../src/ai/chunk.js';
 import { loadConfig, ROOT_DIR } from '../src/config.js';
 import { openDb, runMigrations } from '../src/db/index.js';
@@ -69,6 +69,7 @@ const chunks = chunkLesson(text, { maxTokens: chunkTokens });
 
 console.log(`# ${path.basename(file)}`);
 console.log(`Provider: ${provider.label} (${provider.baseUrl})  Model: ${provider.model}  Concurrency: ${concurrency}  Temperature: ${provider.temperature}`);
+console.log(`Request timeout: ${provider.timeoutMs / 1000}s  Request limit: ${provider.requestsPerMinute ? `${provider.requestsPerMinute}/min` : 'none'}`);
 console.log(`Extracted ${wordCount} words${pageCount ? ` from ${pageCount} pages` : ''}; ${chunks.length} chunk(s) of ~${chunks.map((c) => c.tokens).join(', ')} tokens (budget ${chunkTokens}).`);
 
 const lessonId = Number(
@@ -80,9 +81,8 @@ const started = Date.now();
 const secondsSince = (t) => ((Date.now() - t) / 1000).toFixed(1);
 const client = createAiClient({
   getConfig: () => resolveAiConfig(db, config.ai),
-  onRetry: ({ reason, waitMs, attempt }) => {
-    console.error(`  retry +${secondsSince(started)}s: ${reason}, waiting ${(waitMs / 1000).toFixed(1)}s before attempt ${attempt + 1}`);
-  },
+  // every HTTP attempt, as it happens: a hung request shows as a "start" with no end until its timeout
+  onAttempt: (e) => console.error(`  [+${secondsSince(started)}s] ${describeAttempt(e)}`),
 });
 const callTimes = [];
 const timed = {
@@ -134,8 +134,11 @@ console.log(`\n## Flashcards (${cards.length})`);
 for (const c of cards) console.log(`- [${c.kind}] ${c.front}\n    -> ${c.back}\n    evidence: "${c.evidence}"`);
 
 // Per-call times add up to more than the wall-clock time when calls overlap; the wall-clock time is what you wait.
-const { calls, promptTokens, completionTokens, jsonRetries, httpRetries, truncated, schemaSent, schemaRejected } = client.stats;
+const { calls, promptTokens, completionTokens, jsonRetries, httpRetries, truncated, schemaSent, schemaRejected, attempts, failedAttempts, retries, throttledMs } = client.stats;
+const byReason = (counts) => Object.entries(counts).map(([reason, n]) => `${n} ${reason}`).join(', ') || 'none';
 const avg = callTimes.length ? (callTimes.reduce((a, b) => a + b, 0) / callTimes.length / 1000).toFixed(1) : '0.0';
 console.log(`\nDone in ${seconds}s: ${calls} AI call(s) (avg ${avg}s each), ${promptTokens} prompt + ${completionTokens} completion tokens.`);
-console.log(`Retries: ${jsonRetries} invalid-JSON, ${httpRetries} rate-limit/server, ${truncated} cut-off replies.`);
+console.log(`HTTP attempts: ${attempts}; failed: ${byReason(failedAttempts)}; retried: ${byReason(retries)} (${httpRetries} in all).`);
+console.log(`Retries: ${jsonRetries} invalid-JSON, ${httpRetries} timeout/rate-limit/server/network, ${truncated} cut-off replies.`);
+console.log(`Waited ${(throttledMs / 1000).toFixed(1)}s in all for the client-side request limit.`);
 console.log(`Structured output (response_format json_schema): sent on ${schemaSent} request(s), rejected by the provider on ${schemaRejected}.`);

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { HttpError } from '../middleware/errors.js';
 import { parseJsonReply } from './json.js';
 import { chatModelIds } from './models.js';
+import { createRateLimiter } from './ratelimit.js';
 
 // Failures talking to the AI provider. `message` is written for the student/teacher to read; `code` is for code.
 // It is an HttpError so a route can let it propagate and get a JSON error with the right status.
@@ -16,7 +17,7 @@ const DEFAULT_TIMEOUT_MS = 120_000;
 // Waits before the 2nd..5th HTTP attempt (429 / 5xx / network). Hosted providers like NIM answer 503 "overloaded" in
 // bursts that last tens of seconds, so the later waits are long.
 const DEFAULT_RETRY_DELAYS_MS = [2_000, 6_000, 15_000, 30_000];
-const MAX_RETRY_AFTER_MS = 30_000;
+const MAX_RETRY_AFTER_MS = 60_000; // a provider asking for a longer wait gets this one (then the next attempt)
 const MAX_TOKENS_CEILING = 16_000; // upper bound when a cut-off reply is retried with a bigger budget
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 
@@ -28,6 +29,31 @@ export function normalizeBaseUrl(url) {
 }
 
 const sleepMs = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// The wait a 429 names, in ms, or null: the Retry-After header (seconds or an HTTP date), else the RetryInfo
+// "retryDelay": "34s" that Google puts in the error body.
+export function retryAfterMs(header, bodyText = '', now = Date.now()) {
+  const value = String(header ?? '').trim();
+  if (/^\d+(\.\d+)?$/.test(value)) return Math.round(Number(value) * 1000);
+  if (value) {
+    const date = Date.parse(value);
+    if (Number.isFinite(date)) return Math.max(0, date - now);
+  }
+  const delay = /"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"/.exec(bodyText);
+  return delay ? Math.round(Number(delay[1]) * 1000) : null;
+}
+
+// One onAttempt event as a log line: "the key terms #1 start", "the key terms #1 ok 1.9s",
+// "the flashcards #1 FAIL timeout after 25.0s, retry in 2.0s", "the flashcards #2 waited 4.0s for the request limit".
+export function describeAttempt(e) {
+  const tag = `${e.label} #${e.attempt}`;
+  const secs = (ms) => `${(ms / 1000).toFixed(1)}s`;
+  if (e.type === 'throttle') return `${tag} waited ${secs(e.waitMs)} for the request limit`;
+  if (e.type === 'start') return `${tag} start`;
+  if (e.type === 'ok') return `${tag} ok ${secs(e.ms)}`;
+  const why = e.status ? `${e.reason} (HTTP ${e.status})` : e.reason;
+  return `${tag} FAIL ${why} after ${secs(e.ms)}${e.retry ? `, retry in ${secs(e.waitMs)}` : ', giving up'}`;
+}
 
 const issueSummary = (error) =>
   error.issues
@@ -42,15 +68,35 @@ export function createAiClient({
   fetchImpl = globalThis.fetch,
   sleep = sleepMs,
   random = Math.random,
+  now = Date.now,
   timeoutMs = DEFAULT_TIMEOUT_MS,
   retryDelaysMs = DEFAULT_RETRY_DELAYS_MS,
   onRetry = () => {}, // ({ reason, waitMs, attempt }) before each wait, e.g. for a progress log
+  // every HTTP attempt: { type: 'throttle' | 'start' | 'ok' | 'fail', label, attempt, ms, status, reason, retry, waitMs }
+  // reason (on 'fail'): timeout | rate_limit (429) | server (5xx) | network | http_<status> (not retried)
+  onAttempt = () => {},
   log = console, // gets the provider's error body (keys redacted) when a request fails
 } = {}) {
   // jsonRetries: replies re-asked because they were not valid JSON; httpRetries: requests repeated after a 429 / 5xx /
   // dropped connection; truncated: replies cut off by max_tokens; schemaSent / schemaRejected: requests that carried
-  // response_format json_schema, and those the provider refused (then repeated without it).
-  const stats = { calls: 0, promptTokens: 0, completionTokens: 0, jsonRetries: 0, httpRetries: 0, truncated: 0, schemaSent: 0, schemaRejected: 0 };
+  // response_format json_schema, and those the provider refused (then repeated without it). attempts: HTTP requests
+  // sent; failedAttempts / retries: failed attempts and the ones retried, by reason (timeouts included);
+  // throttledMs: time spent waiting for the client-side request limit.
+  const stats = {
+    calls: 0,
+    promptTokens: 0,
+    completionTokens: 0,
+    jsonRetries: 0,
+    httpRetries: 0,
+    truncated: 0,
+    schemaSent: 0,
+    schemaRejected: 0,
+    attempts: 0,
+    failedAttempts: {},
+    retries: {},
+    throttledMs: 0,
+  };
+  const limiter = createRateLimiter({ now, sleep });
   const noJsonSchema = new Set(); // hosts that rejected response_format; not sent there again
 
   // Randomizes a wait by up to +25% so parallel calls that were rate-limited together don't retry in lockstep.
@@ -90,6 +136,7 @@ export function createAiClient({
       jsonSchema: Boolean(cfg.jsonSchema),
       temperature: typeof cfg.temperature === 'number' ? cfg.temperature : undefined,
       timeoutMs: cfg.timeoutMs > 0 ? cfg.timeoutMs : timeoutMs,
+      requestsPerMinute: cfg.requestsPerMinute > 0 ? cfg.requestsPerMinute : 0,
     };
   }
 
@@ -159,16 +206,40 @@ export function createAiClient({
     return new AiError('network', `Couldn't reach the AI provider at ${cfg.host} (${redact(code ?? err?.message ?? 'network error', cfg.apiKey)}).`);
   }
 
-  // One HTTP exchange, retrying rate limits, 5xx and dropped connections with a short wait.
-  async function send(cfg, path, { method = 'GET', body } = {}) {
+  // One failed attempt: counted by reason, reported to onAttempt (and onRetry when it will be retried).
+  function attemptFailed({ label, attempt, startedAt, reason, status, retry, waitMs }) {
+    stats.failedAttempts[reason] = (stats.failedAttempts[reason] ?? 0) + 1;
+    if (retry) {
+      stats.httpRetries += 1;
+      stats.retries[reason] = (stats.retries[reason] ?? 0) + 1;
+      onRetry({ reason: status ? `HTTP ${status}` : reason, waitMs, attempt });
+    }
+    onAttempt({ type: 'fail', label, attempt, ms: now() - startedAt, reason, status, retry, waitMs: retry ? waitMs : 0 });
+  }
+
+  // One HTTP exchange -> the parsed JSON reply. Rate limits (429), 5xx and dropped connections are retried after a
+  // wait; a timeout is retried once. The reply body is read inside the attempt, under the same timeout, so a reply that
+  // stalls halfway is a timeout like one that never starts. Each attempt first takes a slot from the client-side limit
+  // (cfg.requestsPerMinute) and is reported to onAttempt: 'throttle' (waited for a slot), 'start', 'ok', 'fail'.
+  async function send(cfg, path, { method = 'GET', body, label = path } = {}) {
     const headers = { Accept: 'application/json' };
     if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`;
     if (body !== undefined) headers['Content-Type'] = 'application/json';
+    const limitKey = `${cfg.host}|${cfg.model}`;
 
     let timedOut = false; // a timeout is retried once: a stuck request often succeeds when sent again
-    for (let attempt = 0; ; attempt++) {
-      const canRetry = attempt < retryDelaysMs.length;
+    for (let attempt = 1; ; attempt++) {
+      const canRetry = attempt <= retryDelaysMs.length;
+      const waitedMs = await limiter.acquire(limitKey, cfg.requestsPerMinute);
+      if (waitedMs) {
+        stats.throttledMs += waitedMs;
+        onAttempt({ type: 'throttle', label, attempt, waitMs: waitedMs });
+      }
+      stats.attempts += 1;
+      const startedAt = now();
+      onAttempt({ type: 'start', label, attempt });
       let res;
+      let text;
       try {
         res = await fetchImpl(`${cfg.baseUrl}${path}`, {
           method,
@@ -176,35 +247,43 @@ export function createAiClient({
           body: body === undefined ? undefined : JSON.stringify(body),
           signal: AbortSignal.timeout(cfg.timeoutMs),
         });
+        if (res.ok) text = await res.text();
       } catch (err) {
         const failure = describeNetworkError(err, cfg);
         // A refused/unknown host won't fix itself in seconds; a timeout already cost the full wait, so it gets one retry.
         const hopeless = /ECONNREFUSED|ENOTFOUND/.test(String(err?.cause?.code)) || (failure.code === 'timeout' && timedOut);
-        if (!canRetry || hopeless) throw failure;
+        const retry = canRetry && !hopeless;
+        const waitMs = retry ? jitter(retryDelaysMs[attempt - 1]) : 0;
+        attemptFailed({ label, attempt, startedAt, reason: failure.code, retry, waitMs });
+        if (!retry) throw failure;
         if (failure.code === 'timeout') timedOut = true;
-        const waitMs = jitter(retryDelaysMs[attempt]);
-        stats.httpRetries += 1;
-        onRetry({ reason: failure.code, waitMs, attempt: attempt + 1 });
         await sleep(waitMs);
         continue;
       }
-      if (res.ok) return res;
+      if (res.ok) {
+        onAttempt({ type: 'ok', label, attempt, ms: now() - startedAt, status: res.status });
+        return parseReply(text, cfg);
+      }
       if (canRetry && RETRYABLE_STATUS.has(res.status)) {
-        const retryAfter = Number(res.headers.get('retry-after'));
-        res.body?.cancel().catch(() => {}); // free the connection; no need to wait for it
-        const waitMs = jitter(Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter * 1000, MAX_RETRY_AFTER_MS) : retryDelaysMs[attempt]);
-        stats.httpRetries += 1;
-        onRetry({ reason: `HTTP ${res.status}`, waitMs, attempt: attempt + 1 });
+        const reason = res.status === 429 ? 'rate_limit' : 'server';
+        const errorText = await res.text().catch(() => '');
+        const named = reason === 'rate_limit' ? retryAfterMs(res.headers.get('retry-after'), errorText, now()) : null;
+        const waitMs = jitter(named !== null ? Math.min(named, MAX_RETRY_AFTER_MS) : retryDelaysMs[attempt - 1]); // jitter only adds: Retry-After is still respected
+        // Under a client-side limit, the provider's wait holds every call to this model, not just this one.
+        if (named !== null && cfg.requestsPerMinute > 0) limiter.pause(limitKey, now() + waitMs);
+        attemptFailed({ label, attempt, startedAt, reason, status: res.status, retry: true, waitMs });
         await sleep(waitMs);
         continue;
       }
+      const reason = res.status === 429 ? 'rate_limit' : res.status >= 500 ? 'server' : `http_${res.status}`;
+      attemptFailed({ label, attempt, startedAt, reason, status: res.status, retry: false });
       throw await describeFailure(res, cfg);
     }
   }
 
-  async function readJson(res, cfg) {
+  function parseReply(text, cfg) {
     try {
-      return await res.json();
+      return JSON.parse(text);
     } catch {
       throw new AiError('bad_response', `The AI provider didn't return JSON. Is ${cfg.baseUrl} an OpenAI-compatible endpoint (it should end in /v1)?`);
     }
@@ -214,26 +293,25 @@ export function createAiClient({
   // `responseSchema` ({ name, schema } as JSON Schema) is sent as response_format only to providers that support it;
   // if one turns out not to, the request is repeated without it and the host is remembered.
   // AI_EXTRA_BODY options are merged in, but can't replace the model or the messages.
-  async function chat({ messages, maxTokens = 4000, temperature, responseSchema, config }) {
+  async function chat({ messages, maxTokens = 4000, temperature, responseSchema, config, label }) {
     const cfg = readConfig({ needModel: true }, config);
     // sampling temperature: this call > the provider's setting (preset default 0.2); AI_EXTRA_BODY can still override it
     const body = { temperature: temperature ?? cfg.temperature ?? 0.2, max_tokens: maxTokens, stream: false, ...cfg.extraBody, model: cfg.model, messages };
     const useSchema = Boolean(responseSchema) && cfg.jsonSchema && !noJsonSchema.has(cfg.host);
-    let res;
+    let data;
     if (useSchema) {
       const withFormat = { ...body, response_format: { type: 'json_schema', json_schema: { name: responseSchema.name, schema: responseSchema.schema } } };
       try {
         stats.schemaSent += 1;
-        res = await send(cfg, '/chat/completions', { method: 'POST', body: withFormat });
+        data = await send(cfg, '/chat/completions', { method: 'POST', body: withFormat, label });
       } catch (err) {
         if (err.code !== 'bad_request') throw err;
         stats.schemaRejected += 1;
-        res = await send(cfg, '/chat/completions', { method: 'POST', body });
+        data = await send(cfg, '/chat/completions', { method: 'POST', body, label });
         noJsonSchema.add(cfg.host); // the same request works without response_format, so that was the problem
       }
     }
-    res ??= await send(cfg, '/chat/completions', { method: 'POST', body });
-    const data = await readJson(res, cfg);
+    data ??= await send(cfg, '/chat/completions', { method: 'POST', body, label });
     const choice = data?.choices?.[0];
     if (!choice) throw new AiError('bad_response', "The AI provider's reply had no answer in it. Check that the model name is a chat model.");
     stats.calls += 1;
@@ -264,6 +342,7 @@ export function createAiClient({
         temperature,
         responseSchema,
         config,
+        label,
       });
       if (finishReason === 'length') stats.truncated += 1;
       if (finishReason === 'length' && budget) budget = Math.min(budget * 2, MAX_TOKENS_CEILING);
@@ -310,8 +389,7 @@ export function createAiClient({
   // (the caller then offers a free-text model id).
   async function listModels(config) {
     const cfg = readConfig({ needModel: false }, config);
-    const res = await send(cfg, '/models');
-    return chatModelIds(await readJson(res, cfg));
+    return chatModelIds(await send(cfg, '/models', { label: 'the model list' }));
   }
 
   return { chat, generateJSON, testConnection, listModels, stats };

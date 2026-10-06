@@ -7,6 +7,8 @@
 //   temperature  sampling temperature for the pipeline's calls (low: faithful to the lesson, steady JSON)
 //   timeoutMs    how long one request may take before it is abandoned (and retried once)
 //   jsonSchema   the endpoint accepts response_format: { type: 'json_schema' } (zod still validates every reply)
+//   models       per-model tuning that replaces the preset's: { [model id]: { timeoutMs, requestsPerMinute } }, where
+//                requestsPerMinute is a client-side limit on HTTP requests (retries included) to that model
 export const DEFAULT_PROVIDER = 'google';
 export const DEFAULT_TEMPERATURE = 0.2;
 export const DEFAULT_TIMEOUT_MS = 300_000; // slow local and reasoning models need a long wait
@@ -32,6 +34,10 @@ export const PRESETS = {
     keyEnv: 'GOOGLE_API_KEY',
     needsKey: true,
     jsonSchema: true,
+    models: {
+      // Normal calls take 1-4 s, so a request silent for 25 s is stuck; the free tier allows 15 requests a minute.
+      'gemini-3.5-flash-lite': { timeoutMs: 25_000, requestsPerMinute: 15 },
+    },
   },
   'nvidia-nim': {
     id: 'nvidia-nim',
@@ -103,6 +109,13 @@ export const PRESETS = {
 
 // Gemini's /models lists ids as "models/gemini-..."; the chat endpoint wants the bare id.
 export const bareModelId = (id) => String(id ?? '').trim().replace(/^models\//, '');
+
+// The tuning a preset gives one model: its `models` entry over the preset's own values. -> { timeoutMs, requestsPerMinute }
+export function modelTuning(provider, model) {
+  const preset = PRESETS[provider];
+  const own = preset?.models?.[bareModelId(model)] ?? {};
+  return { timeoutMs: own.timeoutMs ?? preset?.timeoutMs, requestsPerMinute: own.requestsPerMinute ?? preset?.requestsPerMinute };
+}
 
 export const PROVIDER_IDS = Object.keys(PRESETS);
 export const isProviderId = (id) => typeof id === 'string' && Object.hasOwn(PRESETS, id);

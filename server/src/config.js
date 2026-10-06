@@ -56,7 +56,7 @@ export function loadConfig(env = process.env) {
         openrouter: env.OPENROUTER_API_KEY || '',
       },
       // Left undefined, these come from the provider preset.
-      timeoutMs: timeoutSeconds && timeoutSeconds * 1000, // per request (google 60 s, others 300 s)
+      timeoutMs: timeoutSeconds && timeoutSeconds * 1000, // per request (google 60 s, gemini-3.5-flash-lite 25 s, others 300 s)
       chunkTokens: positiveInt(env.AI_CHUNK_TOKENS), // lesson tokens per AI call
       concurrency: positiveInt(env.AI_CONCURRENCY), // parallel AI calls within one pipeline stage
       keyTermsMax: positiveInt(env.KEY_TERMS_MAX), // key terms kept per lesson (default 12)

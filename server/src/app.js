@@ -1,6 +1,6 @@
 import express from 'express';
 import { errorHandler, notFound } from './middleware/errors.js';
-import { createAiClient } from './ai/client.js';
+import { createAiClient, describeAttempt } from './ai/client.js';
 import { createPipelineRunner } from './pipeline/runner.js';
 import { flashcardsRouter } from './routes/flashcards.js';
 import { lessonsRouter } from './routes/lessons.js';
@@ -13,6 +13,8 @@ import { resolveAiConfig } from './services/settings.js';
 export function createApp(db, config, { ai, runner, clock } = {}) {
   ai ??= createAiClient({
     getConfig: () => resolveAiConfig(db, config.ai),
+    // every HTTP attempt to the provider (start, end, failure reason), so a hung or retried request shows in the log
+    onAttempt: (e) => (e.type === 'fail' ? console.warn : console.log)(`[ai] ${describeAttempt(e)}`),
   });
   runner ??= createPipelineRunner({
     db,

@@ -64,12 +64,21 @@ describe('resolveAiConfig', () => {
     assert.equal(resolveAiConfig(db, env({ AI_TEMPERATURE: '0.5' })).temperature, 0.9);
   });
 
-  it('timeout: google 60 s, every other preset 300 s, AI_TIMEOUT_SECONDS overrides both', () => {
-    assert.equal(resolveAiConfig(db, env()).timeoutMs, 60_000);
+  it('timeout: gemini-3.5-flash-lite 25 s, other google models 60 s, every other preset 300 s, AI_TIMEOUT_SECONDS overrides all', () => {
+    assert.equal(resolveAiConfig(db, env()).timeoutMs, 25_000, 'the default google model has its own tuning');
+    assert.equal(resolveAiConfig(db, env(), { model: 'models/gemini-3.5-flash-lite' }).timeoutMs, 25_000, 'models/ prefix ignored');
+    assert.equal(resolveAiConfig(db, env(), { model: 'gemini-3.5-pro' }).timeoutMs, 60_000);
     for (const id of PROVIDER_IDS.filter((p) => p !== 'google')) assert.equal(resolveAiConfig(db, env(), { provider: id }).timeoutMs, 300_000, id);
     assert.equal(resolveAiConfig(db, env({ AI_TIMEOUT_SECONDS: '90' })).timeoutMs, 90_000);
     assert.equal(resolveAiConfig(db, env({ AI_TIMEOUT_SECONDS: '90' }), { provider: 'ollama' }).timeoutMs, 90_000);
-    assert.equal(resolveAiConfig(db, env({ AI_TIMEOUT_SECONDS: 'x' })).timeoutMs, 60_000, 'a bad value is ignored');
+    assert.equal(resolveAiConfig(db, env({ AI_TIMEOUT_SECONDS: 'x' })).timeoutMs, 25_000, 'a bad value is ignored');
+  });
+
+  it('request limit: 15 a minute for gemini-3.5-flash-lite only', () => {
+    assert.equal(resolveAiConfig(db, env()).requestsPerMinute, 15);
+    db.prepare("INSERT INTO settings (key, value) VALUES ('ai_model:google', 'gemini-3.5-pro')").run();
+    assert.equal(resolveAiConfig(db, env()).requestsPerMinute, undefined, 'another google model: no limit');
+    for (const id of PROVIDER_IDS.filter((p) => p !== 'google')) assert.equal(resolveAiConfig(db, env(), { provider: id }).requestsPerMinute, undefined, id);
   });
 
   it('uses the .env key of the active provider only', () => {

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { bareModelId, parseTemperature, DEFAULT_PROVIDER, inferProvider, isProviderId, PRESETS, PROVIDER_IDS } from '../ai/providers.js';
+import { bareModelId, modelTuning, parseTemperature, DEFAULT_PROVIDER, inferProvider, isProviderId, PRESETS, PROVIDER_IDS } from '../ai/providers.js';
 
 // Reads a boolean from the settings table; a missing or unrecognised value falls back to `fallback`.
 export function getBoolSetting(db, key, fallback) {
@@ -51,16 +51,19 @@ export function resolveAiConfig(db, envAi = {}, overrides = {}) {
 
   const saved = (field) => getSetting(db, providerKey(field, provider));
   const apiKey = overrides.apiKey || saved('api_key') || env.apiKey || envAi.keys?.[provider] || '';
+  const model = bareModelId(overrides.model || saved('model') || env.model || preset.model);
+  const tuning = modelTuning(provider, model);
   return {
     provider,
     label: preset.label,
     baseUrl: overrides.baseUrl || saved('base_url') || env.baseUrl || preset.baseUrl,
     apiKey,
-    model: bareModelId(overrides.model || saved('model') || env.model || preset.model),
+    model,
     chunkTokens: getIntSetting(db, 'ai_chunk_tokens') ?? envAi.chunkTokens ?? preset.chunkTokens,
     concurrency: getIntSetting(db, 'ai_concurrency') ?? envAi.concurrency ?? preset.concurrency,
     temperature: getTemperatureSetting(db, 'ai_temperature') ?? envAi.temperature ?? preset.temperature,
-    timeoutMs: envAi.timeoutMs ?? preset.timeoutMs,
+    timeoutMs: envAi.timeoutMs ?? tuning.timeoutMs, // AI_TIMEOUT_SECONDS > the model's tuning > the preset
+    requestsPerMinute: tuning.requestsPerMinute, // client-side limit, from the preset's model tuning (none: unlimited)
     extraBody: env.extraBody,
     jsonSchema: preset.jsonSchema,
     needsKey: preset.needsKey,
