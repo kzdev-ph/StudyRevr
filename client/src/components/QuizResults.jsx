@@ -1,15 +1,15 @@
 import { CheckIcon, QuizIcon, RetryIcon } from './Icons.jsx';
 import { api } from '../lib/api.js';
 import { truncateAtWord } from '../lib/format.js';
-import { bestLine, formatDuration, questionText, scoreLine } from '../lib/quiz.js';
+import { bestLine, formatDuration, questionText, scoreLine, yesNo } from '../lib/quiz.js';
 import { paths } from '../lib/router.js';
 
 const EVIDENCE_MAX = 220;
 
-// True / false: "True", or "False" with what is actually right.
+// Yes / no (stored as True / False): "Yes", or "No" with what is actually right.
 const rightAnswer = (m) => {
-  if (m.type !== 'tf' || m.right_answer === 'True') return m.right_answer;
-  return `False. ${m.kind === 'term' ? `${m.question} means: ` : 'The right answer: '}${m.answer_text}`;
+  if (m.type !== 'tf' || m.right_answer === 'True') return yesNo(m, m.right_answer);
+  return `No. ${m.kind === 'term' ? `${m.question} means: ` : 'The right answer: '}${m.answer_text}`;
 };
 
 // The end of a quiz: the score, the questions that were missed (with the right answer and the lesson quote),
@@ -50,9 +50,7 @@ export default function QuizResults({ results, onRetake, busy, headingRef }) {
         <p className="muted">Retake asks the same questions in a new order.</p>
       </div>
 
-      {all ? (
-        <p className="muted">You got every question right.</p>
-      ) : (
+      {all ? null : (
         <section className="stack stack--tight" aria-labelledby="quiz-missed">
           <h2 id="quiz-missed" className="decks-head quiz-missed__head">
             Missed {missed.length === 1 ? 'question' : `questions (${missed.length})`}
@@ -64,7 +62,7 @@ export default function QuizResults({ results, onRetake, busy, headingRef }) {
                 <dl className="quiz-missed__answers">
                   <div>
                     <dt>Your answer</dt>
-                    <dd className="quiz-missed__yours">{m.your_answer ?? 'Not answered'}</dd>
+                    <dd className="quiz-missed__yours">{m.your_answer === null || m.your_answer === undefined ? 'Not answered' : yesNo(m, m.your_answer)}</dd>
                   </div>
                   <div>
                     <dt>Right answer</dt>

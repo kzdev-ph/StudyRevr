@@ -44,6 +44,7 @@ a {
 
 button,
 input,
+select,
 textarea {
   font: inherit;
   color: inherit;
@@ -243,6 +244,15 @@ p .link-btn {
 .segmented__item input:focus-visible + span {
   outline: 3px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* a success line (a live region); while empty it is taken out of the flow, so it leaves no gap */
+.status-ok {
+  color: var(--ok);
+  font-weight: 600;
+}
+.status-ok:empty {
+  position: absolute;
 }
 
 /* notices */

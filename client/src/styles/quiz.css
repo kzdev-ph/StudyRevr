@@ -125,12 +125,6 @@
   display: block;
   font-weight: 400;
 }
-.quiz-q__label {
-  color: var(--ink-2);
-  font-family: var(--font-ui);
-  font-size: 0.9375rem;
-  font-weight: 650;
-}
 
 .quiz-opts {
   display: flex;
@@ -156,9 +150,12 @@
   text-align: left;
   transition: background-color 0.12s, border-color 0.12s;
 }
-.quiz-opt:not(:disabled):hover {
-  border-color: var(--accent);
-  background: var(--accent-wash);
+/* only where a pointer can hover: on a touch screen :hover sticks to the tapped option */
+@media (hover: hover) {
+  .quiz-opt:not(:disabled):hover {
+    border-color: var(--accent);
+    background: var(--accent-wash);
+  }
 }
 .quiz-opt:disabled {
   cursor: default;
@@ -174,7 +171,7 @@
   border-radius: 4px;
   color: var(--ink-2);
   font-family: var(--font-ui);
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   font-weight: 700;
 }
 .quiz-opt__text {
@@ -285,7 +282,7 @@
 }
 .quiz-missed__answers dt {
   color: var(--ink-2);
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   font-weight: 700;
 }
 .quiz-missed__yours {

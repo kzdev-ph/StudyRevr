@@ -1,7 +1,7 @@
 import { Bar, BarChart, CartesianGrid, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { prettyTitle } from '../lib/format.js';
 import { paths } from '../lib/router.js';
-import { ACTIVITIES, cardsLine, pct, studyTime, weekRows } from '../lib/stats.js';
+import { ACTIVITIES, cardsLine, mostActiveDay, pct, studyTime, weekRows } from '../lib/stats.js';
 
 const AXIS = { fill: 'var(--ink-2)', fontSize: 14 };
 
@@ -89,6 +89,7 @@ function WeekCard({ week, own }) {
               </BarChart>
             </ResponsiveContainer>
           </div>
+          <p className="muted">{mostActiveDay(week.days)}</p>
           <details className="table-view">
             <summary>Show as a table</summary>
             <div className="table-wrap" role="region" aria-label="Study time per day" tabIndex={0}>

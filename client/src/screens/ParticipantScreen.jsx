@@ -5,7 +5,9 @@ import { api } from '../lib/api.js';
 import { normalizeCode, setParticipant } from '../lib/participant.js';
 import { paths } from '../lib/router.js';
 
-const NOT_LISTED = "That code isn't on the list. Check with your teacher.";
+const NOT_LISTED = 'That code isn’t on the list. Check with your teacher.';
+// On a phone, focusing the field at once opens the keyboard over the card and its button; there, the student taps it.
+const TOUCH = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
 
 // Shown until this device knows who is studying. Type-only: codes are never listed or suggested here.
 export default function ParticipantScreen() {
@@ -57,7 +59,7 @@ export default function ParticipantScreen() {
               aria-describedby={problem ? 'gate-problem' : 'gate-hint'}
               aria-invalid={problem ? true : undefined}
               ref={input}
-              autoFocus
+              autoFocus={!TOUCH}
             />
           </label>
           {problem ? (

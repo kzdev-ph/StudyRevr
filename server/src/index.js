@@ -3,11 +3,16 @@ import { createApp } from './app.js';
 import { loadConfig } from './config.js';
 import { openDb, runMigrations } from './db/index.js';
 import { failInterruptedJobs } from './pipeline/jobs.js';
+import { removePidFile, writePidFile } from './server-pid.js';
+import { removeLeftoverBackups } from './services/backup.js';
 
 const config = loadConfig();
 const db = openDb(config.dbPath);
 const applied = runMigrations(db);
 if (applied.length) console.log(`[db] applied migrations: ${applied.join(', ')}`);
+
+const leftover = removeLeftoverBackups(config.dbPath);
+if (leftover) console.log(`[backup] removed ${leftover} temporary backup file(s) left by an earlier run`);
 
 const interrupted = failInterruptedJobs(db);
 if (interrupted) console.log(`[pipeline] marked ${interrupted} unfinished lesson(s) as failed after a restart; they can be retried`);
@@ -19,7 +24,9 @@ const server = app.listen(config.port, () => {
   const lan = Object.values(os.networkInterfaces()).flat().filter((a) => a && a.family === 'IPv4' && !a.internal);
   for (const a of lan) console.log(`[server] on this network: http://${a.address}:${config.port}`);
   if (!config.adminPin) console.log('[server] admin is off: set ADMIN_PIN in .env to upload lessons, add participants and export data');
+  writePidFile(config.dbPath); // npm run restore refuses while this server runs
 });
+process.on('exit', () => removePidFile(config.dbPath));
 
 const shutdown = () => {
   server.close(() => {

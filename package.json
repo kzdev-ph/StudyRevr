@@ -14,9 +14,13 @@
     "test": "npm test -w server && npm test -w client",
     "pipeline": "npm run pipeline -w server --",
     "study": "npm run build -w client && npm run start -w server",
-    "participant:delete": "npm run participant:delete -w server --"
+    "participant:delete": "npm run participant:delete -w server --",
+    "restore": "npm run restore -w server --"
   },
   "devDependencies": {
     "concurrently": "^9.0.0"
+  },
+  "overrides": {
+    "shell-quote": "^1.12.0"
   }
 }

@@ -1,5 +1,5 @@
 // Withdrawal: deletes every record of one participant (flashcard schedule and answers, quiz attempts and answers,
-// review progress, sessions, events) and the code itself. Shared lessons and cards stay.
+// review progress, sessions, events, live AI requests and their own saved AI key) and the code itself. Shared lessons and cards stay.
 //   npm run participant:delete -- P07          asks you to type the code again to confirm
 //   npm run participant:delete -- P07 --yes    no question (scripts)
 // Stop the server first if you can; it is safe either way (SQLite locks the file while writing).
@@ -15,6 +15,8 @@ const TABLES = [
   ['review_progress', 'review positions'],
   ['study_sessions', 'study sessions'],
   ['events', 'events'],
+  ['ai_calls', 'live AI requests'],
+  ['participant_ai_keys', 'saved own AI key'],
 ];
 
 async function main(args) {

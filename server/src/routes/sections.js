@@ -1,63 +1,60 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { loadSchedulerConfig } from '../flashcards/config.js';
 import { HttpError } from '../middleware/errors.js';
-import { parseFilipino, parseSimple, simplifySection, translateSection } from '../services/section-versions.js';
+import { requireParticipant } from '../middleware/participant.js';
+import { liveRewrite } from '../services/live-rewrite.js';
+import { parseFilipino, parseSimple } from '../services/section-versions.js';
+import { readStudentKey, studentKeysAllowed } from '../services/student-ai.js';
 
 const idParam = z.object({ id: z.coerce.number().int().positive() });
 
-// On-demand rewrites of one section. The first request calls the AI and caches the result in the sections row;
-// later requests (and a second tap while the first is still running) reuse it, so one section costs one call per kind.
-export function sectionsRouter({ ai, db }) {
+// On-demand rewrites of one section (Explain simpler, Filipino/Taglish). The shared version, made by the admin Default
+// (on a first tap, or ahead of time by admin's "Prepare"), is cached in the sections row and served without an AI
+// call. A student with their own key (when admin allows it) gets a fresh one from that key instead, which is not
+// cached. Each live AI request goes through the fallback chain (services/live-rewrite.js) and is logged in ai_calls.
+//
+// Answer: { section_id, kind ('simple' | 'filipino'), version, cached, shared, answered_by, fallback }
+//   cached       served from the shared version without an AI call
+//   shared       the version is the shared one (everyone sees the same)
+//   answered_by  { source: student | default | gemma, provider, model } for a live answer; null when cached
+//   fallback     { steps, note } when a fallback answered (note: the line shown under the answer); else null
+export function sectionsRouter({ ai, db, config = {}, clock = () => new Date() }) {
   const router = Router();
-  const inflight = new Map(); // `${sectionId}:${kind}` -> Promise of the parsed version
+  const envAi = config.ai ?? {};
 
   const loadSection = (req) => {
     const parsed = idParam.safeParse(req.params);
     if (!parsed.success) throw new HttpError(400, 'Section id must be a positive number.');
     const section = db
-      .prepare('SELECT id, lesson_id, title, content, simple_version, filipino_version, check_questions FROM sections WHERE id = ?')
+      .prepare(
+        `SELECT s.id, s.lesson_id, s.position, s.title, s.content, s.simple_version, s.filipino_version, s.simple_made_by, s.filipino_made_by,
+           s.check_questions, (SELECT COUNT(*) FROM sections o WHERE o.lesson_id = s.lesson_id AND (o.position < s.position OR (o.position = s.position AND o.id < s.id))) AS idx
+         FROM sections s WHERE s.id = ?`,
+      )
       .get(parsed.data.id);
     if (!section) throw new HttpError(404, 'Section not found.');
-    return { ...section, check_questions: JSON.parse(section.check_questions) };
+    return { ...section, index: section.idx, check_questions: JSON.parse(section.check_questions) };
   };
 
-  const dedupe = (key, make) => {
-    if (!inflight.has(key)) inflight.set(key, make().finally(() => inflight.delete(key)));
-    return inflight.get(key);
-  };
-
-  router.post('/:id/simplify', async (req, res, next) => {
+  const rewrite = (kind, apiKind, parse, column) => async (req, res, next) => {
     try {
       const section = loadSection(req);
-      const cached = parseSimple(section.simple_version);
-      if (cached) return res.json({ section_id: section.id, kind: 'simple', version: cached, cached: true });
-      const version = await dedupe(`${section.id}:simple`, async () => {
-        const made = await simplifySection({ ai, section });
-        db.prepare('UPDATE sections SET simple_version = ? WHERE id = ?').run(JSON.stringify(made), section.id);
-        return made;
-      });
-      res.json({ section_id: section.id, kind: 'simple', version, cached: false });
+      const participant = requireParticipant(db, req); // no code, no AI call
+      const shared = parse(section[column]);
+      const ownKey = participant && studentKeysAllowed(db) && readStudentKey(db, participant.id);
+      if (shared && !ownKey) {
+        return res.json({ section_id: section.id, kind: apiKind, version: shared, cached: true, shared: true, answered_by: null, fallback: null });
+      }
+      const made = await liveRewrite({ db, ai, envAi, section, kind, participant, shared, clock, schedulerConfig: loadSchedulerConfig(db) });
+      res.json({ section_id: section.id, kind: apiKind, cached: false, ...made });
     } catch (e) {
       next(e);
     }
-  });
+  };
 
-  router.post('/:id/translate', async (req, res, next) => {
-    try {
-      const section = loadSection(req);
-      const cached = parseFilipino(section.filipino_version);
-      if (cached) return res.json({ section_id: section.id, kind: 'filipino', version: cached, cached: true });
-      const version = await dedupe(`${section.id}:filipino`, async () => {
-        const keyTerms = db.prepare('SELECT term FROM key_terms WHERE lesson_id = ? ORDER BY id').all(section.lesson_id).map((t) => t.term);
-        const made = await translateSection({ ai, section, keyTerms });
-        db.prepare('UPDATE sections SET filipino_version = ? WHERE id = ?').run(JSON.stringify(made), section.id);
-        return made;
-      });
-      res.json({ section_id: section.id, kind: 'filipino', version, cached: false });
-    } catch (e) {
-      next(e);
-    }
-  });
+  router.post('/:id/simplify', rewrite('simplify', 'simple', parseSimple, 'simple_version'));
+  router.post('/:id/translate', rewrite('translate', 'filipino', parseFilipino, 'filipino_version'));
 
   return router;
 }

@@ -4,7 +4,8 @@ export const CODEBOOK = ({ now, includeP00, lessons }) => `StudyRevr research ex
 Made ${now.toISOString()} (UTC). ${includeP00 ? 'Includes P00 (researcher test data).' : 'P00 (researcher test data) is left out.'}
 
 General
-- Participants appear by code only (P01, P02, ...). No names, settings or API keys are exported.
+- Participants appear by code only (P01, P02, ...). No names, settings or API keys (the researcher's or students')
+  are exported.
 - Timestamps (*_at) are UTC, ISO 8601. study_date is the study day in Asia/Manila; a study day starts at 04:00,
   so 01:30 on Tuesday belongs to Monday. Flashcard scheduling uses the same boundary.
 - Times: *_ms are milliseconds, *_min minutes. Percentages are 0-100.
@@ -64,9 +65,52 @@ quiz_attempts.csv - one row per quiz attempt, including ones left part-way
 
 quiz_answers.csv - one row per question of each attempt above
   type mc (multiple choice) | tf (true/false); kind term | concept (the flashcard it came from)
+  true/false questions are shown to students as a Yes/No question ("Does this describe [term]?" for a term card, "Is
+  this the right answer to [question]?" for a concept card, with the statement under it), but they are stored and
+  exported as true/false: choices, chosen_answer and right_answer say True or False (Yes = True, No = False).
   chosen_answer, right_answer, correct (1/0; blank if not answered), time_ms on the question
 
 events.csv - self-monitoring events
   type  stats_view | quiz_retake | review_flashcards_tap | section_simplify | section_translate
   section_index  0-based section number, for section_simplify and section_translate
+  (every tap that opens a rewrite is an event, whether or not the AI was asked; see ai_calls.csv for the AI requests)
+
+ai_calls.csv - one row per live AI request for Explain simpler (kind simplify) or Filipino/Taglish (kind translate):
+  the rewrite was not already saved for everyone, or the student uses their own key. Rewrites saved ahead of time by
+  the researcher ("Prepare") and taps served from that saved version are not AI requests and are not listed.
+  outcome              ok | failed (nothing answered; error_code says why)
+  ai_source            who answered: student (the student's own key) | default (the app's AI, set by the
+                       researcher) | gemma (the backup model, used when the default was busy or down); blank if failed
+  ai_provider, ai_model  the provider and model that answered (if failed: the last one tried)
+  ai_fallback_steps    how many times the request moved on to the next step: 0 = the first choice answered (or, if
+                       nothing answered, it failed and no other step was tried). Otherwise the steps that failed before
+                       the answer or, if nothing answered, the steps tried after the first. The order is the student's
+                       key (only if they saved one), then default, then gemma. A gemma retry after an instant provider
+                       error is not a step: it is listed in ai_fallback_reasons (gemma:provider_error) even when the
+                       retry answered.
+  ai_fallback_reasons  each failed step as source:reason, e.g. student:auth;default:rate_limit. Every reason that can
+                       appear:
+                         rate_limit      the provider's limit (429) or the app's own request limit
+                         timeout         no answer in time
+                         network         the provider could not be reached
+                         provider_error  the provider's 5xx
+                         auth            the key was rejected (401/403)
+                         no_credit       no credit or quota left (402)
+                         not_found       the provider does not know the model or address (404)
+                         bad_request     the provider rejected the request (400)
+                         invalid_json    the model's reply was not usable JSON, twice
+                         bad_response    the provider's reply had no answer in it
+                         not_configured  no key or model set for that step
+                         error           anything unexpected
+                       A step falls back to the next only for some of these: student: all except not_configured and
+                       error; default: rate_limit, timeout, network, provider_error, not_found, invalid_json,
+                       bad_response; gemma is last. Other reasons end the request (outcome failed).
+  from_cache           1 if the answer was the default version already saved (the student's own key had failed, or it
+                       was saved a moment earlier by Prepare or by another student's tap)
+  saved_shared         1 if this answer was saved as the version everyone sees (default answers only; answers
+                       from a student's key or from gemma are shown to that student only)
+  error_code           when failed: the last step's reason, one of the list above (the student saw "The AI is busy,
+                       try again in a minute." for rate_limit and "The AI couldn’t answer right now. Try again in a
+                       minute." for every other reason)
+  ms                   time the whole request took, all steps included
 `;

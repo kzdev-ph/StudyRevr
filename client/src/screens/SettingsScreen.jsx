@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import MyAiSettings from '../components/MyAiSettings.jsx';
 import { switchParticipant, useParticipant } from '../lib/participant.js';
 import { paths } from '../lib/router.js';
 import { getThemeChoice, setThemeChoice } from '../lib/theme.js';
@@ -40,7 +41,7 @@ export default function SettingsScreen() {
           ))}
         </div>
       </fieldset>
-      <p className="muted">AI provider, quiz length, flashcard pacing and backups will be set here soon.</p>
+      <MyAiSettings />
       <a className="link-btn" href={paths.admin()}>
         Researcher admin
       </a>

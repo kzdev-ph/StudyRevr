@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { CheckIcon, CloseIcon } from './Icons.jsx';
 import { truncateAtWord } from '../lib/format.js';
-import { questionLead } from '../lib/quiz.js';
+import { questionLead, yesNo, yesNoAsk } from '../lib/quiz.js';
 
 const EVIDENCE_MAX = 220;
 
@@ -18,6 +18,7 @@ function optionState(i, feedback) {
 // reads it and the keyboard starts from it.
 export default function QuizQuestion({ question: q, feedback, onAnswer, busy }) {
   const tf = q.type === 'tf';
+  const ask = tf ? yesNoAsk(q) : null;
   const headingRef = useRef(null);
   useEffect(() => {
     headingRef.current?.focus();
@@ -27,10 +28,11 @@ export default function QuizQuestion({ question: q, feedback, onAnswer, busy }) 
       <p className="flashcard__kicker">{questionLead(q)}</p>
       {tf ? (
         <h2 id="quiz-q-text" className="quiz-q__ask" tabIndex={-1} ref={headingRef}>
-          <span className={q.kind === 'term' ? 'quiz-q__term' : 'quiz-q__question'}>{q.question}</span>{' '}
-          <span className="quiz-q__statement">
-            <span className="quiz-q__label">{q.kind === 'term' ? 'means:' : 'Suggested answer:'}</span> {q.statement}
-          </span>
+          <span>
+            {ask.before} <span className={q.kind === 'term' ? 'quiz-q__term' : 'quiz-q__question'}>{ask.subject}</span>
+            {ask.after}
+          </span>{' '}
+          <span className="quiz-q__statement">“{q.statement}”</span>
         </h2>
       ) : (
         <h2 id="quiz-q-text" className="quiz-q__question" tabIndex={-1} ref={headingRef}>
@@ -51,7 +53,7 @@ export default function QuizQuestion({ question: q, feedback, onAnswer, busy }) 
               aria-keyshortcuts={String(i + 1)}
             >
               <kbd className="quiz-opt__key" aria-hidden="true">{i + 1}</kbd>
-              <span className="quiz-opt__text">{choice}</span>
+              <span className="quiz-opt__text">{yesNo(q, choice)}</span>
               {/* a fixed slot, so marking the answer never changes the option's height */}
               <span className="quiz-opt__mark" aria-hidden="true">
                 {state === 'right' && <CheckIcon size={18} />}
@@ -70,7 +72,8 @@ export default function QuizQuestion({ question: q, feedback, onAnswer, busy }) 
             {feedback.correct ? <CheckIcon size={20} /> : <CloseIcon size={20} />}
             {feedback.correct ? 'Correct' : 'Not quite'}
           </p>
-          {(!feedback.correct || tf) && (
+          {/* a true / false answer names the right answer, unless that is the statement just shown (a correct Yes) */}
+          {(!feedback.correct || (tf && feedback.answer_text !== q.statement)) && (
             <p className="quiz-feedback__answer">
               {tf ? (q.kind === 'term' ? `${q.question} means: ` : 'The right answer: ') : 'The right answer: '}
               <strong>{feedback.answer_text}</strong>

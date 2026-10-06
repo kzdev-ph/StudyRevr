@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { bestLine, elapsed, formatDuration, lessonQuizLine, percent, questionLead, questionText, quizKeyAction, scoreLine } from '../src/lib/quiz.js';
+import { bestLine, elapsed, formatDuration, lessonQuizLine, percent, questionLead, questionText, quizKeyAction, scoreLine, yesNo, yesNoAsk } from '../src/lib/quiz.js';
 
 const key = (k, extra = {}) => ({ key: k, target: { tagName: 'BODY' }, ...extra });
 
@@ -29,12 +29,18 @@ describe('quiz wording', () => {
   it('says what kind of question it is', () => {
     assert.equal(questionLead({ type: 'mc', kind: 'term' }), 'Which term matches this description?');
     assert.equal(questionLead({ type: 'mc', kind: 'concept' }), 'Choose the best answer');
-    assert.equal(questionLead({ type: 'tf', kind: 'term' }), 'True or false?');
-    assert.equal(questionLead({ type: 'tf', kind: 'concept' }), 'Is this answer true or false?');
+    assert.equal(questionLead({ type: 'tf', kind: 'term' }), 'Yes or no?');
+    assert.equal(questionLead({ type: 'tf', kind: 'concept' }), 'Yes or no?');
   });
-  it('spells a true / false question out in one sentence', () => {
-    assert.equal(questionText({ type: 'tf', kind: 'term', question: 'Sample', statement: 'Part of the population.' }), 'Sample means: Part of the population.');
-    assert.equal(questionText({ type: 'tf', kind: 'concept', question: 'Why sample?', statement: 'To save time.' }), 'Why sample? Suggested answer: To save time.');
+  it('spells a true / false question out as one Yes / No question', () => {
+    assert.equal(questionText({ type: 'tf', kind: 'term', question: 'Sample', statement: 'Part of the population.' }), 'Does this describe Sample? “Part of the population.”');
+    assert.equal(questionText({ type: 'tf', kind: 'concept', question: 'Why sample?', statement: 'To save time.' }), 'Is this the right answer to Why sample? “To save time.”');
+    assert.deepEqual(yesNoAsk({ kind: 'concept', question: 'Why sample?' }), { before: 'Is this the right answer to', subject: 'Why sample', after: '?' });
+  });
+  it('shows True / False as Yes / No on true / false questions only', () => {
+    const tf = { type: 'tf' };
+    assert.deepEqual([yesNo(tf, 'True'), yesNo(tf, 'False'), yesNo(tf, 'Other')], ['Yes', 'No', 'Other']);
+    assert.equal(yesNo({ type: 'mc' }, 'True'), 'True');
     assert.equal(questionText({ type: 'mc', kind: 'concept', question: 'Why sample?' }), 'Why sample?');
   });
   it('scores and durations', () => {
@@ -48,7 +54,7 @@ describe('quiz wording', () => {
   });
   it('compares with the best earlier score', () => {
     assert.equal(bestLine(70, null), 'Your first score on this lesson.');
-    assert.equal(bestLine(90, 80), 'New best! Your previous best was 80%.');
+    assert.equal(bestLine(90, 80), 'New best. Your previous best was 80%.');
     assert.equal(bestLine(80, 80), 'Your best on this lesson: 80%.');
   });
   it('describes a lesson row', () => {

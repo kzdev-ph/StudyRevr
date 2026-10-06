@@ -24,8 +24,9 @@ function Skeleton({ label }) {
 }
 
 // One section of the review. `variant` is 'summary' | 'simple' | 'filipino'; a rewrite is made on the first tap and
-// then kept, so tapping the button again just shows it. The stored summary is never changed.
-export default function SectionPage({ lesson, section, variant, busy, failure, showSource, focusTitle, onVariant, onRetry, onToggleSource }) {
+// then kept, so tapping the button again just shows it. The stored summary is never changed. `note`: a line under a
+// rewrite that a fallback AI answered ("Your key didn't work, so the default AI answered.").
+export default function SectionPage({ lesson, section, variant, busy, failure, note, showSource, focusTitle, onVariant, onRetry, onToggleSource }) {
   const title = useRef(null);
   useEffect(() => {
     if (focusTitle) title.current?.focus({ preventScroll: true });
@@ -84,6 +85,8 @@ export default function SectionPage({ lesson, section, variant, busy, failure, s
       )}
 
       {variant === 'filipino' && !busy && filipino && <Prose text={filipino.content} />}
+
+      {variant !== 'summary' && !busy && note && showing && <p className="muted fallback-note">{note}</p>}
 
       {showSource && <SourcePanel section={section} lesson={lesson} />}
 

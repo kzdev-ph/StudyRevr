@@ -1,9 +1,13 @@
+import fs from 'node:fs';
 import { Router } from 'express';
 import { z } from 'zod';
 import { EXPORT_FILES, exportCsv, exportZip } from '../export/research.js';
 import { loadSchedulerConfig } from '../flashcards/config.js';
 import { HttpError } from '../middleware/errors.js';
+import { lastBackup, logAdminEvent, makeBackup, removeTemp } from '../services/backup.js';
 import { addParticipants, findParticipant, parseCodeList, UNKNOWN_CODE } from '../participants/codes.js';
+import { defaultAiProblems } from '../services/ai-problems.js';
+import { deleteAllStudentKeys } from '../services/student-ai.js';
 import { participantStats, summaryTable } from '../stats/participant.js';
 
 const addBody = z.object({ codes: z.string().max(2000) });
@@ -54,6 +58,35 @@ export function adminRouter({ db, clock = () => new Date(), requireAdmin }) {
     // a byte-order mark so Excel reads the UTF-8 (Filipino text, curly quotes) correctly
     res.send(`﻿${exportCsv(db, name, opts(req))}`);
   });
+
+  // A copy of the whole database without any API key (see services/backup.js), made while the app runs.
+  router.get('/backup', async (_req, res, next) => {
+    let made;
+    try {
+      made = await makeBackup(db, { now: clock() });
+      const data = fs.readFileSync(made.file);
+      logAdminEvent(db, 'backup', made.name, clock());
+      res.set({ 'content-type': 'application/vnd.sqlite3', 'content-disposition': `attachment; filename="${made.name}"`, 'cache-control': 'no-store' });
+      res.send(data);
+    } catch (e) {
+      next(e);
+    } finally {
+      if (made) removeTemp(made.file);
+    }
+  });
+
+  // After the study: removes every student's saved AI key. The keys are overwritten in the file (secure_delete).
+  router.delete('/student-keys', (_req, res) => {
+    const deleted = deleteAllStudentKeys(db);
+    logAdminEvent(db, 'student_keys_deleted', String(deleted), clock());
+    res.json({ deleted });
+  });
+
+  // Why the Default AI failed for students in the last 24 hours (students only see "try again"): { problems: [...] }
+  router.get('/ai-problems', (_req, res) => res.json({ problems: defaultAiProblems(db, clock()) }));
+
+  // When the last backup was downloaded: { last: { file, created_at } | null }
+  router.get('/backup/last', (_req, res) => res.json({ last: lastBackup(db) }));
 
   return router;
 }

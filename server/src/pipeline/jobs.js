@@ -5,6 +5,11 @@
 // job records the failure, and the quiz makes the options itself when first started.
 export const STAGES = ['sections', 'key_points', 'key_terms', 'flashcards', 'quiz_options'];
 
+// Steps admin runs on a ready lesson when wanted, never as part of processing: `section_versions` makes the shared
+// Explain simpler and Filipino/Taglish versions of every section ahead of study day ("Prepare"). A job queued at one
+// of these runs only that step, and the lesson stays ready whatever happens.
+export const ON_DEMAND_STAGES = ['section_versions'];
+
 // Marks the lesson as processing and (re)starts its job at `stage` (default: the first). Call inside the caller's
 // transaction when creating a lesson; also used to retry a failed lesson. `keepLesson` leaves a ready lesson ready
 // (making flashcards for an existing lesson must not hide its review while it runs).

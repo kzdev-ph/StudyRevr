@@ -8,6 +8,7 @@ import { createPipelineRunner } from './pipeline/runner.js';
 import { adminRouter } from './routes/admin.js';
 import { flashcardsRouter } from './routes/flashcards.js';
 import { lessonsRouter } from './routes/lessons.js';
+import { myAiRouter } from './routes/my-ai.js';
 import { participantsRouter } from './routes/participants.js';
 import { quizRouter } from './routes/quiz.js';
 import { sectionsRouter } from './routes/sections.js';
@@ -29,8 +30,8 @@ export function createApp(db, config, { ai, runner, clock = () => new Date(), ra
     db,
     ai,
     tuning: () => {
-      const { chunkTokens, concurrency, keyTermsMax } = resolveAiConfig(db, config.ai);
-      return { chunkTokens, concurrency, keyTermsMax };
+      const { chunkTokens, concurrency, keyTermsMax, provider, model } = resolveAiConfig(db, config.ai);
+      return { chunkTokens, concurrency, keyTermsMax, madeBy: { provider, model } };
     },
   });
 
@@ -49,7 +50,8 @@ export function createApp(db, config, { ai, runner, clock = () => new Date(), ra
   app.use('/api', flashcardsRouter({ db, runner, clock, requireAdmin }));
   app.use('/api', quizRouter({ db, ai, clock, random, tuning: () => ({ concurrency: resolveAiConfig(db, config.ai).concurrency }) }));
   app.use('/api/lessons', lessonsRouter(db, config, runner, requireAdmin));
-  app.use('/api/sections', sectionsRouter({ ai, db }));
+  app.use('/api', myAiRouter({ ai, db, config, clock }));
+  app.use('/api/sections', sectionsRouter({ ai, db, config, clock }));
   app.use('/api/settings', requireAdmin, settingsRouter({ ai, db, config }));
 
   app.use('/api', notFound);

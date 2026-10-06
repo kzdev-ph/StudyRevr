@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ChevronRight, TrashIcon } from './Icons.jsx';
 import { prettyTitle } from '../lib/format.js';
 import { quizOptionsNotice } from '../lib/quizOptions.js';
+import { sectionVersionsNotice } from '../lib/sectionVersions.js';
 import { paths } from '../lib/router.js';
 
 const formatDate = (iso) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -19,11 +20,11 @@ function Status({ lesson }) {
   return null;
 }
 
-// Admin only: the AI-made wrong answers for the mock quiz (the last step of processing). Failed, or never made for a
-// lesson from before that step, it offers a button; the first quiz makes them itself in the meantime.
-function QuizOptions({ lesson, onMake }) {
+// Admin only: a step admin can run on a ready lesson, with its state and button. `notice` is from quizOptionsNotice
+// (the AI-made wrong answers for the mock quiz: failed, or never made for a lesson from before that step; the first
+// quiz makes them itself in the meantime) or sectionVersionsNotice (the shared simpler / Taglish versions, "Prepare").
+function LessonStep({ lesson, notice, busyText, onMake }) {
   const [asking, setAsking] = useState(false);
-  const notice = quizOptionsNotice(lesson);
   const busy = asking || notice?.state === 'making';
   if (!notice && !asking) return null;
 
@@ -38,7 +39,8 @@ function QuizOptions({ lesson, onMake }) {
       <p className="lesson__extra-text">
         {busy ? (
           <>
-            <span className="spinner spinner--small" aria-hidden="true" /> Making the quiz answers…
+            <span className="spinner spinner--small" aria-hidden="true" /> {notice?.state === 'making' ? notice.title : busyText}
+            {notice?.detail && notice.state === 'making' ? ` ${notice.detail}` : ''}
           </>
         ) : (
           <span>
@@ -56,8 +58,9 @@ function QuizOptions({ lesson, onMake }) {
 }
 
 // One lesson on the ruled list. With `onDelete` (admin), Delete asks first, in place, so a slip of the thumb can't
-// remove a lesson. `onMakeQuizOptions` (admin) enables the quiz-answers retry.
-export default function LessonRow({ lesson, onDelete, onMakeQuizOptions }) {
+// remove a lesson. `onMakeQuizOptions` (admin) enables the quiz-answers retry, `onPrepareVersions` (admin) the
+// "Prepare simpler and Taglish" step.
+export default function LessonRow({ lesson, onDelete, onMakeQuizOptions, onPrepareVersions }) {
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const trash = useRef(null);
@@ -113,7 +116,10 @@ export default function LessonRow({ lesson, onDelete, onMakeQuizOptions }) {
           <TrashIcon size={20} />
         </button>
       )}
-      {onMakeQuizOptions && <QuizOptions lesson={lesson} onMake={onMakeQuizOptions} />}
+      {onMakeQuizOptions && <LessonStep lesson={lesson} notice={quizOptionsNotice(lesson)} busyText="Making the quiz answers…" onMake={onMakeQuizOptions} />}
+      {onPrepareVersions && (
+        <LessonStep lesson={lesson} notice={sectionVersionsNotice(lesson)} busyText="Preparing simpler and Taglish versions…" onMake={onPrepareVersions} />
+      )}
     </li>
   );
 }
