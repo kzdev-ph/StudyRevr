@@ -52,4 +52,10 @@ export const api = {
     request(`/flashcards/${cardId}/review`, { method: 'POST', body: { rating, time_ms: timeMs, deck: deck === 'all' ? null : deck } }),
   undoAnswer: (reviewId, deck) => request(`/flashcards/reviews/${reviewId}/undo`, { method: 'POST', body: { deck: deck === 'all' ? null : deck } }),
   makeFlashcards: (lessonId) => request(`/lessons/${lessonId}/flashcards/generate`, { method: 'POST' }),
+  listQuizzes: (signal) => request('/quiz', { signal }),
+  // retakeOf: an earlier attempt's id, to get the same questions in a new order
+  startQuiz: (lessonId, retakeOf) => request(`/lessons/${lessonId}/quiz/attempts`, { method: 'POST', body: retakeOf ? { retake_of: retakeOf } : {} }),
+  answerQuestion: (attemptId, { position, choice, timeMs }) =>
+    request(`/quiz/attempts/${attemptId}/answers`, { method: 'POST', body: { position, choice, time_ms: timeMs } }),
+  finishQuiz: (attemptId, totalMs) => request(`/quiz/attempts/${attemptId}/finish`, { method: 'POST', body: { total_ms: totalMs } }),
 };

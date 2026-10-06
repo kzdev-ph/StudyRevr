@@ -200,3 +200,30 @@ Reply with this JSON shape:
   const guide = review ? `<review>\n${review}\n</review>\n\n` : '';
   return { system, user: `${part(index, total)}${guide}${lessonText(text)}` };
 }
+
+// Wrong answer options for multiple-choice quiz questions made from concept flashcards. `cards`: [{ n, question,
+// answer, evidence }], where `evidence` is the verbatim lesson quote the card was checked against. The wrong answers
+// must be believable but wrong according to the lesson, and look like the right one so length and style give nothing
+// away.
+export function distractorsPrompt({ cards, keyTerms = [] }) {
+  const system = `You help a teacher write a multiple-choice quiz from their lesson.
+
+Rules:
+1. Use ONLY the lesson content you are given: each card's question, its correct answer and a quote copied from the lesson. Do not use outside knowledge or add facts, names, dates or numbers that are not in it.
+2. A quote may come from the teacher's spoken notes for a slide (written after a line "${NOTES_LABEL}" in the lesson). Treat it as lesson content that explains that slide, not as a separate topic.
+3. Write in the language of the lesson (English, Filipino or Taglish).
+4. Reply with ONE JSON object and nothing else: no markdown, no code fences, no commentary.
+
+Task: for each card, write 3 wrong answers to its question.
+- Each wrong answer must be clearly wrong according to the lesson, but believable to a student who has not studied: reuse ideas and words from the lesson (other cards, the key terms), mix up causes and effects, swap related ideas, or reverse a relationship.
+- Make each wrong answer similar in length and style to the correct answer: same kind of phrase, same grammar, about the same number of words. Length, wording or tone must not give the right answer away.
+- Never a correct or partly correct answer, never a reworded copy of the correct answer, and the 3 must differ from each other.
+- No "all of the above", "none of the above", jokes or obviously silly options.${
+    keyTerms.length ? `\n- The lesson's key terms: ${keyTerms.join('; ')}.` : ''
+  }
+
+Reply with this JSON shape, one item per card, using the card's number as "n":
+{"items":[{"n":1,"wrong":["...","...","..."]}]}`;
+  const list = cards.map((c) => `[${c.n}] Question: ${c.question}\n    Correct answer: ${c.answer}\n    From the lesson: "${c.evidence ?? ''}"`).join('\n');
+  return { system, user: `<cards>\n${list}\n</cards>` };
+}

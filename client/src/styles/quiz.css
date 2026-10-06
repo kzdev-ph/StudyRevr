@@ -1,0 +1,316 @@
+/* Mock Quiz tab: the shuffle, a question with its options and feedback, and the results. Only existing tokens:
+   right answers use ok / ok-wash, wrong ones danger / danger-wash, always with an icon and a word (the word is read
+   out on the option and shown in the feedback below, so the option itself never changes size when it is marked). */
+
+.quiz-counter {
+  color: var(--ink-2);
+  font-size: 0.875rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.quiz-progress {
+  margin-top: -6px;
+}
+.quiz-progress .progress__fill {
+  background: var(--accent); /* the shared yellow fill is about 1.2:1 against the track in light mode */
+  transition: width 0.25s ease-out;
+}
+
+.quiz-loading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 4px;
+  color: var(--ink-2);
+}
+.quiz-loading .spinner {
+  flex: none;
+}
+
+/* ---- the shuffle ---- */
+.shuffle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 32px 0 16px;
+  cursor: pointer;
+}
+.shuffle__deck {
+  position: relative;
+  width: 9rem;
+  height: 12rem;
+}
+.shuffle__card {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--sheet);
+  box-shadow: 0 6px 18px rgb(14 17 38 / 0.08);
+}
+.shuffle__card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 18px;
+  width: 2px;
+  background: var(--margin);
+  opacity: 0.6;
+}
+.shuffle__mark {
+  font-family: var(--font-read);
+  font-size: 2.5rem;
+  font-weight: 650;
+  color: var(--accent);
+}
+.shuffle__text {
+  color: var(--ink-2);
+  font-weight: 600;
+}
+
+/* ---- a question: a notebook sheet like a flashcard ---- */
+/* the question type is a sentence here, not a short label, so it is not set in capitals */
+.quiz-q .flashcard__kicker {
+  text-transform: none;
+  letter-spacing: 0;
+}
+.quiz-q {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 22px 18px 24px 40px;
+  border: 1px solid var(--line);
+  border-radius: 4px var(--r-lg) var(--r-lg) 4px;
+  background: var(--sheet);
+  box-shadow: 0 6px 18px rgb(14 17 38 / 0.08);
+  overflow-wrap: anywhere;
+}
+.quiz-q::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 26px;
+  width: 2px;
+  background: var(--margin);
+  opacity: 0.6;
+}
+.quiz-q__question,
+.quiz-q__ask {
+  font-family: var(--font-read);
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+.quiz-q__ask {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+.quiz-q__term {
+  padding: 0 6px;
+  margin-left: -6px;
+  border-radius: 3px;
+  background: var(--hi);
+  color: var(--on-hi);
+  font-weight: 700;
+}
+.quiz-q__statement {
+  display: block;
+  font-weight: 400;
+}
+.quiz-q__label {
+  color: var(--ink-2);
+  font-family: var(--font-ui);
+  font-size: 0.9375rem;
+  font-weight: 650;
+}
+
+.quiz-opts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.quiz-opts--tf {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.quiz-opt {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 10px 14px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--sheet);
+  color: var(--ink);
+  font-size: 1rem;
+  line-height: 1.4;
+  text-align: left;
+  transition: background-color 0.12s, border-color 0.12s;
+}
+.quiz-opt:not(:disabled):hover {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+}
+.quiz-opt:disabled {
+  cursor: default;
+}
+/* the option's number: its label on a phone, its key on a keyboard */
+.quiz-opt__key {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.75rem;
+  height: 1.75rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  color: var(--ink-2);
+  font-family: var(--font-ui);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+.quiz-opt__text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* always there, empty until the answer shows */
+.quiz-opt__mark {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 1.125rem;
+  height: 1.125rem;
+}
+.quiz-opt--right {
+  border-color: var(--ok);
+  background: var(--ok-wash);
+}
+.quiz-opt--right .quiz-opt__mark,
+.quiz-opt--right .quiz-opt__key {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+.quiz-opt--wrong {
+  border-color: var(--danger);
+  background: var(--danger-wash);
+}
+.quiz-opt--wrong .quiz-opt__mark,
+.quiz-opt--wrong .quiz-opt__key {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.quiz-opt--other {
+  opacity: 0.6;
+}
+
+.quiz-feedback {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.quiz-feedback__verdict {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 1.0625rem;
+  font-weight: 700;
+}
+.quiz-feedback--right .quiz-feedback__verdict {
+  color: var(--ok);
+}
+.quiz-feedback--wrong .quiz-feedback__verdict {
+  color: var(--danger);
+}
+.quiz-feedback__answer {
+  font-family: var(--font-read);
+  font-size: 1.0625rem;
+  line-height: 1.5;
+}
+
+/* ---- results ---- */
+.quiz-score .done__title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.quiz-score__n {
+  font-size: 2.5rem;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.quiz-score__line {
+  font-size: 1.125rem;
+  color: var(--ink-2);
+}
+.quiz-missed__head {
+  margin-bottom: 0;
+}
+.quiz-missed {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0;
+  list-style: none;
+}
+.quiz-missed__item {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--sheet);
+  overflow-wrap: anywhere;
+}
+.quiz-missed__q {
+  font-family: var(--font-read);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+.quiz-missed__answers {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.quiz-missed__answers dt {
+  color: var(--ink-2);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+.quiz-missed__yours {
+  color: var(--danger);
+}
+.quiz-missed__right {
+  color: var(--ok);
+  font-weight: 650;
+}
+
+@media (min-width: 40rem) {
+  .quiz-q {
+    padding: 28px 28px 28px 48px;
+  }
+  .quiz-q::before {
+    left: 30px;
+  }
+  .quiz-q__question,
+  .quiz-q__ask {
+    font-size: 1.375rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quiz-progress .progress__fill {
+    transition: none;
+  }
+}

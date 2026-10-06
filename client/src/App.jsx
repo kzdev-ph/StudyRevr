@@ -6,6 +6,8 @@ import LibraryScreen from './screens/LibraryScreen.jsx';
 import LessonScreen from './screens/LessonScreen.jsx';
 import FlashcardsScreen from './screens/FlashcardsScreen.jsx';
 import PlaceholderScreen from './screens/PlaceholderScreen.jsx';
+import QuizRunScreen from './screens/QuizRunScreen.jsx';
+import QuizScreen from './screens/QuizScreen.jsx';
 import SettingsScreen from './screens/SettingsScreen.jsx';
 import StudyScreen from './screens/StudyScreen.jsx';
 
@@ -18,6 +20,9 @@ function Screen({ route }) {
     case 'study':
       return <StudyScreen key={route.deck} deck={route.deck} />;
     case 'quiz':
+      return <QuizScreen />;
+    case 'quizRun':
+      return <QuizRunScreen key={route.lessonId} lessonId={route.lessonId} />;
     case 'stats':
       return <PlaceholderScreen which={route.name} />;
     case 'settings':
@@ -30,7 +35,8 @@ function Screen({ route }) {
 export default function App() {
   const route = useRoute();
   const mainRef = useRef(null);
-  const screenKey = route.name === 'lesson' ? `lesson-${route.lessonId}` : route.name === 'study' ? `study-${route.deck}` : route.name;
+  const screenKey =
+    route.name === 'lesson' ? `lesson-${route.lessonId}` : route.name === 'study' ? `study-${route.deck}` : route.name === 'quizRun' ? `quiz-${route.lessonId}` : route.name;
 
   // A new screen starts at the top, and keyboard / screen-reader focus moves to it.
   const first = useRef(true);

@@ -23,7 +23,7 @@ function flashcardLine(deck) {
   return `${n} ${n === 1 ? 'card' : 'cards'} to study, about ${studyMinutes(deck.counts)} min.`;
 }
 
-// What to do after the last section. The mock quiz is a placeholder until its screen exists.
+// What to do after the last section: study the lesson's flashcards, or take its mock quiz.
 export default function EndCard({ lessonId, sectionCount, termCount, onRestart }) {
   const deck = useDeckSummary(lessonId);
   return (
@@ -42,7 +42,7 @@ export default function EndCard({ lessonId, sectionCount, termCount, onRestart }
             <small>{flashcardLine(deck)}</small>
           </span>
         </a>
-        <a className="endcard__action" href={paths.tab('quiz')}>
+        <a className="endcard__action" href={deck?.total ? paths.quiz(lessonId) : paths.tab('quiz')}>
           <QuizIcon size={26} />
           <span>
             <strong>Take a mock quiz</strong>

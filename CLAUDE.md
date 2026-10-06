@@ -70,13 +70,22 @@ Drag-drop or pick file → progress states: Extracting → Summarizing → Flash
 - Card flip animation (Motion, 3D; cross-fade under reduced motion). Space flips, 1-4 answer, U / Ctrl+Z undo (multi-level within a session). "From the lesson: …" evidence under the answer. Done state says when the next card is due.
 
 ### Mock Quiz
-- Row per lesson: name | Start | Highest score
-- Default 20 multiple-choice questions, configurable in Settings (10 / 20 / 30 / 50)
-- If the lesson is too short for the chosen count, generate fewer and tell the user ("This lesson supports ~12 questions"). Rough guide: 1 question per 100–150 words.
-- Generate in batches of 5–10, passing earlier questions to avoid repeats; dedupe near-duplicates before saving
-- **Retake**: same questions, question order and choice order shuffled, with a ~1–1.5s card-deck shuffle animation (Motion)
-- **Regenerate quiz**: AI creates a new set, replaces old questions, keeps past attempts in Stats; uses a separate "AI is thinking" loading animation
-- Results screen: score, each question with correct answer and explanation
+- Row per lesson: name | Start | best finished score and number of attempts (`GET /api/quiz`). Lessons still preparing, without flashcards, or with only one card say why instead of Start.
+- Questions come from the lesson's existing flashcards (no new grounding), built in code when a quiz starts (`server/src/quiz/build.js`, pure, seeded `random` in tests): up to 10 questions, one per card, cards picked at random; fewer if the lesson has fewer usable cards ("This lesson supports 6 questions"). A quiz needs at least 2 cards.
+  - **Term card**: multiple choice "which term matches this definition?"; the 3 wrong options are other key terms of the same lesson (term cards, then `key_terms` without a card; plural-insensitive), no AI call. Fewer than 3 other terms: true / false.
+  - **Concept card**: multiple choice with 3 AI-made wrong answers. Fewer than 3 saved: true / false, whose false statement is a saved wrong answer or, with none, another card's answer from the same lesson.
+  - About 3 in 10 questions are true / false (choices `True` / `False`) for variety even when every card could be multiple choice. Multiple-choice options are shuffled silently.
+- **Wrong answers** (`server/src/quiz/distractors.js`): the first quiz on a lesson asks the AI (existing adapter, rate limiter, zod, one JSON retry) for 3 wrong answers per concept card, in batches of at most 15 cards so each call stays under the 25 s timeout; batches run up to the provider's concurrency. The prompt gets each card's question, answer and evidence quote, uses only that lesson content, explains `Notes:`, and asks for wrong answers similar in length and style to the correct one. In code, wrong answers that match the correct answer or each other (case-insensitive, trimmed) or run over 40 words are dropped. Saved in `quiz_distractors` and reused; a batch that fails is not saved (next quiz tries again) and the quiz still starts, with a notice; two starts at once share one call.
+- Untimed. Time per question (`time_ms`, capped at 1 h) and total time (`duration_ms`) are recorded. Quiz results never touch flashcard scheduling or `flashcard_reviews`.
+- Screen (`#/quiz/:lessonId`): "Getting your quiz ready" (after 2.5 s: "The AI is thinking up answer options…"), then a ~1.2 s deck-shuffle animation (Motion; cross-fade under reduced motion; tap to skip), then one question at a time with a progress bar. After each answer: correct / not quite, the right answer and the card's "From the lesson: …" evidence; Next sits in the pinned action bar. Keys: 1-4 answer (1-2 on true / false), Enter next. Focus moves to each new question, then to Next (described by the feedback), then to the results heading.
+- Results: score, percent, time, comparison with the best earlier score, the missed questions (your answer, right answer, evidence), **Retake** (same questions, new question order and option order, shuffle again) and **Back to lesson**. The Flashcards done card's main action is "Take the mock quiz".
+- Tables (migration 007):
+  - `quiz_distractors` (flashcard_id PK → flashcards ON DELETE CASCADE, choices JSON of 0-3 wrong answers, made_at)
+  - `quiz_attempts` gains `started_at`, `finished_at` (NULL for a quiz left part-way), `duration_ms`, `retake_of` (the attempt whose questions it reused; NULL for a fresh quiz). `score` is final once finished.
+  - `quiz_answers` (id, attempt_id → quiz_attempts ON DELETE CASCADE, position, flashcard_id ON DELETE SET NULL, type `mc`|`tf`, kind `term`|`concept`, question, statement (tf), choices JSON, answer_index, answer_text, evidence, chosen_index, correct, time_ms, answered_at): one row per question, written at start and filled in when answered; a full copy, so it outlives card changes. Phase 6 reads it.
+  - `quiz_questions` (001) is unused: questions are built from flashcards per attempt.
+- **Resume:** `POST /api/lessons/:id/quiz/attempts` without `retake_of` returns the lesson's newest unfinished attempt if it started less than 2 hours ago (200, `resumed: true`, `next_position` = first unanswered question or `null` when all are answered, `elapsed_ms` = time already spent), so a reload or coming back never creates a second attempt. Older unfinished attempts are left as they are (abandoned). A retake always starts a new attempt. The results screen offers "Review these flashcards", a plain link to the lesson's flashcard deck; it changes no scheduling.
+- Endpoints: `GET /api/quiz` · `POST /api/lessons/:id/quiz/attempts` (body `{ retake_of? }`; returns questions without answers) · `POST /api/quiz/attempts/:id/answers` (`{ position, choice, time_ms }`; each question once; returns correct, answer_index, answer_text, evidence) · `POST /api/quiz/attempts/:id/finish` (`{ total_ms }`; every question answered first; returns score, missed questions, previous best).
 
 ### Stats
 - Overview cards: study time today/this week, streak (days), cards due today, lessons uploaded/completed
@@ -132,8 +141,17 @@ Drag-drop or pick file → progress states: Extracting → Summarizing → Flash
 2. AI adapter, job pipeline, sections / key points / key terms generation — **done** (incl. Phase 2.5: provider presets with Google as default, parallel chunk calls, model selection, grounded key terms)
 3. React app shell, tab bar, upload flow, Review tab — **done** (incl. `POST /api/sections/:id/simplify|translate` and review-progress save/load)
 4. Flashcard generation + SM-2 + Flashcard tab — **done**
-5. Quiz generation + attempts + shuffle animation + Mock Quiz tab
+5. Quiz generation + attempts + shuffle animation + Mock Quiz tab — **done**
 6. Session logging + Stats tab + CSV export
 7. Settings, backup/import, polish, README, LICENSE (MIT)
+
+Phase 7 carry-over from the Phase 5 quiz audit (Low findings, not fixed yet):
+- Focus ring: base.css `:focus-visible` forces `border-radius: 4px`, so `.quiz-opt` loses its 10px corners on focus.
+- Wrap `.quiz-opt:hover` in `@media (hover: hover)` so it doesn't stick on touch screens.
+- quiz.css and flashcards.css hardcode radii (4px, 10px, 14px) and the card shadow `rgb(14 17 38 / .08)` instead of tokens; add a shadow token and map the radii.
+- Announce the question's position ("Question 3 of 10") to screen readers (`aria-describedby` on the article pointing at the counter).
+- Quiz tab: the "Preparing" / "Making cards" chips change silently; add a polite live region.
+- Copy repeats: "Needs 2+ cards" next to "Only 1 flashcard"; "You got every question right." under a 10 of 10 score; a correct True answer repeats the statement; drop the exclamation in "New best!".
+- Small text carries meaning (0.8125rem tags, key boxes, `dt`): raise to 0.875rem.
 
 Work one phase at a time. At the end of each phase: run it, fix errors, summarize what was built and how to test it, then stop.
