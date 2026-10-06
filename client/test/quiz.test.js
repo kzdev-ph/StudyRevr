@@ -29,11 +29,12 @@ describe('quiz wording', () => {
   it('says what kind of question it is', () => {
     assert.equal(questionLead({ type: 'mc', kind: 'term' }), 'Which term matches this description?');
     assert.equal(questionLead({ type: 'mc', kind: 'concept' }), 'Choose the best answer');
-    assert.equal(questionLead({ type: 'tf', kind: 'concept' }), 'True or false?');
+    assert.equal(questionLead({ type: 'tf', kind: 'term' }), 'True or false?');
+    assert.equal(questionLead({ type: 'tf', kind: 'concept' }), 'Is this answer true or false?');
   });
   it('spells a true / false question out in one sentence', () => {
     assert.equal(questionText({ type: 'tf', kind: 'term', question: 'Sample', statement: 'Part of the population.' }), 'Sample means: Part of the population.');
-    assert.equal(questionText({ type: 'tf', kind: 'concept', question: 'Why sample?', statement: 'To save time.' }), 'Why sample? Answer: To save time.');
+    assert.equal(questionText({ type: 'tf', kind: 'concept', question: 'Why sample?', statement: 'To save time.' }), 'Why sample? Suggested answer: To save time.');
     assert.equal(questionText({ type: 'mc', kind: 'concept', question: 'Why sample?' }), 'Why sample?');
   });
   it('scores and durations', () => {

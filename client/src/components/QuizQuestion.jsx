@@ -29,7 +29,7 @@ export default function QuizQuestion({ question: q, feedback, onAnswer, busy }) 
         <h2 id="quiz-q-text" className="quiz-q__ask" tabIndex={-1} ref={headingRef}>
           <span className={q.kind === 'term' ? 'quiz-q__term' : 'quiz-q__question'}>{q.question}</span>{' '}
           <span className="quiz-q__statement">
-            <span className="quiz-q__label">{q.kind === 'term' ? 'means:' : 'Answer:'}</span> {q.statement}
+            <span className="quiz-q__label">{q.kind === 'term' ? 'means:' : 'Suggested answer:'}</span> {q.statement}
           </span>
         </h2>
       ) : (
@@ -52,16 +52,13 @@ export default function QuizQuestion({ question: q, feedback, onAnswer, busy }) 
             >
               <kbd className="quiz-opt__key" aria-hidden="true">{i + 1}</kbd>
               <span className="quiz-opt__text">{choice}</span>
-              {state === 'right' && (
-                <span className="quiz-opt__tag">
-                  <CheckIcon size={16} /> {feedback.chosen_index === i ? 'Your answer' : 'Right answer'}
-                </span>
-              )}
-              {state === 'wrong' && (
-                <span className="quiz-opt__tag">
-                  <CloseIcon size={16} /> Your answer
-                </span>
-              )}
+              {/* a fixed slot, so marking the answer never changes the option's height */}
+              <span className="quiz-opt__mark" aria-hidden="true">
+                {state === 'right' && <CheckIcon size={18} />}
+                {state === 'wrong' && <CloseIcon size={18} />}
+              </span>
+              {state === 'right' && <span className="visually-hidden">{feedback.chosen_index === i ? 'Your answer, right' : 'Right answer'}</span>}
+              {state === 'wrong' && <span className="visually-hidden">Your answer, not right</span>}
             </button>
           );
         })}
@@ -75,7 +72,7 @@ export default function QuizQuestion({ question: q, feedback, onAnswer, busy }) 
           </p>
           {(!feedback.correct || tf) && (
             <p className="quiz-feedback__answer">
-              {tf ? (q.kind === 'term' ? `${q.question} means: ` : 'The answer: ') : 'The right answer: '}
+              {tf ? (q.kind === 'term' ? `${q.question} means: ` : 'The right answer: ') : 'The right answer: '}
               <strong>{feedback.answer_text}</strong>
             </p>
           )}

@@ -212,8 +212,126 @@ describe('quiz API', () => {
     const b = send('POST', `/api/lessons/${id}/quiz/attempts`);
     await new Promise((resolve) => setTimeout(resolve, 50));
     release();
-    assert.deepEqual([(await a).status, (await b).status], [201, 201]);
+    const [ra, rb] = [await a, await b];
+    assert.deepEqual([ra.status, rb.status].sort(), [200, 201], 'one starts the quiz, the other picks it up');
+    assert.equal(ra.body.attempt.id, rb.body.attempt.id);
     assert.equal(ai.calls.length, 1);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM quiz_attempts').get().n, 1);
+  });
+
+  describe('resuming', () => {
+    const answerFirst = async (attempt, n, ms = 3000) => {
+      for (let position = 0; position < n; position += 1) {
+        const r = await send('POST', `/api/quiz/attempts/${attempt.id}/answers`, { position, choice: rightChoice(attempt.id, position), time_ms: ms });
+        assert.equal(r.status, 200);
+      }
+    };
+    const setup = async () => {
+      await start();
+      const id = addLesson('Inquiry');
+      addCards(id, 8);
+      addCards(id, 6, 'term');
+      return id;
+    };
+    const attemptCount = () => db.prepare('SELECT COUNT(*) AS n FROM quiz_attempts').get().n;
+
+    it('returns an unfinished attempt started under 2 hours ago, at its first unanswered question', async () => {
+      const id = await setup();
+      const first = (await send('POST', `/api/lessons/${id}/quiz/attempts`)).body;
+      await answerFirst(first.attempt, 3);
+      later(90 * 60 * 1000);
+
+      const res = await send('POST', `/api/lessons/${id}/quiz/attempts`);
+      assert.equal(res.status, 200);
+      assert.equal(res.body.resumed, true);
+      assert.equal(res.body.attempt.id, first.attempt.id);
+      assert.equal(res.body.next_position, 3);
+      assert.equal(res.body.elapsed_ms, 9000);
+      assert.match(res.body.notice, /question 4 of 10/);
+      assert.deepEqual(res.body.questions.map((q) => q.question), first.questions.map((q) => q.question), 'same questions, same order');
+      for (const q of res.body.questions) assert.deepEqual(Object.keys(q).sort(), ['choices', 'kind', 'position', 'question', 'statement', 'type']);
+      assert.equal(attemptCount(), 1);
+
+      // it carries on: the answered ones stay answered, the rest can be answered and finished
+      assert.equal((await send('POST', `/api/quiz/attempts/${first.attempt.id}/answers`, { position: 0, choice: 0 })).status, 409);
+      for (let position = 3; position < 10; position += 1) {
+        await send('POST', `/api/quiz/attempts/${first.attempt.id}/answers`, { position, choice: rightChoice(first.attempt.id, position) });
+      }
+      const done = await send('POST', `/api/quiz/attempts/${first.attempt.id}/finish`, { total_ms: 60_000 });
+      assert.equal(done.status, 200);
+      assert.deepEqual([done.body.attempt.score, done.body.attempt.total], [10, 10]);
+    });
+
+    it('starts a fresh attempt once the unfinished one is 2 hours old, and leaves the old one alone', async () => {
+      const id = await setup();
+      const first = (await send('POST', `/api/lessons/${id}/quiz/attempts`)).body;
+      await answerFirst(first.attempt, 2);
+      later(2 * 60 * 60 * 1000);
+
+      const res = await send('POST', `/api/lessons/${id}/quiz/attempts`);
+      assert.equal(res.status, 201);
+      assert.equal(res.body.resumed, false);
+      assert.notEqual(res.body.attempt.id, first.attempt.id);
+      assert.equal(res.body.next_position, 0);
+      assert.equal(attemptCount(), 2);
+      const old = db.prepare('SELECT finished_at, started_at FROM quiz_attempts WHERE id = ?').get(first.attempt.id);
+      assert.deepEqual([old.finished_at, old.started_at], [null, NOON], 'the old attempt is untouched');
+      assert.equal(db.prepare('SELECT COUNT(*) AS n FROM quiz_answers WHERE attempt_id = ? AND chosen_index IS NOT NULL').get(first.attempt.id).n, 2);
+    });
+
+    it('a reload does not create a second attempt', async () => {
+      const id = await setup();
+      const first = (await send('POST', `/api/lessons/${id}/quiz/attempts`)).body;
+      for (let i = 0; i < 3; i += 1) {
+        later(60_000);
+        const again = await send('POST', `/api/lessons/${id}/quiz/attempts`);
+        assert.equal(again.body.attempt.id, first.attempt.id);
+        assert.equal(again.body.next_position, 0);
+        assert.equal(again.body.notice, 'Picking up where you left off, at question 1 of 10.');
+      }
+      assert.equal(attemptCount(), 1);
+      assert.equal(db.prepare('SELECT COUNT(*) AS n FROM quiz_answers').get().n, 10);
+    });
+
+    it('does not resume a finished attempt, another lesson’s attempt, or when a retake is asked for', async () => {
+      const id = await setup();
+      const other = addLesson('Other');
+      addCards(other, 4);
+      const first = (await send('POST', `/api/lessons/${id}/quiz/attempts`)).body;
+      const elsewhere = (await send('POST', `/api/lessons/${other}/quiz/attempts`)).body;
+      assert.notEqual(elsewhere.attempt.id, first.attempt.id);
+
+      const retake = await send('POST', `/api/lessons/${id}/quiz/attempts`, { retake_of: first.attempt.id });
+      assert.equal(retake.status, 201);
+      assert.equal(retake.body.attempt.retake_of, first.attempt.id);
+
+      await answerFirst(retake.body.attempt, 10);
+      assert.equal((await send('POST', `/api/quiz/attempts/${retake.body.attempt.id}/finish`, { total_ms: 1000 })).status, 200);
+      // the first attempt is still open and is the one that resumes
+      const res = await send('POST', `/api/lessons/${id}/quiz/attempts`);
+      assert.equal(res.body.attempt.id, first.attempt.id);
+      assert.equal(res.body.resumed, true);
+    });
+
+    it('an attempt with every question answered but not finished resumes with nothing left to answer', async () => {
+      const id = await setup();
+      const first = (await send('POST', `/api/lessons/${id}/quiz/attempts`)).body;
+      await answerFirst(first.attempt, 10);
+      const res = await send('POST', `/api/lessons/${id}/quiz/attempts`);
+      assert.equal(res.body.attempt.id, first.attempt.id);
+      assert.equal(res.body.next_position, null);
+      assert.equal(res.body.notice, null);
+    });
+
+    it('leaves flashcard scheduling alone', async () => {
+      const id = await setup();
+      const before = flashcardState();
+      const first = (await send('POST', `/api/lessons/${id}/quiz/attempts`)).body;
+      await answerFirst(first.attempt, 4);
+      await send('POST', `/api/lessons/${id}/quiz/attempts`);
+      assert.deepEqual(flashcardState(), before);
+      assert.equal(db.prepare('SELECT COUNT(*) AS n FROM flashcard_reviews').get().n, 0);
+    });
   });
 
   it('refuses lessons that cannot be quizzed, with clear messages', async () => {

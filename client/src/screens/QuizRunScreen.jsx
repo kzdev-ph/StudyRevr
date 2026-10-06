@@ -27,6 +27,7 @@ export default function QuizRunScreen({ lessonId }) {
   const [startError, setStartError] = useState(null); // { message, final }: final when trying again can't help (409)
   const [slow, setSlow] = useState(false);
   const [busy, setBusy] = useState(false);
+  const pending = useRef(false); // set at once on a press, before `busy` renders, so a double press or tap sends one request
   const [notice, setNotice] = useState(null);
   const shownAt = useRef(0); // when the current question appeared
   const startedAt = useRef(0); // when the first question appeared
@@ -37,6 +38,16 @@ export default function QuizRunScreen({ lessonId }) {
   const focusAfter = useRef(null); // 'next' | 'results' (a new question focuses itself when it appears)
   const retakeOf = useRef(null); // what "Try again" retries after a failed start
 
+  const showQuestion = useCallback((i) => {
+    setIndex(i);
+    setFeedback(null);
+    setError(null);
+    setPhase('question');
+    shownAt.current = performance.now();
+  }, []);
+
+  // Starts a quiz, or picks up an open one: the server returns an unfinished attempt under 2 hours old (a reload, or
+  // coming back later) with where to carry on, and the time already spent on it.
   const start = useCallback(
     async (retake = null) => {
       retakeOf.current = retake;
@@ -50,17 +61,31 @@ export default function QuizRunScreen({ lessonId }) {
         if (!alive.current) return;
         setQuiz(next);
         setNotice(next.notice);
-        setIndex(0);
         setFeedback(null);
         setResults(null);
-        setPhase('shuffle');
+        if (!next.resumed) {
+          setIndex(0);
+          setPhase('shuffle');
+        } else {
+          startedAt.current = performance.now() - (next.elapsed_ms ?? 0);
+          if (next.next_position === null) {
+            // every question was answered but the quiz was never closed: close it
+            const done = await api.finishQuiz(next.attempt.id, next.elapsed_ms ?? 0);
+            if (!alive.current) return;
+            setResults(done);
+            setPhase('results');
+            focusAfter.current = 'results';
+          } else {
+            showQuestion(next.next_position);
+          }
+        }
       } catch (err) {
         if (alive.current) setStartError({ message: err.message, final: err.status === 409 || err.status === 404 });
       } finally {
         clearTimeout(timer);
       }
     },
-    [lessonId],
+    [lessonId, showQuestion],
   );
 
   // Start once per visit (StrictMode runs effects twice; a second POST would log an empty attempt).
@@ -85,13 +110,6 @@ export default function QuizRunScreen({ lessonId }) {
     }
   });
 
-  const showQuestion = useCallback((i) => {
-    setIndex(i);
-    setFeedback(null);
-    setPhase('question');
-    shownAt.current = performance.now();
-  }, []);
-
   const shuffled = useCallback(() => {
     startedAt.current = performance.now();
     showQuestion(0);
@@ -102,7 +120,8 @@ export default function QuizRunScreen({ lessonId }) {
 
   const answer = useCallback(
     async (choice) => {
-      if (phase !== 'question' || busy || !question) return;
+      if (phase !== 'question' || pending.current || !question) return;
+      pending.current = true;
       setBusy(true);
       setError(null);
       try {
@@ -113,17 +132,19 @@ export default function QuizRunScreen({ lessonId }) {
         setPhase('feedback');
         focusAfter.current = 'next';
       } catch (err) {
-        setError(err.message);
+        setError(`Your answer wasn’t saved. ${err.message} Choose an option to try again.`);
       } finally {
+        pending.current = false;
         setBusy(false);
       }
     },
-    [phase, busy, question, quiz],
+    [phase, question, quiz],
   );
 
   const next = useCallback(async () => {
-    if (phase !== 'feedback' || busy) return;
+    if (phase !== 'feedback' || pending.current) return;
     if (!last) return showQuestion(index + 1);
+    pending.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -135,9 +156,10 @@ export default function QuizRunScreen({ lessonId }) {
     } catch (err) {
       setError(err.message);
     } finally {
+      pending.current = false;
       setBusy(false);
     }
-  }, [phase, busy, last, index, quiz, showQuestion]);
+  }, [phase, last, index, quiz, showQuestion]);
 
   useEffect(() => {
     const onKey = (event) => {
@@ -205,6 +227,8 @@ export default function QuizRunScreen({ lessonId }) {
 
       {phase === 'shuffle' && <DeckShuffle count={total} onDone={shuffled} />}
 
+      {(phase === 'question' || phase === 'feedback') && error && <Notice onDismiss={() => setError(null)}>{error}</Notice>}
+
       <AnimatePresence mode="wait" initial={false}>
         {question && (phase === 'question' || phase === 'feedback') && (
           <motion.div key={`${quiz.attempt.id}-${index}`} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}>
@@ -212,8 +236,6 @@ export default function QuizRunScreen({ lessonId }) {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {(phase === 'question' || phase === 'feedback') && error && <Notice onDismiss={() => setError(null)}>{error}</Notice>}
 
       {phase === 'feedback' && (
         <div className="study-actions">

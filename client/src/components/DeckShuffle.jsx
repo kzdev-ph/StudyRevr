@@ -25,6 +25,19 @@ export default function DeckShuffle({ count, onDone }) {
     return () => clearTimeout(timer);
   }, [reduce]);
 
+  // Enter, Space or Escape skip it too, so it is not a touch-only shortcut
+  useEffect(() => {
+    const onKey = (event) => {
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      if (event.key === 'Enter' || event.key === ' ' || event.key === 'Escape') {
+        event.preventDefault();
+        end();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   const shown = Math.max(1, Math.min(CARDS, count));
   return (
     <div className="shuffle" onClick={end}>
@@ -54,6 +67,9 @@ export default function DeckShuffle({ count, onDone }) {
       </div>
       <p className="shuffle__text" role="status">
         Shuffling {count} {count === 1 ? 'question' : 'questions'}…
+      </p>
+      <p className="muted" aria-hidden="true">
+        Tap or press Enter to skip
       </p>
     </div>
   );

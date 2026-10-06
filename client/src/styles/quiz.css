@@ -1,5 +1,6 @@
 /* Mock Quiz tab: the shuffle, a question with its options and feedback, and the results. Only existing tokens:
-   right answers use ok / ok-wash, wrong ones danger / danger-wash, always with a word and an icon as well. */
+   right answers use ok / ok-wash, wrong ones danger / danger-wash, always with an icon and a word (the word is read
+   out on the option and shown in the feedback below, so the option itself never changes size when it is marked). */
 
 .quiz-counter {
   color: var(--ink-2);
@@ -11,6 +12,7 @@
   margin-top: -6px;
 }
 .quiz-progress .progress__fill {
+  background: var(--accent); /* the shared yellow fill is about 1.2:1 against the track in light mode */
   transition: width 0.25s ease-out;
 }
 
@@ -71,6 +73,11 @@
 }
 
 /* ---- a question: a notebook sheet like a flashcard ---- */
+/* the question type is a sentence here, not a short label, so it is not set in capitals */
+.quiz-q .flashcard__kicker {
+  text-transform: none;
+  letter-spacing: 0;
+}
 .quiz-q {
   position: relative;
   display: flex;
@@ -136,9 +143,8 @@
 }
 .quiz-opt {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 6px 12px;
+  gap: 12px;
   min-height: 52px;
   padding: 10px 14px;
   border: 1.5px solid var(--line-strong);
@@ -172,21 +178,22 @@
   font-weight: 700;
 }
 .quiz-opt__text {
-  flex: 1 1 10rem;
+  flex: 1 1 auto;
   min-width: 0;
 }
-.quiz-opt__tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 0.8125rem;
-  font-weight: 700;
+/* always there, empty until the answer shows */
+.quiz-opt__mark {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 1.125rem;
+  height: 1.125rem;
 }
 .quiz-opt--right {
   border-color: var(--ok);
   background: var(--ok-wash);
 }
-.quiz-opt--right .quiz-opt__tag,
+.quiz-opt--right .quiz-opt__mark,
 .quiz-opt--right .quiz-opt__key {
   color: var(--ok);
   border-color: var(--ok);
@@ -195,7 +202,7 @@
   border-color: var(--danger);
   background: var(--danger-wash);
 }
-.quiz-opt--wrong .quiz-opt__tag,
+.quiz-opt--wrong .quiz-opt__mark,
 .quiz-opt--wrong .quiz-opt__key {
   color: var(--danger);
   border-color: var(--danger);

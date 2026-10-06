@@ -84,6 +84,7 @@ Drag-drop or pick file → progress states: Extracting → Summarizing → Flash
   - `quiz_attempts` gains `started_at`, `finished_at` (NULL for a quiz left part-way), `duration_ms`, `retake_of` (the attempt whose questions it reused; NULL for a fresh quiz). `score` is final once finished.
   - `quiz_answers` (id, attempt_id → quiz_attempts ON DELETE CASCADE, position, flashcard_id ON DELETE SET NULL, type `mc`|`tf`, kind `term`|`concept`, question, statement (tf), choices JSON, answer_index, answer_text, evidence, chosen_index, correct, time_ms, answered_at): one row per question, written at start and filled in when answered; a full copy, so it outlives card changes. Phase 6 reads it.
   - `quiz_questions` (001) is unused: questions are built from flashcards per attempt.
+- **Resume:** `POST /api/lessons/:id/quiz/attempts` without `retake_of` returns the lesson's newest unfinished attempt if it started less than 2 hours ago (200, `resumed: true`, `next_position` = first unanswered question or `null` when all are answered, `elapsed_ms` = time already spent), so a reload or coming back never creates a second attempt. Older unfinished attempts are left as they are (abandoned). A retake always starts a new attempt. The results screen offers "Review these flashcards", a plain link to the lesson's flashcard deck; it changes no scheduling.
 - Endpoints: `GET /api/quiz` · `POST /api/lessons/:id/quiz/attempts` (body `{ retake_of? }`; returns questions without answers) · `POST /api/quiz/attempts/:id/answers` (`{ position, choice, time_ms }`; each question once; returns correct, answer_index, answer_text, evidence) · `POST /api/quiz/attempts/:id/finish` (`{ total_ms }`; every question answered first; returns score, missed questions, previous best).
 
 ### Stats
@@ -143,5 +144,14 @@ Drag-drop or pick file → progress states: Extracting → Summarizing → Flash
 5. Quiz generation + attempts + shuffle animation + Mock Quiz tab — **done**
 6. Session logging + Stats tab + CSV export
 7. Settings, backup/import, polish, README, LICENSE (MIT)
+
+Phase 7 carry-over from the Phase 5 quiz audit (Low findings, not fixed yet):
+- Focus ring: base.css `:focus-visible` forces `border-radius: 4px`, so `.quiz-opt` loses its 10px corners on focus.
+- Wrap `.quiz-opt:hover` in `@media (hover: hover)` so it doesn't stick on touch screens.
+- quiz.css and flashcards.css hardcode radii (4px, 10px, 14px) and the card shadow `rgb(14 17 38 / .08)` instead of tokens; add a shadow token and map the radii.
+- Announce the question's position ("Question 3 of 10") to screen readers (`aria-describedby` on the article pointing at the counter).
+- Quiz tab: the "Preparing" / "Making cards" chips change silently; add a polite live region.
+- Copy repeats: "Needs 2+ cards" next to "Only 1 flashcard"; "You got every question right." under a 10 of 10 score; a correct True answer repeats the statement; drop the exclamation in "New best!".
+- Small text carries meaning (0.8125rem tags, key boxes, `dt`): raise to 0.875rem.
 
 Work one phase at a time. At the end of each phase: run it, fix errors, summarize what was built and how to test it, then stop.

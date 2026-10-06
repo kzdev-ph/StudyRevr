@@ -26,7 +26,7 @@ function QuizAction({ row }) {
   }
   if (!row.cards) {
     return (
-      <a className="btn btn--quiet" href={paths.tab('flashcards')} aria-label={`Make flashcards for ${prettyTitle(row.title)} first`}>
+      <a className="btn btn--quiet" href={paths.tab('flashcards')} aria-label={`Make cards first: ${prettyTitle(row.title)}`}>
         Make cards first
       </a>
     );
@@ -94,7 +94,7 @@ export default function QuizScreen() {
     <section className="stack">
       <h1 className="screen-title">Mock Quiz</h1>
       <p className="muted">
-        Up to {data.quiz_length} questions from a lesson’s flashcards: multiple choice and true or false. No timer. Your flashcard schedule isn’t affected.
+        Up to {data.quiz_length} questions from a lesson’s flashcards: multiple choice and true or false. No timer on screen. We record how long each answer takes for the study. Your flashcard schedule isn’t affected.
       </p>
       <ul className="decks" aria-label="Lessons">
         {data.lessons.map((row) => (

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { HttpError } from '../middleware/errors.js';
 import { getJobStatus } from '../pipeline/jobs.js';
-import { answerQuestion, attemptQuestions, finishAttempt, getAttempt, lessonQuizStats, publicQuestion, questionsOf, startAttempt } from '../quiz/attempts.js';
+import { answerQuestion, attemptQuestions, findOpenAttempt, finishAttempt, getAttempt, lessonQuizStats, publicQuestion, questionsOf, startAttempt } from '../quiz/attempts.js';
 import { buildQuiz, QUIZ_LENGTH, reshuffle, usableCount } from '../quiz/build.js';
 import { ensureDistractors, loadDistractors } from '../quiz/distractors.js';
 
@@ -69,7 +69,23 @@ export function quizRouter({ db, ai, clock = () => new Date(), random = Math.ran
     });
   });
 
-  // Starts a quiz. A fresh one picks up to QUIZ_LENGTH cards at random (making any missing wrong answers first);
+  // The quiz screen's answer for an attempt that is still open: its questions (no answers) and where to pick up.
+  const resumed = ({ attempt, next_position, elapsed_ms }) => {
+    const questions = attemptQuestions(db, attempt.id);
+    const where = next_position === null ? null : next_position + 1;
+    return {
+      attempt,
+      questions: questions.map(publicQuestion),
+      notice: where ? `Picking up where you left off, at question ${where} of ${questions.length}.` : null,
+      resumed: true,
+      next_position,
+      elapsed_ms,
+    };
+  };
+
+  // Starts a quiz. Unless { retake_of } is given, an unfinished attempt on this lesson that started less than 2 hours
+  // ago is returned instead (resume at its first unanswered question), so a reload never makes a second attempt.
+  // A fresh one picks up to QUIZ_LENGTH cards at random (making any missing wrong answers first);
   // { retake_of } asks the same questions as that attempt, in a new order. The right answers stay on the server.
   router.post('/lessons/:id/quiz/attempts', async (req, res, next) => {
     try {
@@ -79,6 +95,11 @@ export function quizRouter({ db, ai, clock = () => new Date(), random = Math.ran
       const retakeOf = body.data.retake_of ?? null;
       let questions;
       let notice = null;
+
+      if (!retakeOf) {
+        const open = findOpenAttempt(db, lesson.id, clock());
+        if (open) return res.json(resumed(open));
+      }
 
       if (retakeOf) {
         const source = getAttempt(db, retakeOf);
@@ -90,6 +111,9 @@ export function quizRouter({ db, ai, clock = () => new Date(), random = Math.ran
         if (!cards.length) throw new HttpError(409, 'This lesson has no flashcards yet, and the quiz is made from them. Make them on the Flashcard tab first.');
         if (cards.length < 2) throw new HttpError(409, NEEDS_TWO);
         const made = await distractorsFor(lesson.id);
+        // another start may have finished while the wrong answers were being made
+        const raced = findOpenAttempt(db, lesson.id, clock());
+        if (raced) return res.json(resumed(raced));
         questions = buildQuiz({ cards, distractors: loadDistractors(db, lesson.id), extraTerms: keyTermNames(db, lesson.id), random });
         if (!questions.length) throw new HttpError(409, NEEDS_TWO);
         const notes = [];
@@ -100,7 +124,7 @@ export function quizRouter({ db, ai, clock = () => new Date(), random = Math.ran
 
       const attemptId = startAttempt(db, { lessonId: lesson.id, questions, now: clock(), retakeOf });
       const attempt = getAttempt(db, attemptId);
-      res.status(201).json({ attempt, questions: attemptQuestions(db, attemptId).map(publicQuestion), notice });
+      res.status(201).json({ attempt, questions: attemptQuestions(db, attemptId).map(publicQuestion), notice, resumed: false, next_position: 0, elapsed_ms: 0 });
     } catch (e) {
       next(e);
     }

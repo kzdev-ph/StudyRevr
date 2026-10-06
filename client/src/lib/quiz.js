@@ -21,14 +21,14 @@ export function quizKeyAction(event, { phase, optionCount = 0 }) {
 
 // The small line above a question, telling the student what kind of question it is.
 export function questionLead(q) {
-  if (q.type === 'tf') return 'True or false?';
+  if (q.type === 'tf') return q.kind === 'term' ? 'True or false?' : 'Is this answer true or false?';
   return q.kind === 'term' ? 'Which term matches this description?' : 'Choose the best answer';
 }
 
 // The whole question in one sentence, for screen readers and the results list.
 export function questionText(q) {
   if (q.type !== 'tf') return q.question;
-  return q.kind === 'term' ? `${q.question} means: ${q.statement}` : `${q.question} Answer: ${q.statement}`;
+  return q.kind === 'term' ? `${q.question} means: ${q.statement}` : `${q.question} Suggested answer: ${q.statement}`;
 }
 
 export const percent = (score, total) => (total ? Math.round((score / total) * 100) : 0);

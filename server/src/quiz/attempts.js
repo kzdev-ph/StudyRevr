@@ -47,6 +47,22 @@ export function startAttempt(db, { lessonId, questions, now, retakeOf = null }) 
   })();
 }
 
+// An unfinished attempt on this lesson that started less than RESUME_WINDOW_MS ago, or null. Older unfinished attempts
+// stay as they are: they count as abandoned. -> { attempt, next_position, elapsed_ms }
+export const RESUME_WINDOW_MS = 2 * 60 * 60 * 1000;
+
+export function findOpenAttempt(db, lessonId, now) {
+  const cutoff = new Date(now.getTime() - RESUME_WINDOW_MS).toISOString();
+  const row = db
+    .prepare('SELECT id FROM quiz_attempts WHERE lesson_id = ? AND finished_at IS NULL AND started_at > ? ORDER BY started_at DESC, id DESC LIMIT 1')
+    .get(lessonId, cutoff);
+  if (!row) return null;
+  const { next, spent } = db
+    .prepare('SELECT MIN(CASE WHEN chosen_index IS NULL THEN position END) AS next, COALESCE(SUM(time_ms), 0) AS spent FROM quiz_answers WHERE attempt_id = ?')
+    .get(row.id);
+  return { attempt: getAttempt(db, row.id), next_position: next, elapsed_ms: spent };
+}
+
 // The questions of an earlier attempt, as buildQuiz returns them (for a retake).
 export function questionsOf(db, attemptId) {
   return attemptQuestions(db, attemptId).map(({ flashcard_id, type, kind, question, statement, choices, answer_index, answer_text, evidence }) => ({
