@@ -9,7 +9,7 @@ import readline from 'node:readline/promises';
 import Database from 'better-sqlite3';
 import { loadConfig } from '../src/config.js';
 import { openDb, runMigrations } from '../src/db/index.js';
-import { runningServerPid } from '../src/server-pid.js';
+import { pidFile, runningServerPid } from '../src/server-pid.js';
 import { SECRET_SETTINGS } from '../src/services/backup.js';
 
 const MIGRATIONS = fs.readdirSync(new URL('../src/db/migrations/', import.meta.url)).filter((f) => /^\d+_.+\.sql$/.test(f));
@@ -75,6 +75,7 @@ async function main(args, { input = process.stdin, output = process.stdout } = {
   const pid = runningServerPid(target);
   if (pid || (await serverAnswers(config.port))) {
     console.error(`The StudyRevr server is running${pid ? ` (process ${pid})` : ` on port ${config.port}`}. Stop it first (Ctrl+C in its window), then run this again.`);
+    if (pid) console.error(`If no server is running (it was closed without stopping, or the number belongs to another program), delete ${pidFile(target)} and run this again.`);
     return 1;
   }
 
@@ -107,6 +108,7 @@ async function main(args, { input = process.stdin, output = process.stdout } = {
       current.close();
     }
     console.log(`Saved the current database as ${keep}`);
+    console.log('  That copy still holds the API keys (yours and the students’). Delete it once you have checked that the restore works.');
   }
 
   // copy next to the target, then swap, so a failed copy never leaves half a database in place
@@ -128,6 +130,7 @@ async function main(args, { input = process.stdin, output = process.stdout } = {
   console.log('  - Enter the AI API key again in Admin > AI and study settings (backups hold no keys), or keep it in .env.');
   console.log('  - Check that ADMIN_PIN is set in .env (the PIN is never in a backup).');
   console.log('  - Students who used their own AI key need to add it again in Settings.');
+  console.log('  - Delete the pre-restore-*.db copy next to the database once everything checks out: it holds API keys.');
   return 0;
 }
 

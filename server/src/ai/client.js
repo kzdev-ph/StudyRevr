@@ -291,6 +291,12 @@ export function createAiClient({
         continue;
       }
       const reason = res.status === 429 ? 'rate_limit' : res.status >= 500 ? 'server' : `http_${res.status}`;
+      // A live call doesn't wait and retry, but a real 429 still tells every caller to this model when to come back
+      // (the next live calls then go straight to the next step instead of each being refused by the provider).
+      if (res.status === 429) {
+        const named = retryAfterMs(res.headers.get('retry-after'), await res.clone().text().catch(() => ''), now());
+        if (named !== null) limiter.pause(limitKey, now() + Math.min(named, MAX_RETRY_AFTER_MS));
+      }
       attemptFailed({ label, attempt, startedAt, reason, status: res.status, retry: false });
       throw await describeFailure(res, cfg);
     }

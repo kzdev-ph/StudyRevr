@@ -126,7 +126,11 @@ export const appSettingsBody = z.strictObject({
 });
 
 export function describeAppSettings(db, { newPerDay }) {
-  return { flashcard_new_per_day: newPerDay, allow_student_keys: getBoolSetting(db, 'allow_student_keys', false) };
+  return {
+    flashcard_new_per_day: newPerDay,
+    allow_student_keys: getBoolSetting(db, 'allow_student_keys', false),
+    student_keys_saved: db.prepare('SELECT COUNT(*) AS n FROM participant_ai_keys').get().n,
+  };
 }
 
 export function saveAppSettings(db, input) {

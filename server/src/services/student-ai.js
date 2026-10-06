@@ -5,7 +5,7 @@ import { getBoolSetting } from './settings.js';
 // A participant's own AI key (participant_ai_keys), for the live calls only: Explain simpler and Filipino/Taglish.
 // Lesson processing never uses it. The key is never returned or logged; the API shows its last 4 characters.
 
-const STUDENT_TIMEOUT_MS = 60_000; // a student is waiting; a preset's 300 s suits batch work, not a tap
+const STUDENT_TIMEOUT_MS = 25_000; // a student is waiting, as for the other steps; a preset's 300 s suits batch work, not a tap
 
 export const studentKeysAllowed = (db) => getBoolSetting(db, 'allow_student_keys', false);
 
@@ -39,7 +39,16 @@ export function saveStudentKey(db, participantId, { provider, model, apiKey }, n
   ).run(participantId, provider, model, apiKey, apiKey.slice(-4), at, at);
 }
 
-export const deleteStudentKey = (db, participantId) => db.prepare('DELETE FROM participant_ai_keys WHERE participant_id = ?').run(participantId).changes > 0;
+export function deleteStudentKey(db, participantId) {
+  db.pragma('secure_delete = ON'); // the key is overwritten in the file, not just unlinked
+  return db.prepare('DELETE FROM participant_ai_keys WHERE participant_id = ?').run(participantId).changes > 0;
+}
+
+// For after the study: removes every saved student key (admin). -> how many were deleted
+export function deleteAllStudentKeys(db) {
+  db.pragma('secure_delete = ON'); // the keys are overwritten in the file, not just unlinked
+  return db.prepare('DELETE FROM participant_ai_keys').run().changes;
+}
 
 // The AI client config for a student's key: the preset's fixed base URL (a student can't point the server elsewhere).
 export function studentConfig({ provider, model, apiKey }) {

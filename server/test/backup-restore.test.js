@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { createApp } from '../src/app.js';
 import { openDb, runMigrations } from '../src/db/index.js';
 import { pidFile } from '../src/server-pid.js';
-import { backupFileName } from '../src/services/backup.js';
+import { backupFileName, makeBackup, removeLeftoverBackups, removeTemp } from '../src/services/backup.js';
 import { addCodes, seedLesson, TEST_PIN } from './helpers.js';
 
 const SCRIPT = fileURLToPath(new URL('../scripts/restore.js', import.meta.url));
@@ -84,6 +84,33 @@ describe('backup and restore', () => {
     assert.equal(backupFileName(new Date('2026-10-05T20:05:00.000Z')), 'studyrevr-backup-2026-10-06-0405.db');
   });
 
+  it('the temporary copy is made next to the database, never in the system temp folder, and is gone afterwards', async () => {
+    assert.deepEqual(fs.readdirSync(dir).filter((f) => f.startsWith('backup-tmp-')), [], 'the download left nothing behind');
+    const db = openDb(path.join(dir, 'tmpcheck.db'));
+    runMigrations(db);
+    try {
+      const made = await makeBackup(db);
+      assert.equal(path.dirname(made.file), dir);
+      assert.ok(made.file.endsWith('.db'), 'its name ends in .db so .gitignore covers it');
+      removeTemp(made.file);
+      assert.ok(!fs.existsSync(made.file));
+      // a failed copy removes its file too
+      await assert.rejects(makeBackup(db, { dir: path.join(dir, 'no-such-folder') }));
+    } finally {
+      db.close();
+    }
+  });
+
+  it('leftover temporary backups (and their journals) are removed at start, other files stay', () => {
+    const folder = fs.mkdtempSync(path.join(dir, 'leftover-'));
+    for (const name of ['backup-tmp-a.db', 'backup-tmp-a.db-journal', 'backup-tmp-b.db', 'studyrevr.db', 'pre-restore-1.db', 'studyrevr-backup-2026-10-06-1430.db']) {
+      fs.writeFileSync(path.join(folder, name), 'x');
+    }
+    assert.equal(removeLeftoverBackups(path.join(folder, 'studyrevr.db')), 3);
+    assert.deepEqual(fs.readdirSync(folder).sort(), ['pre-restore-1.db', 'studyrevr-backup-2026-10-06-1430.db', 'studyrevr.db']);
+    assert.equal(removeLeftoverBackups(':memory:'), 0);
+  });
+
   it('the backup holds the data but no API key and no PIN, not even in its free pages', () => {
     const bytes = fs.readFileSync(backupFile).toString('latin1');
     for (const secret of [ADMIN_KEY, STUDENT_KEY, TEST_PIN]) assert.ok(!bytes.includes(secret), secret);
@@ -111,6 +138,7 @@ describe('backup and restore', () => {
     assert.equal(code, 0, out);
     assert.match(out, /Enter the AI API key again/);
     assert.match(out, /ADMIN_PIN/);
+    assert.match(out, /pre-restore-.*hold|holds the API keys/s, 'the pre-restore copy holds keys: the message says to delete it');
     const kept = fs.readdirSync(path.dirname(live)).filter((f) => f.startsWith('pre-restore-'));
     assert.equal(kept.length, 1, 'a copy of the database before the restore');
 
@@ -152,6 +180,7 @@ describe('backup and restore', () => {
       const { code, out } = await restore(backupFile, live, 'RESTORE');
       assert.equal(code, 1);
       assert.match(out, /server is running/);
+      assert.match(out, /delete .*running\.db\.pid/, 'says how to clear a stale pid file');
       assert.ok(!fs.existsSync(live));
     } finally {
       fs.rmSync(pidFile(live), { force: true });

@@ -4,11 +4,15 @@ import { loadConfig } from './config.js';
 import { openDb, runMigrations } from './db/index.js';
 import { failInterruptedJobs } from './pipeline/jobs.js';
 import { removePidFile, writePidFile } from './server-pid.js';
+import { removeLeftoverBackups } from './services/backup.js';
 
 const config = loadConfig();
 const db = openDb(config.dbPath);
 const applied = runMigrations(db);
 if (applied.length) console.log(`[db] applied migrations: ${applied.join(', ')}`);
+
+const leftover = removeLeftoverBackups(config.dbPath);
+if (leftover) console.log(`[backup] removed ${leftover} temporary backup file(s) left by an earlier run`);
 
 const interrupted = failInterruptedJobs(db);
 if (interrupted) console.log(`[pipeline] marked ${interrupted} unfinished lesson(s) as failed after a restart; they can be retried`);

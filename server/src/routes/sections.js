@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { loadSchedulerConfig } from '../flashcards/config.js';
 import { HttpError } from '../middleware/errors.js';
-import { participantOf } from '../middleware/participant.js';
+import { requireParticipant } from '../middleware/participant.js';
 import { liveRewrite } from '../services/live-rewrite.js';
 import { parseFilipino, parseSimple } from '../services/section-versions.js';
 import { readStudentKey, studentKeysAllowed } from '../services/student-ai.js';
@@ -40,7 +40,7 @@ export function sectionsRouter({ ai, db, config = {}, clock = () => new Date() }
   const rewrite = (kind, apiKind, parse, column) => async (req, res, next) => {
     try {
       const section = loadSection(req);
-      const participant = participantOf(db, req);
+      const participant = requireParticipant(db, req); // no code, no AI call
       const shared = parse(section[column]);
       const ownKey = participant && studentKeysAllowed(db) && readStudentKey(db, participant.id);
       if (shared && !ownKey) {

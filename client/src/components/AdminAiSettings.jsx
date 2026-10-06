@@ -95,7 +95,8 @@ function DefaultAi() {
         </select>
       </label>
       {current.needsKey && (
-        <label className="field">
+        <div className="field-group">
+          <label className="field">
           <span className="field__label">API key</span>
           <input
             className="field__input"
@@ -107,15 +108,17 @@ function DefaultAi() {
             spellCheck={false}
             aria-describedby="admin-key-note"
           />
-          <span id="admin-key-note" className="muted">
+          </label>
+          <p id="admin-key-note" className="muted">
             {current.keySet ? 'Key set.' : 'No key set.'} The key is never shown again or included in exports and backups.
-          </span>
-        </label>
+          </p>
+        </div>
       )}
+      <div className="field-group">
       <label className="field">
         <span className="field__label">Model</span>
         {listed ? (
-          <select className="field__input" value={model} onChange={(e) => setModel(e.target.value)}>
+          <select className="field__input" value={model} onChange={(e) => setModel(e.target.value)} aria-describedby="admin-model-note">
             {listed.map((id) => (
               <option key={id} value={id}>
                 {id}
@@ -133,10 +136,11 @@ function DefaultAi() {
             aria-describedby="admin-model-note"
           />
         )}
-        <span id="admin-model-note" className="muted">
-          {models === null ? 'Loading the model list…' : listed ? `Chat models only. Recommended: ${current.defaultModel}.` : 'The model list isn’t available; type a model id.'}
-        </span>
       </label>
+      <p id="admin-model-note" className="muted">
+        {models === null ? 'Loading the model list…' : listed ? `Chat models only. Recommended: ${current.defaultModel}.` : 'The model list isn’t available; type a model id.'}
+      </p>
+      </div>
       <p role="status" className="status-ok">
         {result?.ok ? result.text : ''}
       </p>
@@ -179,6 +183,22 @@ function StudySettings() {
     try {
       setSettings(await api.saveAppSettings(change));
       setMessage(done);
+    } catch (err) {
+      setProblem(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const [confirmingKeys, setConfirmingKeys] = useState(false);
+  const deleteKeys = async () => {
+    setBusy(true);
+    setProblem(null);
+    setMessage('');
+    try {
+      const { deleted } = await api.deleteStudentKeys();
+      setSettings(await api.appSettings());
+      setConfirmingKeys(false);
+      setMessage(deleted ? `Deleted ${deleted} saved student key${deleted === 1 ? '' : 's'}.` : 'No student keys were saved.');
     } catch (err) {
       setProblem(err.message);
     } finally {
@@ -239,6 +259,31 @@ function StudySettings() {
       <p id="admin-keys-note" className="muted">
         Only for Explain simpler and Filipino/Taglish. Answers from a student’s key are shown to that student only. Lessons are always prepared with the Default.
       </p>
+      <p className="muted">
+        {settings.student_keys_saved
+          ? `${settings.student_keys_saved} student key${settings.student_keys_saved === 1 ? ' is' : 's are'} saved on this computer.`
+          : 'No student keys are saved.'}{' '}
+        Delete them all when the study is over.
+      </p>
+      {confirmingKeys ? (
+        <div className="stack stack--tight" role="group" aria-label="Delete all student keys">
+          <p>Delete every saved student key? Students would have to paste theirs again. This can’t be undone.</p>
+          <div className="admin-actions">
+            <button type="button" className="btn btn--primary" onClick={deleteKeys} disabled={busy}>
+              Yes, delete all
+            </button>
+            <button type="button" className="btn btn--quiet" onClick={() => setConfirmingKeys(false)} disabled={busy}>
+              Keep them
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div>
+          <button type="button" className="btn btn--quiet" onClick={() => setConfirmingKeys(true)} disabled={busy || !settings.student_keys_saved}>
+            Delete all student keys
+          </button>
+        </div>
+      )}
       <p role="status" className="status-ok">
         {message}
       </p>

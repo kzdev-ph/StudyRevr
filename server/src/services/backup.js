@@ -37,18 +37,46 @@ export function stripSecrets(file) {
   }
 }
 
-// Makes a sanitised backup of `db` in a temporary file. -> { file (temp path; the caller deletes it), name }
-export async function makeBackup(db, { now = new Date(), dir = os.tmpdir() } = {}) {
-  const file = path.join(dir, `studyrevr-backup-${randomUUID()}.db`);
-  await db.backup(file);
+// The temporary copy lives next to the database (the app's git-ignored data folder), never in the system temp folder:
+// until stripSecrets has run it still holds every key. Its name ends in .db so .gitignore covers it.
+const TEMP_PREFIX = 'backup-tmp-';
+const tempDirFor = (db) => (db.memory || !db.name ? os.tmpdir() : path.dirname(path.resolve(db.name))); // memory: tests only
+
+// Deletes temporary backups a crash left behind (and their -journal / -wal files). Run when the server starts.
+export function removeLeftoverBackups(dbPath) {
+  if (!dbPath || dbPath === ':memory:') return 0;
+  const dir = path.dirname(path.resolve(dbPath));
+  let removed = 0;
   try {
+    for (const name of fs.readdirSync(dir)) {
+      if (name.startsWith(TEMP_PREFIX) && /\.db(-journal|-wal|-shm)?$/.test(name)) {
+        fs.rmSync(path.join(dir, name), { force: true });
+        removed += 1;
+      }
+    }
+  } catch {
+    // no data folder yet
+  }
+  return removed;
+}
+
+// Makes a sanitised backup of `db` in a temporary file. -> { file (temp path; the caller deletes it), name }
+export async function makeBackup(db, { now = new Date(), dir = tempDirFor(db) } = {}) {
+  const file = path.join(dir, `${TEMP_PREFIX}${randomUUID()}.db`);
+  try {
+    await db.backup(file);
     stripSecrets(file);
   } catch (err) {
-    fs.rmSync(file, { force: true });
+    removeTemp(file);
     throw err;
   }
   return { file, name: backupFileName(now) };
 }
+
+// The temp file and anything SQLite may have left beside it.
+export const removeTemp = (file) => {
+  for (const suffix of ['', '-journal', '-wal', '-shm']) fs.rmSync(`${file}${suffix}`, { force: true });
+};
 
 export function logAdminEvent(db, type, detail, now = new Date()) {
   db.prepare('INSERT INTO admin_events (type, detail, created_at) VALUES (?, ?, ?)').run(type, detail ?? null, now.toISOString());

@@ -154,6 +154,7 @@ export const api = {
   saveAiSettings: (body) => request('/settings/ai', { method: 'PUT', body, admin: true }),
   aiModels: (provider, signal) => request(`/settings/models?provider=${encodeURIComponent(provider)}`, { signal, admin: true }),
   testAi: (body) => request('/settings/test-ai', { method: 'POST', body, admin: true }),
+  deleteStudentKeys: () => request('/admin/student-keys', { method: 'DELETE', admin: true }),
   downloadBackup: () => download('/admin/backup'),
   lastBackup: (signal) => request('/admin/backup/last', { signal, admin: true }),
   downloadExport: (file, includeP00) => {

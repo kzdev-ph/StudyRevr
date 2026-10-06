@@ -47,8 +47,9 @@ export const PRESETS = {
       'gemini-3.5-flash-lite': { timeoutMs: 25_000, requestsPerMinute: 15 },
       // The live calls' last fallback (GEMMA_MODEL). Without reasoning_effort "minimal" it thinks first (25-30 s, and the
       // thinking can use up max_tokens); with it, measured: Explain simpler 4.7-5.9 s, Taglish 9.4-12.0 s, so the 25 s
-      // timeout fits. Its token limit (16K a minute) is the tight one: live calls send it only the section, capped.
-      'gemma-4-26b-a4b-it': { timeoutMs: 25_000, requestsPerMinute: 30, extraBody: { reasoning_effort: 'minimal' } },
+      // timeout fits. Its token limit (16K a minute) is the tight one, not requests: a call is roughly 1-2K tokens, so 8 a minute stays
+      // inside it. Live calls send it only the section, capped.
+      'gemma-4-26b-a4b-it': { timeoutMs: 25_000, requestsPerMinute: 8, extraBody: { reasoning_effort: 'minimal' } },
       // Slower (measured 33-50 s for the same rewrites), so not the fallback; tuned in case admin picks it as Default.
       'gemma-4-31b-it': { timeoutMs: 60_000, requestsPerMinute: 30, extraBody: { reasoning_effort: 'minimal' } },
     },

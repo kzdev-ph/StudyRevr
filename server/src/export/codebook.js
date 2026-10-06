@@ -80,11 +80,13 @@ ai_calls.csv - one row per live AI request for Explain simpler (kind simplify) o
                        researcher) | gemma (the backup model, used when the default was busy or down); blank if failed
   ai_provider, ai_model  the provider and model that answered (if failed: the last one tried)
   ai_fallback_steps    how many steps failed before the answer: 0 = the first choice answered. The order is the
-                       student's key (only if they saved one), then default, then gemma.
+                       student's key (only if they saved one), then default, then gemma. A gemma retry after an
+                       instant provider error is listed too (gemma:provider_error) even when the retry answered.
   ai_fallback_reasons  each failed step as source:reason, e.g. student:auth;default:rate_limit. Reasons: rate_limit,
                        timeout, network, provider_error (the provider's 5xx), auth (key rejected), no_credit,
                        bad_request, invalid_json
-  from_cache           1 if the answer was the default version already saved (the student's own key had failed)
+  from_cache           1 if the answer was the default version already saved (the student's own key had failed, or it
+                       was saved a moment earlier by Prepare or by another student's tap)
   saved_shared         1 if this answer was saved as the version everyone sees (default answers only; answers
                        from a student's key or from gemma are shown to that student only)
   error_code           when failed: the last step's reason (for rate_limit the student saw "The AI is busy, try

@@ -7,9 +7,17 @@
 export const OUTAGE = new Set(['rate_limit', 'timeout', 'network', 'provider_error']);
 // The student's own key is the problem: rejected (401/403) or out of credit (402). Only the student step falls back on these.
 export const KEY_PROBLEM = new Set(['auth', 'no_credit']);
-export const STUDENT_FALLBACK = new Set([...OUTAGE, ...KEY_PROBLEM]);
+// The model gave nothing usable: an unusable reply (twice, the call already retried once), or a reply with no answer in it.
+export const BAD_REPLY = new Set(['invalid_json', 'bad_response']);
+// The student's chosen model or key doesn't work (retired or unknown model, a request it rejects): Default is a different model.
+export const MODEL_PROBLEM = new Set(['not_found', 'bad_request']);
+// The Default (and Gemma, which is last): an outage, or a model that couldn't produce usable JSON. Gemma is a different model.
+export const DEFAULT_FALLBACK = new Set([...OUTAGE, ...BAD_REPLY]);
+export const STUDENT_FALLBACK = new Set([...OUTAGE, ...KEY_PROBLEM, ...MODEL_PROBLEM, ...BAD_REPLY]);
 
 // steps: [{ source, provider, model, fallbackOn: Set<code>, run: () => Promise<value> }]
+// A step may note `step.retried` (reasons it retried itself before answering, e.g. ['provider_error']); they are logged
+// beside the failures.
 // -> { ok: true, value, step, steps: failures before it, failures }
 //  | { ok: false, error, step, failures }   (failures: [{ source, provider, model, code }] in order)
 export async function runChain(steps) {

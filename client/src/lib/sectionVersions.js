@@ -15,7 +15,7 @@ export function sectionVersionsNotice(lesson) {
   return {
     state: 'missing',
     title: `Simpler and Taglish: ${made} of ${total} ready.`,
-    detail: 'Prepare them now so study day needs no live AI calls.',
+    detail: 'Run this before study day. While it runs, students’ live requests use the backup AI.',
     action: 'Prepare simpler and Taglish',
   };
 }

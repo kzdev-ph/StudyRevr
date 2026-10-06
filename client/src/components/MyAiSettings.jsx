@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Notice from './Notice.jsx';
 import { api } from '../lib/api.js';
 
@@ -14,6 +14,10 @@ export default function MyAiSettings() {
   const [busy, setBusy] = useState(null); // 'models' | 'test' | 'remove'
   const [message, setMessage] = useState('');
   const [problem, setProblem] = useState(null);
+  const [confirming, setConfirming] = useState(false); // asking before the saved key is removed
+  const [focusDefault, setFocusDefault] = useState(false);
+  const defaultRadio = useRef(null);
+  const keepButton = useRef(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -29,6 +33,17 @@ export default function MyAiSettings() {
       .catch(() => {}); // Settings still works without this section
     return () => controller.abort();
   }, []);
+
+  // after a key was removed, focus goes to the Default option (the Remove button it came from is gone)
+  useEffect(() => {
+    if (focusDefault && defaultRadio.current) {
+      defaultRadio.current.focus();
+      setFocusDefault(false);
+    }
+  }, [focusDefault, state]);
+  useEffect(() => {
+    if (confirming) keepButton.current?.focus();
+  }, [confirming]);
 
   if (!state || (!state.allowed && !state.key)) return null;
   const label = (id) => state.providers.find((p) => p.id === id)?.label ?? id;
@@ -66,8 +81,32 @@ export default function MyAiSettings() {
     run('remove', async () => {
       setState(await api.removeMyKey());
       setMode('default');
+      setConfirming(false);
+      setFocusDefault(true);
       setMessage('Your key was removed. Explain simpler and Filipino/Taglish use the default AI.');
     });
+
+  // Remove my key and choosing Default ask the same question: the key can't be shown again, so it can't be undone.
+  const removeAsk = (
+    <div className="stack stack--tight" role="group" aria-label="Remove your saved key">
+      <p>
+        Remove your saved key{state.key ? ` (${state.key.provider_label} …${state.key.last4})` : ''}? You would need to paste it again to use it.
+      </p>
+      <div className="admin-actions">
+        <button type="button" className="btn btn--primary" onClick={remove} disabled={busy !== null}>
+          {busy === 'remove' ? 'Removing…' : 'Yes, remove it'}
+        </button>
+        <button type="button" className="btn btn--quiet" ref={keepButton} onClick={() => setConfirming(false)} disabled={busy !== null}>
+          Keep it
+        </button>
+      </div>
+    </div>
+  );
+  const removeButton = (
+    <button type="button" className="btn btn--quiet" onClick={() => setConfirming(true)} disabled={busy !== null}>
+      Remove my key
+    </button>
+  );
 
   const chooseProvider = (id) => {
     setProvider(id);
@@ -86,11 +125,7 @@ export default function MyAiSettings() {
         <p className="muted">
           Your saved key ({state.key.provider_label} …{state.key.last4}) isn’t used right now: your teacher turned own keys off. The default AI answers.
         </p>
-        <div>
-          <button type="button" className="btn btn--quiet" onClick={remove} disabled={busy !== null}>
-            {busy === 'remove' ? 'Removing…' : 'Remove my key'}
-          </button>
-        </div>
+        {confirming ? removeAsk : <div>{removeButton}</div>}
         <p role="status" className="status-ok">
           {message}
         </p>
@@ -112,7 +147,15 @@ export default function MyAiSettings() {
             ['own', 'Use your own key'],
           ].map(([id, text]) => (
             <label key={id} className="segmented__item">
-              <input type="radio" name="my-ai" value={id} checked={mode === id} onChange={() => setMode(id)} />
+              <input
+                type="radio"
+                name="my-ai"
+                value={id}
+                ref={id === 'default' ? defaultRadio : undefined}
+                checked={mode === id}
+                // with a saved key, Default means removing it: ask first (the choice shows once the key is gone)
+                onChange={() => (id === 'default' && state.key ? setConfirming(true) : setMode(id))}
+              />
               <span>{text}</span>
             </label>
           ))}
@@ -120,9 +163,6 @@ export default function MyAiSettings() {
       </fieldset>
 
       {mode === 'default' && !state.key && <p className="muted">The app’s AI answers ({state.default.model}), set by your teacher.</p>}
-      {mode === 'default' && state.key && (
-        <p className="muted">Going back to Default removes your saved key. Use Remove my key below.</p>
-      )}
 
       {state.key && (
         <div className="setting-row">
@@ -132,11 +172,10 @@ export default function MyAiSettings() {
             </span>
             <span className="muted">Model {state.key.model}. Answers from your key are shown to you only.</span>
           </p>
-          <button type="button" className="btn btn--quiet" onClick={remove} disabled={busy !== null}>
-            {busy === 'remove' ? 'Removing…' : 'Remove my key'}
-          </button>
+          {!confirming && removeButton}
         </div>
       )}
+      {state.key && confirming && removeAsk}
 
       {mode === 'own' && (
         <form
@@ -174,7 +213,9 @@ export default function MyAiSettings() {
             />
           </label>
           <div id="my-key-warning">
-            <Notice tone="warn">Your key is stored on the study laptop. Only use a key you can delete later.</Notice>
+            <Notice tone="warn">
+              Your key is stored on the study laptop and travels over the local Wi-Fi without encryption. Only use a key you can delete later.
+            </Notice>
           </div>
           {models ? (
             <label className="field">

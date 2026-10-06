@@ -42,6 +42,11 @@
   flex-direction: column;
   gap: 6px;
 }
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
 .field__label {
   font-weight: 650;
 }

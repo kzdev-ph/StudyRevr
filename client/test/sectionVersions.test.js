@@ -8,6 +8,7 @@ describe('sectionVersionsNotice (admin lesson row, "Prepare")', () => {
   it('offers Prepare while versions are missing, with how many are ready', () => {
     const n = sectionVersionsNotice(lesson({ missing: 6, total: 8, status: null, error: null }));
     assert.deepEqual([n.state, n.title, n.action], ['missing', 'Simpler and Taglish: 2 of 8 ready.', 'Prepare simpler and Taglish']);
+    assert.equal(n.detail, 'Run this before study day. While it runs, students’ live requests use the backup AI.');
   });
   it('shows progress while it runs, with no button', () => {
     const n = sectionVersionsNotice(lesson({ missing: 6, total: 8, status: 'running', error: null, progress: { done: 3, total: 6 } }));

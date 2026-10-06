@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { AiError, createAiClient } from '../src/ai/client.js';
 import { parseJsonReply } from '../src/ai/json.js';
-import { fallbackNote, OUTAGE, runChain, STUDENT_FALLBACK } from '../src/ai/live.js';
+import { DEFAULT_FALLBACK, fallbackNote, OUTAGE, runChain, STUDENT_FALLBACK } from '../src/ai/live.js';
 import { chatModelIds } from '../src/ai/models.js';
 import { GEMMA_MODEL, PRESETS } from '../src/ai/providers.js';
 import { createRateLimiter } from '../src/ai/ratelimit.js';
@@ -11,7 +11,7 @@ import { exportCsv } from '../src/export/research.js';
 import { runPipeline } from '../src/pipeline/run.js';
 import { queueJob } from '../src/pipeline/jobs.js';
 import { resolveAiConfig } from '../src/services/settings.js';
-import { keyProblemMessage } from '../src/services/student-ai.js';
+import { keyProblemMessage, studentConfig } from '../src/services/student-ai.js';
 import { addCodes, completion, failure, KEY, makeClient, schema, scriptedFetch, TEST_PIN } from './helpers.js';
 
 const quiet = { warn() {}, log() {}, info() {}, error() {} };
@@ -41,13 +41,23 @@ describe('runChain and the fallback note', () => {
     }
   });
 
-  it('only the student step also falls back on a rejected key or no credit', async () => {
-    for (const code of ['auth', 'no_credit']) {
+  it('the student step also falls back on a rejected key, no credit, a model problem or an unusable reply', async () => {
+    for (const code of ['auth', 'no_credit', 'not_found', 'bad_request', 'invalid_json', 'bad_response']) {
       const r = await runChain([step('student', code, STUDENT_FALLBACK), step('default', { v: 1 })]);
       assert.deepEqual([r.ok, r.step.source], [true, 'default'], code);
     }
-    const stop = await runChain([step('student', 'bad_request', STUDENT_FALLBACK), step('default', { v: 1 })]);
-    assert.equal(stop.ok, false, 'a bad request does not fall back');
+    const stop = await runChain([step('student', 'not_configured', STUDENT_FALLBACK), step('default', { v: 1 })]);
+    assert.equal(stop.ok, false, 'anything else stops the chain');
+  });
+
+  it('the Default also falls back to Gemma on an unusable reply, but not on a bad request or key', async () => {
+    for (const code of ['invalid_json', 'bad_response']) {
+      const r = await runChain([step('default', code, DEFAULT_FALLBACK), step('gemma', { v: 1 })]);
+      assert.deepEqual([r.ok, r.step.source], [true, 'gemma'], code);
+    }
+    for (const code of ['bad_request', 'auth', 'no_credit', 'not_found']) {
+      assert.equal((await runChain([step('default', code, DEFAULT_FALLBACK), step('gemma', { v: 1 })])).ok, false, code);
+    }
   });
 
   it('writes the note only when a fallback answered', () => {
@@ -104,6 +114,16 @@ describe('AI client: live calls', () => {
 
   it("strips Gemma's <thought> block before reading the JSON", () => {
     assert.deepEqual(parseJsonReply('<thought>The user wants {"a":2}</thought>{"a":1}'), { a: 1 });
+  });
+});
+
+describe('a student key config', () => {
+  it('waits 25 s at most, like the other steps (a preset allows 300 s)', () => {
+    assert.equal(studentConfig({ provider: 'deepseek', model: 'deepseek-chat', apiKey: STUDENT_KEY }).timeoutMs, 25_000);
+    assert.equal(studentConfig({ provider: 'google', model: 'gemini-3.5-flash-lite', apiKey: STUDENT_KEY }).timeoutMs, 25_000);
+  });
+  it('Gemma is limited to 8 requests a minute (its tokens are the real limit)', () => {
+    assert.equal(PRESETS.google.models[GEMMA_MODEL].requestsPerMinute, 8);
   });
 });
 
@@ -168,7 +188,7 @@ describe('live rewrites through the fallback chain', () => {
     t = {
       db,
       call: async (method, path, { as = 'P01', body, pin } = {}) => {
-        const headers = { 'x-participant': as };
+        const headers = as ? { 'x-participant': as } : {};
         if (pin) headers['x-admin-pin'] = pin;
         if (body !== undefined) headers['content-type'] = 'application/json';
         const res = await fetch(`${base}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -281,12 +301,137 @@ describe('live rewrites through the fallback chain', () => {
     assert.deepEqual([last.source, last.from_cache, last.provider, last.model, last.fallback_reasons], ['default', 1, 'google', PRESETS.google.model, 'student:provider_error']);
   });
 
-  it("a student's bad request does not fall back", async () => {
+  it("a student's unknown model or bad request falls back to Default, with the note", async () => {
     allowStudentKeys();
     saveStudentKey();
-    respond = (model, auth) => (auth === `Bearer ${STUDENT_KEY}` ? failure(400, {}) : completion(simpleJson()));
-    assert.equal((await simplify('P01')).status, 502);
+    for (const status of [404, 400]) {
+      t.db.prepare('UPDATE sections SET simple_version = NULL WHERE id = ?').run(sectionId);
+      calls.length = 0;
+      respond = (model, auth) => (auth === `Bearer ${STUDENT_KEY}` ? failure(status, {}) : completion(simpleJson('From default.')));
+      const res = await simplify('P01');
+      assert.deepEqual([res.status, res.body.answered_by.source, res.body.fallback.note], [200, 'default', 'Your key didn’t work, so the default AI answered.'], String(status));
+      assert.equal(calls.length, 2);
+    }
+    assert.equal(aiCalls().at(-1).fallback_reasons, 'student:bad_request');
+  });
+
+  it('no participant code, no AI call', async () => {
+    respond = () => completion(simpleJson());
+    for (const as of [null, 'P99']) {
+      const res = await simplify(as);
+      assert.equal(res.status, 401, String(as));
+    }
+    assert.equal((await t.call('POST', `/api/sections/${sectionId}/translate`, { as: null })).status, 401);
+    assert.equal(calls.length, 0);
+    assert.equal(aiCalls().length, 0);
+  });
+
+  it('the Default giving unusable JSON twice falls back to Gemma', async () => {
+    respond = (model) => (model === GEMMA_MODEL ? completion(simpleJson('From gemma.')) : completion('not json at all'));
+    const res = await simplify();
+    assert.deepEqual([res.status, res.body.answered_by.source], [200, 'gemma']);
+    assert.equal(aiCalls()[0].fallback_reasons, 'default:invalid_json');
+  });
+
+  describe('Gemma', () => {
+    const defaultBusy = (gemma) => (model) => (model === GEMMA_MODEL ? gemma() : failure(429, {}));
+
+    it('an instant HTTP 500 is retried once at once, and logged as gemma:provider_error', async () => {
+      let n = 0;
+      respond = defaultBusy(() => (++n === 1 ? failure(500, {}) : completion(simpleJson('From gemma.'))));
+      const res = await simplify();
+      assert.deepEqual([res.status, res.body.version.text, res.body.answered_by.source], [200, 'From gemma.', 'gemma']);
+      assert.deepEqual(calls.map((c) => c.model), [PRESETS.google.model, GEMMA_MODEL, GEMMA_MODEL]);
+      const [row] = aiCalls();
+      assert.deepEqual([row.fallback_steps, row.fallback_reasons], [1, 'default:rate_limit;gemma:provider_error']);
+    });
+
+    it('two 500s in a row end the chain after exactly two Gemma calls', async () => {
+      respond = defaultBusy(() => failure(500, {}));
+      const res = await simplify();
+      assert.deepEqual([res.status, res.body.error.code], [503, 'ai_unavailable']);
+      assert.equal(calls.filter((c) => c.model === GEMMA_MODEL).length, 2);
+      assert.equal(aiCalls()[0].fallback_reasons, 'default:rate_limit;gemma:provider_error;gemma:provider_error');
+    });
+
+    it('a timeout is not retried', async () => {
+      respond = defaultBusy(() => {
+        throw Object.assign(new Error('timed out'), { name: 'TimeoutError' });
+      });
+      const res = await simplify();
+      assert.equal(res.status, 503);
+      assert.equal(calls.filter((c) => c.model === GEMMA_MODEL).length, 1);
+    });
+
+    it('taps on the same section while Gemma is answering share one Gemma call, and nothing is cached', async () => {
+      let release;
+      const gate = new Promise((resolve) => {
+        release = resolve;
+      });
+      respond = defaultBusy(async () => {
+        await gate;
+        return completion(simpleJson('From gemma.'));
+      });
+      const both = Promise.all([simplify('P01'), simplify('P02')]);
+      while (calls.filter((c) => c.model === GEMMA_MODEL).length === 0) await new Promise((r) => setTimeout(r, 5));
+      await new Promise((r) => setTimeout(r, 50));
+      release();
+      const [a, b] = await both;
+      assert.deepEqual([a.body.answered_by.source, b.body.answered_by.source], ['gemma', 'gemma']);
+      assert.equal(calls.filter((c) => c.model === GEMMA_MODEL).length, 1);
+      assert.equal(t.db.prepare('SELECT simple_version FROM sections WHERE id = ?').get(sectionId).simple_version, null);
+      assert.deepEqual(aiCalls().map((r) => r.saved_shared), [0, 0]);
+    });
+  });
+
+  it('a live 429 with Retry-After holds later calls to that model: they go straight to Gemma', async () => {
+    respond = (model) => (model === GEMMA_MODEL ? completion(simpleJson('From gemma.')) : failure(429, { error: { message: 'slow' } }, { 'retry-after': '30' }));
+    assert.equal((await simplify('P01')).body.answered_by.source, 'gemma');
+    calls.length = 0;
+    assert.equal((await simplify('P02')).body.answered_by.source, 'gemma');
+    assert.deepEqual(calls.map((c) => c.model), [GEMMA_MODEL], 'Google was not asked again');
+    assert.equal(aiCalls()[1].fallback_reasons, 'default:rate_limit');
+  });
+
+  it('two taps sharing one Default request: only the one that saved it says saved_shared', async () => {
+    let release;
+    const gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    respond = async () => {
+      await gate;
+      return completion(simpleJson('From default.'));
+    };
+    const both = Promise.all([simplify('P01'), simplify('P02')]);
+    while (calls.length === 0) await new Promise((r) => setTimeout(r, 5));
+    await new Promise((r) => setTimeout(r, 50));
+    release();
+    const [a, b] = await both;
     assert.equal(calls.length, 1);
+    assert.deepEqual([a.body.version.text, b.body.version.text], ['From default.', 'From default.']);
+    const rows = aiCalls();
+    assert.deepEqual(rows.map((r) => r.saved_shared).sort(), [0, 1]);
+    assert.deepEqual(rows.map((r) => r.from_cache).sort(), [0, 1]);
+  });
+
+  it('a version saved by Prepare while a tap waited is shown instead, and logged as from the cache', async () => {
+    let release;
+    const gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    respond = async () => {
+      await gate;
+      return completion(simpleJson('From the live tap.'));
+    };
+    const tap = simplify('P01');
+    while (calls.length === 0) await new Promise((r) => setTimeout(r, 5));
+    t.db.prepare('UPDATE sections SET simple_version = ?, simple_made_by = ? WHERE id = ?').run(JSON.stringify({ text: 'From Prepare.', example: null }), 'google/x', sectionId);
+    release();
+    const res = await tap;
+    assert.deepEqual([res.body.version.text, res.body.shared], ['From Prepare.', true]);
+    const [row] = aiCalls();
+    assert.deepEqual([row.saved_shared, row.from_cache, row.outcome], [0, 1, 'ok']);
+    assert.equal(JSON.parse(t.db.prepare('SELECT simple_version FROM sections WHERE id = ?').get(sectionId).simple_version).text, 'From Prepare.');
   });
 
   it('ai_calls is exported with the provider, model, source and fallback steps', async () => {

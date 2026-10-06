@@ -4,8 +4,9 @@ import { z } from 'zod';
 import { EXPORT_FILES, exportCsv, exportZip } from '../export/research.js';
 import { loadSchedulerConfig } from '../flashcards/config.js';
 import { HttpError } from '../middleware/errors.js';
-import { lastBackup, logAdminEvent, makeBackup } from '../services/backup.js';
+import { lastBackup, logAdminEvent, makeBackup, removeTemp } from '../services/backup.js';
 import { addParticipants, findParticipant, parseCodeList, UNKNOWN_CODE } from '../participants/codes.js';
+import { deleteAllStudentKeys } from '../services/student-ai.js';
 import { participantStats, summaryTable } from '../stats/participant.js';
 
 const addBody = z.object({ codes: z.string().max(2000) });
@@ -69,8 +70,15 @@ export function adminRouter({ db, clock = () => new Date(), requireAdmin }) {
     } catch (e) {
       next(e);
     } finally {
-      if (made) fs.rmSync(made.file, { force: true });
+      if (made) removeTemp(made.file);
     }
+  });
+
+  // After the study: removes every student's saved AI key. The keys are overwritten in the file (secure_delete).
+  router.delete('/student-keys', (_req, res) => {
+    const deleted = deleteAllStudentKeys(db);
+    logAdminEvent(db, 'student_keys_deleted', String(deleted), clock());
+    res.json({ deleted });
   });
 
   // When the last backup was downloaded: { last: { file, created_at } | null }

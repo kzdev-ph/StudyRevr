@@ -131,10 +131,27 @@ describe('admin settings: new cards per day and the student-key switch', () => {
   };
 
   it('reads the defaults, saves both, and the scheduler uses the new limit', async () => {
-    assert.deepEqual((await send('GET')).body, { flashcard_new_per_day: 20, allow_student_keys: false });
+    assert.deepEqual((await send('GET')).body, { flashcard_new_per_day: 20, allow_student_keys: false, student_keys_saved: 0 });
     const saved = await send('PUT', { flashcard_new_per_day: 12, allow_student_keys: true });
-    assert.deepEqual(saved.body, { flashcard_new_per_day: 12, allow_student_keys: true });
+    assert.deepEqual(saved.body, { flashcard_new_per_day: 12, allow_student_keys: true, student_keys_saved: 0 });
     assert.equal(loadSchedulerConfig(db).newPerDay, 12);
+  });
+
+  it('"Delete all student keys" removes every saved key, is behind the PIN, and the count follows', async () => {
+    addCodes(db, 'P01', 'P02');
+    for (const code of ['P01', 'P02']) {
+      const id = db.prepare('SELECT id FROM participants WHERE code = ?').get(code).id;
+      db.prepare("INSERT INTO participant_ai_keys VALUES (?, 'deepseek', 'deepseek-chat', 'sk-secret-to-delete-1234', '1234', 'x', 'x')").run(id);
+    }
+    assert.equal((await send('GET')).body.student_keys_saved, 2);
+    const del = (pin) => fetch(`${base}/api/admin/student-keys`, { method: 'DELETE', headers: pin ? { 'x-admin-pin': pin } : {} });
+    assert.equal((await del(null)).status, 401);
+    assert.equal(db.prepare('SELECT COUNT(*) n FROM participant_ai_keys').get().n, 2, 'nothing deleted without the PIN');
+    const res = await del(TEST_PIN);
+    assert.deepEqual([res.status, await res.json()], [200, { deleted: 2 }]);
+    assert.equal((await send('GET')).body.student_keys_saved, 0);
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM admin_events WHERE type = 'student_keys_deleted'").get().n, 1);
+    assert.deepEqual(await (await del(TEST_PIN)).json(), { deleted: 0 });
   });
 
   it('is behind the PIN and validates the values', async () => {
