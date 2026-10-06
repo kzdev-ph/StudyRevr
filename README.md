@@ -2,7 +2,7 @@
 
 Open-source, mobile-first study app. Upload a lesson (.docx / .pptx / .pdf) and get a sectioned review, Anki-style flashcards, and mock quizzes. Study activity is logged and exportable for research.
 
-> **Status:** Phase 4 of 7 — React app with the lesson library, upload, processing screen, the Review tab (sections, quick checks, simpler / Filipino-Taglish rewrites, key points, key terms, original text, resume) and the Flashcard tab (grounded cards, Anki-style SM-2 scheduling, undo). Mock Quiz, Stats and Settings are placeholders until their phases.
+> **Status:** Phase 5 of 7 — React app with the lesson library, upload, processing screen, the Review tab (sections, quick checks, simpler / Filipino-Taglish rewrites, key points, key terms, original text, resume), the Flashcard tab (grounded cards, Anki-style SM-2 scheduling, undo) and the Mock Quiz tab (questions from the lesson's flashcards, every answer logged). Stats and Settings are placeholders until their phases.
 
 ## Running it
 
@@ -124,6 +124,22 @@ curl -X POST http://localhost:3001/api/lessons/1/flashcards/generate   # make ca
 ```
 
 In the app: Space flips the card, 1–4 answer, U or Ctrl+Z undoes.
+
+### Mock Quiz
+
+A quiz is built from the lesson's flashcards when it starts: up to 10 questions, multiple choice (4 options) or true / false, about 3 in 10 true / false. Term cards ask "which term matches this definition?" with other key terms of the lesson as the wrong options (no AI call). Concept cards use 3 wrong answers the AI writes once per card (in batches of at most 15 cards) and that are saved in `quiz_distractors` for every later quiz; a wrong answer equal to the right one or to another wrong answer is dropped. Without enough wrong answers a card becomes true / false (its false statement is a saved wrong answer or another card's answer). A short lesson gets fewer questions; if the AI call fails the quiz still starts, with a notice.
+
+Every question is saved in `quiz_answers` when the quiz starts, and each answer the moment it is given (choice, right or wrong, time on the question, timestamp), so a quiz left part-way is still logged. `quiz_attempts` records start, finish, total time and `retake_of` (a retake asks the same questions in a new order). The quiz never changes flashcard scheduling.
+
+```bash
+curl http://localhost:3001/api/quiz                                     # one row per lesson: questions it supports, best score, attempts
+curl -X POST http://localhost:3001/api/lessons/1/quiz/attempts          # start: questions without answers (body {"retake_of": 4} for a retake)
+curl -X POST http://localhost:3001/api/quiz/attempts/4/answers -H 'content-type: application/json' \
+     -d '{"position":0,"choice":2,"time_ms":5200}'                      # -> correct, the right option, the card's evidence
+curl -X POST http://localhost:3001/api/quiz/attempts/4/finish -H 'content-type: application/json' -d '{"total_ms":61000}'
+```
+
+In the app: 1–4 answer (1–2 on true / false), Enter goes to the next question.
 
 ## Project layout
 
