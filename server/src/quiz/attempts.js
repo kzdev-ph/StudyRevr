@@ -3,6 +3,8 @@ import { HttpError } from '../middleware/errors.js';
 // The database side of a quiz: an attempt (quiz_attempts) and one quiz_answers row per question. The questions are
 // written when the quiz starts and each answer is saved the moment it is given, so a quiz left part-way is still
 // logged up to where the student stopped. Nothing here touches the flashcards or their review log.
+// Every attempt belongs to one participant; given a participantId, these functions only see that participant's
+// attempts (anyone else's is "not found").
 
 const MAX_TIME_MS = 60 * 60 * 1000; // one question left open for hours counts as an hour
 const MAX_DURATION_MS = 6 * MAX_TIME_MS;
@@ -13,14 +15,15 @@ const ANSWER_COLUMNS = `position, flashcard_id, type, kind, question, statement,
 
 const parseRow = (row) => ({ ...row, choices: JSON.parse(row.choices), correct: row.correct === null ? null : Boolean(row.correct) });
 
-export function getAttempt(db, attemptId) {
-  const attempt = db
-    .prepare(
-      `SELECT a.id, a.lesson_id, l.title, a.score, a.total, a.started_at, a.finished_at, a.duration_ms, a.retake_of
-       FROM quiz_attempts a JOIN lessons l ON l.id = a.lesson_id WHERE a.id = ?`,
-    )
-    .get(attemptId);
-  if (!attempt) throw new HttpError(404, 'Quiz attempt not found.');
+export function getAttempt(db, attemptId, participantId = null) {
+  const { participant_id: owner, ...attempt } =
+    db
+      .prepare(
+        `SELECT a.id, a.lesson_id, l.title, a.score, a.total, a.started_at, a.finished_at, a.duration_ms, a.retake_of, a.participant_id
+         FROM quiz_attempts a JOIN lessons l ON l.id = a.lesson_id WHERE a.id = ?`,
+      )
+      .get(attemptId) ?? {};
+  if (!attempt.id || (participantId !== null && owner !== participantId)) throw new HttpError(404, 'Quiz attempt not found.');
   return attempt;
 }
 
@@ -31,12 +34,12 @@ export const attemptQuestions = (db, attemptId) =>
 export const publicQuestion = (q) => ({ position: q.position, type: q.type, kind: q.kind, question: q.question, statement: q.statement, choices: q.choices });
 
 // Saves a new attempt and its questions (from buildQuiz / reshuffle) in one transaction. -> attempt id
-export function startAttempt(db, { lessonId, questions, now, retakeOf = null }) {
+export function startAttempt(db, { participantId, lessonId, questions, now, retakeOf = null }) {
   return db.transaction(() => {
     const attemptId = Number(
       db
-        .prepare('INSERT INTO quiz_attempts (lesson_id, score, total, answers, taken_at, started_at, retake_of) VALUES (?, 0, ?, ?, ?, ?, ?)')
-        .run(lessonId, questions.length, '[]', now.toISOString(), now.toISOString(), retakeOf).lastInsertRowid,
+        .prepare('INSERT INTO quiz_attempts (participant_id, lesson_id, score, total, answers, taken_at, started_at, retake_of) VALUES (?, ?, 0, ?, ?, ?, ?, ?)')
+        .run(participantId, lessonId, questions.length, '[]', now.toISOString(), now.toISOString(), retakeOf).lastInsertRowid,
     );
     const insert = db.prepare(
       `INSERT INTO quiz_answers (attempt_id, position, flashcard_id, type, kind, question, statement, choices, answer_index, answer_text, evidence)
@@ -47,15 +50,18 @@ export function startAttempt(db, { lessonId, questions, now, retakeOf = null }) 
   })();
 }
 
-// An unfinished attempt on this lesson that started less than RESUME_WINDOW_MS ago, or null. Older unfinished attempts
+// This participant's unfinished attempt on this lesson that started less than RESUME_WINDOW_MS ago, or null. Older unfinished attempts
 // stay as they are: they count as abandoned. -> { attempt, next_position, elapsed_ms }
 export const RESUME_WINDOW_MS = 2 * 60 * 60 * 1000;
 
-export function findOpenAttempt(db, lessonId, now) {
+export function findOpenAttempt(db, lessonId, now, participantId) {
   const cutoff = new Date(now.getTime() - RESUME_WINDOW_MS).toISOString();
   const row = db
-    .prepare('SELECT id FROM quiz_attempts WHERE lesson_id = ? AND finished_at IS NULL AND started_at > ? ORDER BY started_at DESC, id DESC LIMIT 1')
-    .get(lessonId, cutoff);
+    .prepare(
+      `SELECT id FROM quiz_attempts WHERE participant_id = ? AND lesson_id = ? AND finished_at IS NULL AND started_at > ?
+       ORDER BY started_at DESC, id DESC LIMIT 1`,
+    )
+    .get(participantId, lessonId, cutoff);
   if (!row) return null;
   const { next, spent } = db
     .prepare('SELECT MIN(CASE WHEN chosen_index IS NULL THEN position END) AS next, COALESCE(SUM(time_ms), 0) AS spent FROM quiz_answers WHERE attempt_id = ?')
@@ -80,9 +86,9 @@ export function questionsOf(db, attemptId) {
 
 // Saves one answer. Each question is answered once; a finished attempt takes no more answers.
 // -> { position, chosen_index, correct, answer_index, answer_text, evidence }
-export function answerQuestion(db, { attemptId, position, choice, timeMs, now }) {
+export function answerQuestion(db, { participantId = null, attemptId, position, choice, timeMs, now }) {
   return db.transaction(() => {
-    const attempt = getAttempt(db, attemptId);
+    const attempt = getAttempt(db, attemptId, participantId);
     if (attempt.finished_at) throw new HttpError(409, 'This quiz is already finished.');
     const row = db.prepare(`SELECT ${ANSWER_COLUMNS} FROM quiz_answers WHERE attempt_id = ? AND position = ?`).get(attemptId, position);
     if (!row) throw new HttpError(404, 'That question is not part of this quiz.');
@@ -103,8 +109,9 @@ export function answerQuestion(db, { attemptId, position, choice, timeMs, now })
 }
 
 // The results screen: score and the questions that were missed, with the student's answer and the right one.
-export function attemptResults(db, attemptId) {
-  const attempt = getAttempt(db, attemptId);
+export function attemptResults(db, attemptId, participantId = null) {
+  const { participant_id: owner } = db.prepare('SELECT participant_id FROM quiz_attempts WHERE id = ?').get(attemptId) ?? {};
+  const attempt = getAttempt(db, attemptId, participantId);
   const questions = attemptQuestions(db, attemptId);
   const missed = questions
     .filter((q) => !q.correct)
@@ -119,10 +126,13 @@ export function attemptResults(db, attemptId) {
       answer_text: q.answer_text,
       evidence: q.evidence,
     }));
-  // the best finished score on this lesson before this attempt, so the results can say "New best!"
+  // the participant's best finished score on this lesson before this attempt, so the results can say "New best"
   const best = db
-    .prepare('SELECT MAX(CAST(score AS REAL) / total) AS best FROM quiz_attempts WHERE lesson_id = ? AND id <> ? AND finished_at IS NOT NULL AND total > 0')
-    .get(attempt.lesson_id, attempt.id).best;
+    .prepare(
+      `SELECT MAX(CAST(score AS REAL) / total) AS best FROM quiz_attempts
+       WHERE participant_id IS ? AND lesson_id = ? AND id <> ? AND finished_at IS NOT NULL AND total > 0`,
+    )
+    .get(owner, attempt.lesson_id, attempt.id).best;
   return {
     attempt: { ...attempt, percent: attempt.total ? Math.round((attempt.score / attempt.total) * 100) : 0 },
     missed,
@@ -131,9 +141,9 @@ export function attemptResults(db, attemptId) {
 }
 
 // Closes the attempt once every question is answered. Finishing again returns the same results.
-export function finishAttempt(db, { attemptId, durationMs, now }) {
+export function finishAttempt(db, { participantId = null, attemptId, durationMs, now }) {
   db.transaction(() => {
-    const attempt = getAttempt(db, attemptId);
+    const attempt = getAttempt(db, attemptId, participantId);
     if (attempt.finished_at) return;
     const { open, score } = db
       .prepare('SELECT SUM(chosen_index IS NULL) AS open, COALESCE(SUM(correct), 0) AS score FROM quiz_answers WHERE attempt_id = ?')
@@ -141,17 +151,18 @@ export function finishAttempt(db, { attemptId, durationMs, now }) {
     if (open) throw new HttpError(409, `Answer every question first (${open} left).`);
     db.prepare('UPDATE quiz_attempts SET score = ?, finished_at = ?, duration_ms = ? WHERE id = ?').run(score, now.toISOString(), clampMs(durationMs, MAX_DURATION_MS), attemptId);
   })();
-  return attemptResults(db, attemptId);
+  return attemptResults(db, attemptId, participantId);
 }
 
-// Per lesson, over finished attempts: { attempts, best: { score, total, percent } | null, last_taken_at }.
-export function lessonQuizStats(db) {
+// Per lesson, over the participant's finished attempts: { attempts, best: { score, total, percent } | null, last_taken_at }.
+export function lessonQuizStats(db, participantId) {
   const rows = db
     .prepare(
       `SELECT lesson_id, score, total, finished_at FROM quiz_attempts
-       WHERE finished_at IS NOT NULL AND total > 0 ORDER BY lesson_id, CAST(score AS REAL) / total DESC, finished_at DESC`,
+       WHERE participant_id = ? AND finished_at IS NOT NULL AND total > 0
+       ORDER BY lesson_id, CAST(score AS REAL) / total DESC, finished_at DESC`,
     )
-    .all();
+    .all(participantId);
   const stats = new Map();
   for (const r of rows) {
     const s = stats.get(r.lesson_id);

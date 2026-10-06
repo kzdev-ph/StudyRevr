@@ -1,17 +1,25 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import express from 'express';
+import { createAdminGuard } from './middleware/admin.js';
 import { errorHandler, notFound } from './middleware/errors.js';
 import { createAiClient, describeAttempt } from './ai/client.js';
 import { createPipelineRunner } from './pipeline/runner.js';
+import { adminRouter } from './routes/admin.js';
 import { flashcardsRouter } from './routes/flashcards.js';
 import { lessonsRouter } from './routes/lessons.js';
+import { participantsRouter } from './routes/participants.js';
 import { quizRouter } from './routes/quiz.js';
 import { sectionsRouter } from './routes/sections.js';
+import { sessionsRouter } from './routes/sessions.js';
 import { settingsRouter } from './routes/settings.js';
+import { statsRouter } from './routes/stats.js';
 import { resolveAiConfig } from './services/settings.js';
 
 // `ai` and `runner` default to the real provider client and background job runner; tests inject stubs, and a fake
-// `clock` (() => Date) for the flashcard scheduler and the quiz, and `random` (() => [0, 1)) for quiz shuffles.
-export function createApp(db, config, { ai, runner, clock, random } = {}) {
+// `clock` (() => Date) for the flashcard scheduler, the quiz, sessions and stats, and `random` (() => [0, 1)) for quiz
+// shuffles.
+export function createApp(db, config, { ai, runner, clock = () => new Date(), random } = {}) {
   ai ??= createAiClient({
     getConfig: () => resolveAiConfig(db, config.ai),
     // every HTTP attempt to the provider (start, end, failure reason), so a hung or retried request shows in the log
@@ -30,14 +38,30 @@ export function createApp(db, config, { ai, runner, clock, random } = {}) {
   app.disable('x-powered-by');
   app.use(express.json({ limit: '1mb' }));
 
-  app.get('/api/health', (_req, res) => res.json({ ok: true }));
-  app.use('/api', flashcardsRouter({ db, runner, clock }));
+  // Admin routes (ADMIN_PIN): lesson upload / retry / delete, making cards, participant codes, AI settings, export.
+  const requireAdmin = createAdminGuard({ pin: config.adminPin, clock: () => clock().getTime() });
+
+  app.get('/api/health', (_req, res) => res.json({ ok: true, admin: Boolean(config.adminPin) }));
+  app.use('/api/admin', adminRouter({ db, clock, requireAdmin }));
+  app.use('/api', participantsRouter({ db }));
+  app.use('/api', sessionsRouter({ db, clock }));
+  app.use('/api', statsRouter({ db, clock }));
+  app.use('/api', flashcardsRouter({ db, runner, clock, requireAdmin }));
   app.use('/api', quizRouter({ db, ai, clock, random, tuning: () => ({ concurrency: resolveAiConfig(db, config.ai).concurrency }) }));
-  app.use('/api/lessons', lessonsRouter(db, config, runner));
+  app.use('/api/lessons', lessonsRouter(db, config, runner, requireAdmin));
   app.use('/api/sections', sectionsRouter({ ai, db }));
-  app.use('/api/settings', settingsRouter({ ai, db, config }));
+  app.use('/api/settings', requireAdmin, settingsRouter({ ai, db, config }));
 
   app.use('/api', notFound);
+  serveClient(app, config.clientDist);
   app.use(errorHandler(config.maxUploadBytes));
   return app;
+}
+
+// The built React app, when there is one (npm run study builds it): phones on the Wi-Fi open one address. Any path
+// that isn't a file gets index.html (the app routes with #/ hashes, so this is only the bare page).
+function serveClient(app, dist) {
+  if (!dist || !fs.existsSync(path.join(dist, 'index.html'))) return;
+  app.use(express.static(dist, { index: 'index.html', maxAge: '1h', setHeaders: (res, file) => file.endsWith('.html') && res.set('cache-control', 'no-cache') }));
+  app.get(/^(?!\/api\/).*/, (_req, res) => res.sendFile(path.join(dist, 'index.html'), { headers: { 'cache-control': 'no-cache' } }));
 }

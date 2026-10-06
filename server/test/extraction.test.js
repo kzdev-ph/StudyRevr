@@ -9,6 +9,9 @@ import { extractText } from '../src/services/extract.js';
 import { reflowPdfPages } from '../src/services/pdf.js';
 import { drawingMlLines } from '../src/services/pptx.js';
 import { countWords } from '../src/services/text.js';
+import { studyFetch, TEST_PIN } from './helpers.js';
+
+const fetch = studyFetch; // as participant P00, with the admin PIN (see helpers.js)
 
 const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
 const DIAGRAM_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/diagramData';
@@ -221,7 +224,7 @@ describe('word count and warning use the final combined text', () => {
   before(async () => {
     db = openDb(':memory:');
     runMigrations(db);
-    const app = createApp(db, { maxUploadBytes: 5 * 1024 * 1024 }, { runner: { enqueue() {} } });
+    const app = createApp(db, { maxUploadBytes: 5 * 1024 * 1024, adminPin: TEST_PIN }, { runner: { enqueue() {} } });
     await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
     base = `http://127.0.0.1:${server.address().port}`;
   });

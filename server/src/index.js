@@ -1,3 +1,4 @@
+import os from 'node:os';
 import { createApp } from './app.js';
 import { loadConfig } from './config.js';
 import { openDb, runMigrations } from './db/index.js';
@@ -14,6 +15,10 @@ if (interrupted) console.log(`[pipeline] marked ${interrupted} unfinished lesson
 const app = createApp(db, config);
 const server = app.listen(config.port, () => {
   console.log(`[server] StudyRevr API on http://localhost:${config.port}  (db: ${config.dbPath})`);
+  // the addresses phones on the same Wi-Fi can open (when the app is built: npm run study)
+  const lan = Object.values(os.networkInterfaces()).flat().filter((a) => a && a.family === 'IPv4' && !a.internal);
+  for (const a of lan) console.log(`[server] on this network: http://${a.address}:${config.port}`);
+  if (!config.adminPin) console.log('[server] admin is off: set ADMIN_PIN in .env to upload lessons, add participants and export data');
 });
 
 const shutdown = () => {

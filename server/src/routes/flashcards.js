@@ -4,6 +4,7 @@ import { loadSchedulerConfig } from '../flashcards/config.js';
 import { deckCards, doneToday, recordAnswer, studyState, undoAnswer } from '../flashcards/study.js';
 import { buildQueue, studyDay } from '../flashcards/scheduler.js';
 import { HttpError } from '../middleware/errors.js';
+import { requireParticipant } from '../middleware/participant.js';
 import { getJobStatus, queueJob } from '../pipeline/jobs.js';
 
 const id = z.coerce.number().int().positive();
@@ -22,8 +23,9 @@ const parseId = (value, what) => {
 };
 
 // Flashcards: decks, studying (one card at a time, chosen by the scheduler), undo, and making cards for a lesson
-// that has none. Mounted at /api. `clock()` is the current time (tests pass a fake one).
-export function flashcardsRouter({ db, runner, clock = () => new Date() }) {
+// that has none. Mounted at /api. Studying is per participant (X-Participant); making cards is admin only.
+// `clock()` is the current time (tests pass a fake one).
+export function flashcardsRouter({ db, runner, clock = () => new Date(), requireAdmin }) {
   const router = Router();
   const config = () => loadSchedulerConfig(db);
 
@@ -35,11 +37,12 @@ export function flashcardsRouter({ db, runner, clock = () => new Date() }) {
 
   // Every lesson with its counts, plus the "All lessons" deck. `job` is set while cards are being made for a lesson,
   // or when making them failed (status 'failed', with the message to show).
-  router.get('/flashcards/decks', (_req, res) => {
+  router.get('/flashcards/decks', (req, res) => {
+    const { id: participantId } = requireParticipant(db, req);
     const now = clock();
     const cfg = config();
-    const done = doneToday(db, studyDay(now, cfg).start);
-    const all = deckCards(db);
+    const done = doneToday(db, studyDay(now, cfg).start, participantId);
+    const all = deckCards(db, null, participantId);
     const byLesson = Map.groupBy(all, (c) => c.lesson_id);
     // counts, and when nothing is left today, when the next card becomes available
     const summary = (cards) => {
@@ -60,43 +63,47 @@ export function flashcardsRouter({ db, runner, clock = () => new Date() }) {
     });
   });
 
-  router.get('/flashcards/due', (_req, res) => {
-    res.json({ deck: { lesson_id: null, title: 'All lessons' }, ...studyState(db, { now: clock(), config: config() }) });
+  router.get('/flashcards/due', (req, res) => {
+    const { id: participantId } = requireParticipant(db, req);
+    res.json({ deck: { lesson_id: null, title: 'All lessons' }, ...studyState(db, { participantId, now: clock(), config: config() }) });
   });
 
   router.get('/lessons/:id/flashcards/due', (req, res) => {
+    const { id: participantId } = requireParticipant(db, req);
     const lesson = lessonOr404(parseId(req.params.id, 'Lesson'));
-    res.json({ deck: { lesson_id: lesson.id, title: lesson.title }, ...studyState(db, { lessonId: lesson.id, now: clock(), config: config() }) });
+    res.json({ deck: { lesson_id: lesson.id, title: lesson.title }, ...studyState(db, { participantId, lessonId: lesson.id, now: clock(), config: config() }) });
   });
 
   // Saves one answer (and its review-log row) and returns the deck's next card.
   router.post('/flashcards/:id/review', (req, res) => {
+    const { id: participantId } = requireParticipant(db, req);
     const cardId = parseId(req.params.id, 'Flashcard');
     const body = reviewBody.safeParse(req.body ?? {});
     if (!body.success) throw new HttpError(400, 'Send rating (1 Again, 2 Hard, 3 Good, 4 Easy), and optionally time_ms and deck.');
     const now = clock();
     const cfg = config();
-    const { review_id: reviewId, card } = recordAnswer(db, { cardId, rating: body.data.rating, timeMs: body.data.time_ms, now, config: cfg });
+    const { review_id: reviewId, card } = recordAnswer(db, { participantId, cardId, rating: body.data.rating, timeMs: body.data.time_ms, now, config: cfg });
     const lessonId = body.data.deck ?? null;
     res.json({
       review_id: reviewId,
       answered: { id: card.id, state: card.state, interval: card.interval, due_at: card.due_at, ease: card.ease },
-      ...studyState(db, { lessonId, now, config: cfg }),
+      ...studyState(db, { participantId, lessonId, now, config: cfg }),
     });
   });
 
   // Undoes an answer; the card comes back up next, front side first.
   router.post('/flashcards/reviews/:id/undo', (req, res) => {
+    const { id: participantId } = requireParticipant(db, req);
     const reviewId = parseId(req.params.id, 'Review');
     const body = undoBody.safeParse(req.body ?? {});
     if (!body.success) throw new HttpError(400, 'deck must be a lesson id or null.');
-    const cardId = undoAnswer(db, reviewId);
-    res.json({ undone: reviewId, ...studyState(db, { lessonId: body.data.deck ?? null, now: clock(), config: config(), showFirst: cardId }) });
+    const cardId = undoAnswer(db, reviewId, participantId);
+    res.json({ undone: reviewId, ...studyState(db, { participantId, lessonId: body.data.deck ?? null, now: clock(), config: config(), showFirst: cardId }) });
   });
 
   // Makes the cards for a lesson that has none (lessons uploaded before flashcards existed, or a run that made none).
   // The lesson stays readable while it runs; poll GET /flashcards/decks or the lesson status.
-  router.post('/lessons/:id/flashcards/generate', (req, res) => {
+  router.post('/lessons/:id/flashcards/generate', requireAdmin, (req, res) => {
     const lesson = lessonOr404(parseId(req.params.id, 'Lesson'));
     if (lesson.status === 'processing') throw new HttpError(409, 'This lesson is still being prepared; its flashcards are made at the end.');
     if (lesson.status === 'failed') throw new HttpError(409, 'Retry this lesson first; its flashcards are made when it finishes.');

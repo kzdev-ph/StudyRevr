@@ -41,3 +41,58 @@ export const quoteFromPrompt = (user, words = 6) =>
 
 // A key-terms merge mock that keeps every candidate, in the order given (version 1 each).
 export const keepAllCandidates = (user) => ({ terms: [...user.matchAll(/^\[(\d+)\] /gm)].map((m) => ({ id: Number(m[1]) })) });
+
+// Phase 6: the API tests from earlier phases act as participant P00 (made by migration 008) with the admin PIN, so
+// their requests pass the participant and admin checks unchanged. Each such file shadows `fetch` with studyFetch and
+// adds `adminPin: TEST_PIN` to its app config. Tests of the checks themselves use the real fetch.
+export const TEST_PIN = 'test-pin-2468';
+export const STUDY_HEADERS = { 'x-participant': 'P00', 'x-admin-pin': TEST_PIN };
+export const studyFetch = (url, init = {}) => globalThis.fetch(url, { ...init, headers: { ...STUDY_HEADERS, ...init.headers } });
+
+// A running app on an in-memory database for the Phase 6 tests, with a settable clock.
+//   const t = await startStudyApp({ now: '2026-10-05T04:00:00.000Z' });
+//   await t.call('POST', '/api/sessions', { as: 'P01', body: {...} })   // as: participant code; pin: admin PIN
+//   t.now = '...'  moves the clock;  await t.close()
+export async function startStudyApp({ now = '2026-10-05T04:00:00.000Z', adminPin = TEST_PIN, ai, random, db: given } = {}) {
+  const { openDb, runMigrations } = await import('../src/db/index.js');
+  const { createApp } = await import('../src/app.js');
+  const db = given ?? openDb(':memory:');
+  if (!given) runMigrations(db);
+  const t = { db, now };
+  ai ??= { async generateJSON() { throw new Error('no AI in this test'); } };
+  const app = createApp(db, { maxUploadBytes: 1024 * 1024, adminPin, clientDist: null }, { ai, runner: { enqueue() {} }, clock: () => new Date(t.now), random });
+  const server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  t.base = base;
+  t.call = async (method, path, { as, pin, body, raw = false } = {}) => {
+    const headers = {};
+    if (as) headers['x-participant'] = as;
+    if (pin) headers['x-admin-pin'] = pin;
+    if (body !== undefined) headers['content-type'] = 'application/json';
+    const res = await globalThis.fetch(`${base}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+    if (raw) return res;
+    const text = await res.text();
+    return { status: res.status, body: text && res.headers.get('content-type')?.includes('json') ? JSON.parse(text) : text, headers: res.headers };
+  };
+  t.close = async () => {
+    await new Promise((resolve) => server.close(resolve));
+    if (!given) db.close();
+  };
+  return t;
+}
+
+// Test data straight into the database: a ready lesson with `n` concept flashcards. -> { lessonId, cards: [ids] }
+export function seedLesson(db, { title = 'Inquiry', n = 4, created = '2026-10-01T00:00:00.000Z' } = {}) {
+  const lessonId = Number(
+    db.prepare("INSERT INTO lessons (title, filename, raw_text, word_count, status, created_at) VALUES (?, ?, 'text', 200, 'ready', ?)").run(title, `${title}.pptx`, created).lastInsertRowid,
+  );
+  const insert = db.prepare("INSERT INTO flashcards (lesson_id, kind, front, back, evidence, position) VALUES (?, 'concept', ?, ?, 'quote from the lesson', ?)");
+  const cards = Array.from({ length: n }, (_, i) => Number(insert.run(lessonId, `Q${lessonId}.${i + 1}?`, `Answer ${i + 1} of ${title}.`, i + 1).lastInsertRowid));
+  db.prepare("INSERT INTO sections (lesson_id, position, title, content) VALUES (?, 0, 'One', 'c'), (?, 1, 'Two', 'c')").run(lessonId, lessonId);
+  return { lessonId, cards };
+}
+
+export const addCodes = (db, ...codes) => {
+  const insert = db.prepare('INSERT OR IGNORE INTO participants (code) VALUES (?)');
+  for (const c of codes) insert.run(c);
+};

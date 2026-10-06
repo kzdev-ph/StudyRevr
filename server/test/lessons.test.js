@@ -6,6 +6,9 @@ import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { createApp } from '../src/app.js';
 import { reflowPdfPages, stripRepeatedLines } from '../src/services/pdf.js';
 import { openDb, runMigrations } from '../src/db/index.js';
+import { studyFetch, TEST_PIN } from './helpers.js';
+
+const fetch = studyFetch; // as participant P00, with the admin PIN (see helpers.js)
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
@@ -100,7 +103,7 @@ describe('lessons API', () => {
   before(async () => {
     db = openDb(':memory:');
     runMigrations(db);
-    const app = createApp(db, { maxUploadBytes: MAX_UPLOAD }, { runner: { enqueue() {} } });
+    const app = createApp(db, { maxUploadBytes: MAX_UPLOAD, adminPin: TEST_PIN }, { runner: { enqueue() {} } });
     await new Promise((resolve) => {
       server = app.listen(0, '127.0.0.1', resolve);
     });
@@ -270,12 +273,13 @@ describe('lessons API', () => {
     db.prepare("INSERT INTO sections (lesson_id, position, title, content) VALUES (?, 0, 't', 'c')").run(id);
     db.prepare("INSERT INTO key_points (lesson_id, position, text) VALUES (?, 0, 'p')").run(id);
     db.prepare("INSERT INTO key_terms (lesson_id, term, definition) VALUES (?, 't', 'd')").run(id);
-    db.prepare('INSERT INTO review_progress (lesson_id) VALUES (?)').run(id);
+    db.prepare('INSERT INTO review_progress (participant_id, lesson_id) VALUES (1, ?)').run(id);
     const card = db.prepare("INSERT INTO flashcards (lesson_id, front, back) VALUES (?, 'f', 'b')").run(id);
-    db.prepare('INSERT INTO flashcard_reviews (flashcard_id, rating) VALUES (?, 3)').run(card.lastInsertRowid);
+    db.prepare('INSERT INTO flashcard_reviews (participant_id, flashcard_id, rating) VALUES (1, ?, 3)').run(card.lastInsertRowid);
     db.prepare("INSERT INTO quiz_questions (lesson_id, question, choices, answer_index) VALUES (?, 'q', '[]', 0)").run(id);
-    db.prepare('INSERT INTO quiz_attempts (lesson_id, score, total) VALUES (?, 1, 2)').run(id);
-    db.prepare("INSERT INTO study_sessions (lesson_id, tab, started_at) VALUES (?, 'review', '2026-01-01T00:00:00Z')").run(id);
+    db.prepare('INSERT INTO quiz_attempts (participant_id, lesson_id, score, total) VALUES (1, ?, 1, 2)').run(id);
+    // a study session keeps its row (and its time) when the lesson goes; it just loses the lesson id
+    db.prepare("INSERT INTO study_sessions (participant_id, lesson_id, activity, started_at, last_active_at, study_date) VALUES (1, ?, 'reading', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', '2026-01-01')").run(id);
 
     assert.equal((await fetch(`${base}/api/lessons/${id}`, { method: 'DELETE' })).status, 204);
 
@@ -286,6 +290,7 @@ describe('lessons API', () => {
       assert.equal(db.prepare(`SELECT COUNT(*) c FROM ${table} WHERE lesson_id = ?`).get(id).c, 0, table);
     }
     assert.equal(db.prepare('SELECT COUNT(*) c FROM flashcard_reviews').get().c, 0, 'flashcard_reviews');
+    assert.equal(db.prepare('SELECT COUNT(*) c FROM study_sessions WHERE lesson_id IS NULL').get().c, 1, 'study_sessions kept');
   });
 
   it('returns JSON 404 for unknown API routes', async () => {

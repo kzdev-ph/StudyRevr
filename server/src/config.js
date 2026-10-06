@@ -42,6 +42,10 @@ export function loadConfig(env = process.env) {
     port: Number(env.PORT) || 3001,
     dbPath: resolveDbPath(env.DB_PATH || 'server/data/studyrevr.db'),
     maxUploadBytes: (Number(env.MAX_UPLOAD_MB) || 20) * 1024 * 1024,
+    // The admin area (lessons, participant codes, AI settings, research export). Empty: admin is turned off.
+    adminPin: (env.ADMIN_PIN || '').trim(),
+    // The built app (npm run build); served by the API server when it exists, so phones need one address.
+    clientDist: path.join(ROOT_DIR, 'client', 'dist'),
     ai: {
       provider: (env.AI_PROVIDER || '').trim().toLowerCase(), // google (default) | nvidia-nim | openrouter | ollama | llamacpp | custom
       // Optional overrides; they apply to the provider named by AI_PROVIDER (or inferred from AI_BASE_URL).

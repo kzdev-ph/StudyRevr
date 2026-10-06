@@ -1,6 +1,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { logEvent } from '../events/log.js';
+import { loadSchedulerConfig } from '../flashcards/config.js';
 import { HttpError } from '../middleware/errors.js';
+import { requireParticipant } from '../middleware/participant.js';
 import { getJobStatus } from '../pipeline/jobs.js';
 import { answerQuestion, attemptQuestions, findOpenAttempt, finishAttempt, getAttempt, lessonQuizStats, publicQuestion, questionsOf, startAttempt } from '../quiz/attempts.js';
 import { buildQuiz, QUIZ_LENGTH, reshuffle, usableCount } from '../quiz/build.js';
@@ -24,6 +27,7 @@ const lessonCards = (db, lessonId) =>
 const keyTermNames = (db, lessonId) => db.prepare('SELECT term FROM key_terms WHERE lesson_id = ? ORDER BY id').all(lessonId).map((t) => t.term);
 
 // Mock quiz: questions built from the lesson's flashcards, graded and logged one answer at a time. Mounted at /api.
+// Attempts are per participant (X-Participant): each sees and answers only their own.
 // `clock()` is the current time and `random` the shuffle source (tests pass fixed ones); `tuning()` gives the AI
 // concurrency for the wrong-answers batches.
 export function quizRouter({ db, ai, clock = () => new Date(), random = Math.random, tuning = () => ({ concurrency: 1 }), log = console }) {
@@ -45,8 +49,9 @@ export function quizRouter({ db, ai, clock = () => new Date(), random = Math.ran
   };
 
   // One row per lesson for the Mock Quiz tab: how many questions it supports and the best finished score.
-  router.get('/quiz', (_req, res) => {
-    const stats = lessonQuizStats(db);
+  router.get('/quiz', (req, res) => {
+    const { id: participantId } = requireParticipant(db, req);
+    const stats = lessonQuizStats(db, participantId);
     const lessons = db.prepare('SELECT id, title, status, created_at FROM lessons ORDER BY created_at DESC, id DESC').all();
     res.json({
       quiz_length: QUIZ_LENGTH,
@@ -89,6 +94,7 @@ export function quizRouter({ db, ai, clock = () => new Date(), random = Math.ran
   // { retake_of } asks the same questions as that attempt, in a new order. The right answers stay on the server.
   router.post('/lessons/:id/quiz/attempts', async (req, res, next) => {
     try {
+      const { id: participantId } = requireParticipant(db, req);
       const lesson = lessonOr404(parseId(req.params.id, 'Lesson'));
       const body = startBody.safeParse(req.body ?? {});
       if (!body.success) throw new HttpError(400, 'retake_of must be the id of an earlier attempt, or left out.');
@@ -97,12 +103,12 @@ export function quizRouter({ db, ai, clock = () => new Date(), random = Math.ran
       let notice = null;
 
       if (!retakeOf) {
-        const open = findOpenAttempt(db, lesson.id, clock());
+        const open = findOpenAttempt(db, lesson.id, clock(), participantId);
         if (open) return res.json(resumed(open));
       }
 
       if (retakeOf) {
-        const source = getAttempt(db, retakeOf);
+        const source = getAttempt(db, retakeOf, participantId);
         if (source.lesson_id !== lesson.id) throw new HttpError(400, 'That attempt belongs to another lesson.');
         questions = reshuffle(questionsOf(db, retakeOf), random);
       } else {
@@ -112,7 +118,7 @@ export function quizRouter({ db, ai, clock = () => new Date(), random = Math.ran
         if (cards.length < 2) throw new HttpError(409, NEEDS_TWO);
         const made = await distractorsFor(lesson.id);
         // another start may have finished while the wrong answers were being made
-        const raced = findOpenAttempt(db, lesson.id, clock());
+        const raced = findOpenAttempt(db, lesson.id, clock(), participantId);
         if (raced) return res.json(resumed(raced));
         questions = buildQuiz({ cards, distractors: loadDistractors(db, lesson.id), extraTerms: keyTermNames(db, lesson.id), random });
         if (!questions.length) throw new HttpError(409, NEEDS_TWO);
@@ -122,7 +128,9 @@ export function quizRouter({ db, ai, clock = () => new Date(), random = Math.ran
         notice = notes.join(' ') || null;
       }
 
-      const attemptId = startAttempt(db, { lessonId: lesson.id, questions, now: clock(), retakeOf });
+      const now = clock();
+      const attemptId = startAttempt(db, { participantId, lessonId: lesson.id, questions, now, retakeOf });
+      if (retakeOf) logEvent(db, { participantId, type: 'quiz_retake', lessonId: lesson.id, attemptId, now, config: loadSchedulerConfig(db) });
       const attempt = getAttempt(db, attemptId);
       res.status(201).json({ attempt, questions: attemptQuestions(db, attemptId).map(publicQuestion), notice, resumed: false, next_position: 0, elapsed_ms: 0 });
     } catch (e) {
@@ -132,19 +140,21 @@ export function quizRouter({ db, ai, clock = () => new Date(), random = Math.ran
 
   // Grades and saves one answer. -> whether it was right, the right option, and the card's evidence quote.
   router.post('/quiz/attempts/:id/answers', (req, res) => {
+    const { id: participantId } = requireParticipant(db, req);
     const attemptId = parseId(req.params.id, 'Attempt');
     const body = answerBody.safeParse(req.body ?? {});
     if (!body.success) throw new HttpError(400, 'Send position (the question number, from 0), choice (the option number, from 0) and optionally time_ms.');
     const { position, choice, time_ms: timeMs } = body.data;
-    res.json(answerQuestion(db, { attemptId, position, choice, timeMs, now: clock() }));
+    res.json(answerQuestion(db, { participantId, attemptId, position, choice, timeMs, now: clock() }));
   });
 
   // Closes the attempt (every question must be answered) and returns the results.
   router.post('/quiz/attempts/:id/finish', (req, res) => {
+    const { id: participantId } = requireParticipant(db, req);
     const attemptId = parseId(req.params.id, 'Attempt');
     const body = finishBody.safeParse(req.body ?? {});
     if (!body.success) throw new HttpError(400, 'total_ms must be a number of milliseconds.');
-    res.json(finishAttempt(db, { attemptId, durationMs: body.data.total_ms, now: clock() }));
+    res.json(finishAttempt(db, { participantId, attemptId, durationMs: body.data.total_ms, now: clock() }));
   });
 
   return router;

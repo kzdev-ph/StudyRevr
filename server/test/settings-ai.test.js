@@ -6,7 +6,9 @@ import { createApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
 import { openDb, runMigrations } from '../src/db/index.js';
 import { resolveAiConfig } from '../src/services/settings.js';
-import { completion, failure, KEY, scriptedFetch } from './helpers.js';
+import { completion, failure, KEY, scriptedFetch, studyFetch, TEST_PIN } from './helpers.js';
+
+const fetch = studyFetch; // as participant P00, with the admin PIN (see helpers.js)
 
 const modelsBody = (...ids) => new Response(JSON.stringify({ data: ids.map((id) => ({ id })) }), { status: 200 });
 
@@ -18,7 +20,7 @@ describe('AI settings routes', () => {
   let config;
 
   const start = async (envVars) => {
-    config = { ...loadConfig(envVars), maxUploadBytes: 1024 * 1024 };
+    config = { ...loadConfig(envVars), maxUploadBytes: 1024 * 1024, adminPin: TEST_PIN };
     const client = createAiClient({
       getConfig: () => resolveAiConfig(db, config.ai),
       fetchImpl: (...a) => fetchImpl(...a),

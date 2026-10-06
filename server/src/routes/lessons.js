@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { HttpError } from '../middleware/errors.js';
+import { participantOf, requireParticipant } from '../middleware/participant.js';
 import { assertSignature, createUpload, fileExtension } from '../middleware/upload.js';
 import { extractText } from '../services/extract.js';
 import { getJobStatus, queueJob } from '../pipeline/jobs.js';
@@ -33,7 +34,9 @@ const SUMMARY_COLUMNS = 'id, title, filename, word_count, status, error, created
 // multer decodes multipart filenames as latin1; recover UTF-8 names (e.g. "Aralin 1 Ñ.docx").
 const fixFilename = (name) => Buffer.from(name, 'latin1').toString('utf8');
 
-export function lessonsRouter(db, { maxUploadBytes }, runner) {
+// Lessons are shared by every participant; uploading, retrying and deleting are admin only. Review progress (where a
+// student stopped) is per participant.
+export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin) {
   const router = Router();
   const upload = createUpload(maxUploadBytes);
 
@@ -49,8 +52,11 @@ export function lessonsRouter(db, { maxUploadBytes }, runner) {
     return id;
   });
 
-  const readProgress = (lessonId) => {
-    const row = db.prepare('SELECT last_section, completed_sections, updated_at FROM review_progress WHERE lesson_id = ?').get(lessonId);
+  const readProgress = (lessonId, participant) => {
+    if (!participant) return null;
+    const row = db
+      .prepare('SELECT last_section, completed_sections, updated_at FROM review_progress WHERE participant_id = ? AND lesson_id = ?')
+      .get(participant.id, lessonId);
     return row ? { ...row, completed_sections: JSON.parse(row.completed_sections) } : null;
   };
 
@@ -60,7 +66,7 @@ export function lessonsRouter(db, { maxUploadBytes }, runner) {
     return parsed.data.id;
   };
 
-  router.post('/', (req, res, next) => {
+  router.post('/', requireAdmin, (req, res, next) => {
     upload(req, res, async (err) => {
       try {
         if (err) throw err;
@@ -89,7 +95,9 @@ export function lessonsRouter(db, { maxUploadBytes }, runner) {
     res.json({ lessons: db.prepare(`SELECT ${SUMMARY_COLUMNS} FROM lessons ORDER BY created_at DESC, id DESC`).all() });
   });
 
+  // review_progress is the participant's own, or null when no participant is sent (the admin's lesson list)
   router.get('/:id', (req, res) => {
+    const participant = participantOf(db, req);
     const { source_kind, source_numbers, source_total, ...lesson } = db.prepare('SELECT * FROM lessons WHERE id = ?').get(parseId(req)) ?? {};
     if (!lesson.id) throw new HttpError(404, 'Lesson not found.');
     const byLesson = (sql) => db.prepare(sql).all(lesson.id);
@@ -107,35 +115,37 @@ export function lessonsRouter(db, { maxUploadBytes }, runner) {
       })),
       key_points: byLesson('SELECT id, position, text FROM key_points WHERE lesson_id = ? ORDER BY position'),
       key_terms: byLesson('SELECT id, term, definition, evidence FROM key_terms WHERE lesson_id = ? ORDER BY id'),
-      review_progress: readProgress(lesson.id),
+      review_progress: readProgress(lesson.id, participant),
     });
   });
 
   router.get('/:id/review-progress', (req, res) => {
+    const participant = requireParticipant(db, req);
     const id = parseId(req);
     if (!db.prepare('SELECT 1 FROM lessons WHERE id = ?').get(id)) throw new HttpError(404, 'Lesson not found.');
-    res.json({ review_progress: readProgress(id) });
+    res.json({ review_progress: readProgress(id, participant) });
   });
 
   // Saves where the student is in the review so it reopens there. Indices must point at real sections.
   router.put('/:id/review-progress', (req, res) => {
+    const participant = requireParticipant(db, req);
     const id = parseId(req);
     if (!db.prepare('SELECT 1 FROM lessons WHERE id = ?').get(id)) throw new HttpError(404, 'Lesson not found.');
     const body = progressBody.safeParse(req.body ?? {});
     if (!body.success) throw new HttpError(400, 'Send last_section (a whole number from 0) and completed_sections (a list of whole numbers).');
     const { count } = db.prepare('SELECT COUNT(*) AS count FROM sections WHERE lesson_id = ?').get(id);
     if (!count) throw new HttpError(409, 'This lesson has no sections to review yet.');
-    const completed = [...new Set(body.data.completed_sections ?? readProgress(id)?.completed_sections ?? [])].sort((a, b) => a - b);
+    const completed = [...new Set(body.data.completed_sections ?? readProgress(id, participant)?.completed_sections ?? [])].sort((a, b) => a - b);
     if (body.data.last_section >= count || completed.some((n) => n >= count)) {
       throw new HttpError(400, `This lesson has ${count} sections, numbered from 0.`);
     }
     db.prepare(
-      `INSERT INTO review_progress (lesson_id, last_section, completed_sections, updated_at)
-       VALUES (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-       ON CONFLICT(lesson_id) DO UPDATE SET last_section = excluded.last_section,
+      `INSERT INTO review_progress (participant_id, lesson_id, last_section, completed_sections, updated_at)
+       VALUES (?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+       ON CONFLICT(participant_id, lesson_id) DO UPDATE SET last_section = excluded.last_section,
          completed_sections = excluded.completed_sections, updated_at = excluded.updated_at`,
-    ).run(id, body.data.last_section, JSON.stringify(completed));
-    res.json({ review_progress: readProgress(id) });
+    ).run(participant.id, id, body.data.last_section, JSON.stringify(completed));
+    res.json({ review_progress: readProgress(id, participant) });
   });
 
   router.get('/:id/status', (req, res) => {
@@ -145,7 +155,7 @@ export function lessonsRouter(db, { maxUploadBytes }, runner) {
   });
 
   // Re-runs processing for a lesson that failed (e.g. the AI provider was down); finished stages are kept.
-  router.post('/:id/retry', (req, res) => {
+  router.post('/:id/retry', requireAdmin, (req, res) => {
     const id = parseId(req);
     const lesson = db.prepare('SELECT status FROM lessons WHERE id = ?').get(id);
     if (!lesson) throw new HttpError(404, 'Lesson not found.');
@@ -155,7 +165,7 @@ export function lessonsRouter(db, { maxUploadBytes }, runner) {
     res.status(202).json(getJobStatus(db, id));
   });
 
-  router.delete('/:id', (req, res) => {
+  router.delete('/:id', requireAdmin, (req, res) => {
     const { changes } = db.prepare('DELETE FROM lessons WHERE id = ?').run(parseId(req));
     if (!changes) throw new HttpError(404, 'Lesson not found.');
     res.status(204).end();

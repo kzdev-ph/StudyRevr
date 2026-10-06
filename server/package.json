@@ -8,7 +8,8 @@
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
     "test": "node --import ./test/setup.js --test --test-timeout=10000 \"test/**/*.test.js\"",
-    "pipeline": "node scripts/run-pipeline.js"
+    "pipeline": "node scripts/run-pipeline.js",
+    "participant:delete": "node scripts/delete-participant.js"
   },
   "engines": {
     "node": ">=22.13"

@@ -12,6 +12,9 @@ import { queueJob } from '../src/pipeline/jobs.js';
 import { createPipelineRunner } from '../src/pipeline/runner.js';
 import { validateSources } from '../src/pipeline/sources.js';
 import { extractText } from '../src/services/extract.js';
+import { studyFetch, TEST_PIN } from './helpers.js';
+
+const fetch = studyFetch; // as participant P00, with the admin PIN (see helpers.js)
 
 const quiet = { error() {}, warn() {}, log() {}, info() {} };
 const questions = [{ question: 'Why?', answer: 'Because.' }];
@@ -202,7 +205,7 @@ describe('sources end to end (mocked AI)', () => {
   });
   const start = async (ai) => {
     const runner = createPipelineRunner({ db, ai, log: quiet });
-    const app = createApp(db, { maxUploadBytes: 5 * 1024 * 1024 }, { ai, runner });
+    const app = createApp(db, { maxUploadBytes: 5 * 1024 * 1024, adminPin: TEST_PIN }, { ai, runner });
     await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
     base = `http://127.0.0.1:${server.address().port}`;
     return runner;

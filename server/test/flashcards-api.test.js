@@ -5,6 +5,9 @@ import { createApp } from '../src/app.js';
 import { openDb, runMigrations } from '../src/db/index.js';
 import { getJobStatus } from '../src/pipeline/jobs.js';
 import { createPipelineRunner } from '../src/pipeline/runner.js';
+import { studyFetch, TEST_PIN } from './helpers.js';
+
+const fetch = studyFetch; // as participant P00, with the admin PIN (see helpers.js)
 
 const quiet = { error() {}, warn() {}, log() {}, info() {} };
 const MIN = 60_000;
@@ -30,7 +33,7 @@ describe('flashcards API', () => {
       },
     };
     runner = createPipelineRunner({ db, ai, log: quiet });
-    const app = createApp(db, { maxUploadBytes: 1024 * 1024 }, { ai, runner, clock: () => new Date(now) });
+    const app = createApp(db, { maxUploadBytes: 1024 * 1024, adminPin: TEST_PIN }, { ai, runner, clock: () => new Date(now) });
     await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
     base = `http://127.0.0.1:${server.address().port}`;
   };
@@ -48,10 +51,20 @@ describe('flashcards API', () => {
       `INSERT INTO flashcards (lesson_id, kind, front, back, evidence, position, state, interval, due_at, ease, reps)
        VALUES (@lessonId, 'concept', @front, @back, 'quote from the lesson', @position, @state, @interval, @due_at, 2.5, @reps)`,
     );
-    return Array.from({ length: n }, (_, i) =>
-      Number(insert.run({ lessonId, front: `Q${lessonId}.${i + 1}?`, back: `A${i + 1}.`, position: i + 1, state: 0, interval: 0, due_at: null, reps: 0, ...fields }).lastInsertRowid),
+    // a card that isn't new also gets P00's schedule row (the schedule is per participant since migration 008)
+    const progress = db.prepare(
+      `INSERT INTO flashcard_progress (participant_id, flashcard_id, state, interval, due_at, ease, reps)
+       VALUES ((SELECT id FROM participants WHERE code = 'P00'), @id, @state, @interval, @due_at, 2.5, @reps)`,
     );
+    return Array.from({ length: n }, (_, i) => {
+      const row = { lessonId, front: `Q${lessonId}.${i + 1}?`, back: `A${i + 1}.`, position: i + 1, state: 0, interval: 0, due_at: null, reps: 0, ...fields };
+      const id = Number(insert.run(row).lastInsertRowid);
+      if (row.state !== 0 || row.reps) progress.run({ ...row, id });
+      return id;
+    });
   };
+  const schedule = (cardId) =>
+    db.prepare('SELECT state, step, ease, interval, due_at, reps, lapses FROM flashcard_progress WHERE flashcard_id = ?').get(cardId);
   const setting = (key, value) => db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, value);
   const reviewRows = () => db.prepare('SELECT * FROM flashcard_reviews ORDER BY id').all();
 
@@ -179,7 +192,7 @@ describe('flashcards API', () => {
     await start();
     const id = addLesson('Inquiry');
     const [c1] = addCards(id, 3);
-    const before = db.prepare('SELECT state, step, ease, interval, due_at, reps, lapses FROM flashcards WHERE id = ?').get(c1);
+    assert.equal(schedule(c1), undefined); // new: no schedule row yet
     const answered = await send('POST', `/api/flashcards/${c1}/review`, { rating: 1, deck: id });
     assert.equal(reviewRows().length, 1);
 
@@ -188,7 +201,7 @@ describe('flashcards API', () => {
     assert.equal(undo.body.card.id, c1);
     assert.equal(undo.body.card.queue, 'new');
     assert.deepEqual(undo.body.counts, { new: 3, learning: 0, due: 0 });
-    assert.deepEqual(db.prepare('SELECT state, step, ease, interval, due_at, reps, lapses FROM flashcards WHERE id = ?').get(c1), before);
+    assert.equal(schedule(c1), undefined); // new again
     assert.equal(reviewRows().length, 0);
 
     const again = await send('POST', `/api/flashcards/reviews/${answered.body.review_id}/undo`, { deck: id });
@@ -202,8 +215,8 @@ describe('flashcards API', () => {
     const r = await send('POST', `/api/flashcards/${c}/review`, { rating: 1, deck: id });
     assert.deepEqual([r.body.answered.state, r.body.answered.ease], [3, 2.3]);
     await send('POST', `/api/flashcards/reviews/${r.body.review_id}/undo`, { deck: id });
-    const row = db.prepare('SELECT state, interval, ease, lapses FROM flashcards WHERE id = ?').get(c);
-    assert.deepEqual(row, { state: 2, interval: 10, ease: 2.5, lapses: 0 });
+    const { state, interval, ease, lapses } = schedule(c);
+    assert.deepEqual({ state, interval, ease, lapses }, { state: 2, interval: 10, ease: 2.5, lapses: 0 });
   });
 
   it('only a card\'s latest answer can be undone', async () => {

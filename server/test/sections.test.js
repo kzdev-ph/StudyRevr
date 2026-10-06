@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { AiError } from '../src/ai/client.js';
 import { createApp } from '../src/app.js';
 import { openDb, runMigrations } from '../src/db/index.js';
+import { studyFetch, TEST_PIN } from './helpers.js';
+
+const fetch = studyFetch; // as participant P00, with the admin PIN (see helpers.js)
 
 // Scripted AI: `reply(label, user)` returns the raw JSON value for that call, which is run through the caller's
 // schema exactly as the real client does. Every call is recorded.
@@ -29,7 +32,7 @@ describe('section rewrites and review progress', () => {
 
   const start = async (reply) => {
     ai = fakeAi(reply);
-    const app = createApp(db, { maxUploadBytes: 1024 * 1024 }, { ai, runner: { enqueue() {} } });
+    const app = createApp(db, { maxUploadBytes: 1024 * 1024, adminPin: TEST_PIN }, { ai, runner: { enqueue() {} } });
     await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
     base = `http://127.0.0.1:${server.address().port}`;
   };
