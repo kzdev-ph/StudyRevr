@@ -272,8 +272,13 @@ function DoneCard({ state, answered, deck, headingRef }) {
           </a>
         ) : (
           <>
-            {/* TODO(Phase 5): make "Take the mock quiz" the primary action here and "Read the lesson" the quiet one. */}
-            <a className="btn btn--primary" href={paths.lesson(deck)}>
+            {/* the quiz is made from the cards, so a deck with none can only go back to the lesson */}
+            {!empty && (
+              <a className="btn btn--primary" href={paths.quiz(deck)}>
+                Take the mock quiz
+              </a>
+            )}
+            <a className={`btn ${empty ? 'btn--primary' : 'btn--quiet'}`} href={paths.lesson(deck)}>
               Read the lesson
             </a>
             <a className="btn btn--quiet" href={paths.tab('flashcards')}>

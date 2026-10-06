@@ -133,3 +133,9 @@ export const UndoIcon = (p) => (
     <path d="M4.5 9.5h9.5a5.5 5.5 0 0 1 0 11H11" />
   </Svg>
 );
+
+export const CloseIcon = (p) => (
+  <Svg {...p}>
+    <path d="M6.5 6.5 17.5 17.5M17.5 6.5 6.5 17.5" />
+  </Svg>
+);

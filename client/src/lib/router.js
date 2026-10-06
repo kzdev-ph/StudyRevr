@@ -5,7 +5,8 @@ import { useSyncExternalStore } from 'react';
 //   #/review/12               lesson 12, sections (also #/review/12/points and #/review/12/terms)
 //   #/flashcards              decks (one per lesson, plus All lessons)
 //   #/flashcards/all          study every lesson's cards;  #/flashcards/12  study lesson 12
-//   #/quiz  #/stats  #/settings
+//   #/quiz                    quizzes (one row per lesson);  #/quiz/12  take the quiz on lesson 12
+//   #/stats  #/settings
 
 const LESSON_VIEWS = ['sections', 'points', 'terms'];
 const TABS = ['flashcards', 'quiz', 'stats', 'settings'];
@@ -16,6 +17,7 @@ export function parseRoute(hash) {
   if (first === 'flashcards' && (second === 'all' || /^\d+$/.test(second ?? ''))) {
     return { name: 'study', deck: second === 'all' ? 'all' : Number(second) };
   }
+  if (first === 'quiz' && /^\d+$/.test(second ?? '')) return { name: 'quizRun', lessonId: Number(second) };
   if (TABS.includes(first)) return { name: first };
   if (first === 'review' && /^\d+$/.test(second ?? '')) {
     return { name: 'lesson', lessonId: Number(second), view: LESSON_VIEWS.includes(third) ? third : 'sections' };
@@ -28,6 +30,7 @@ export const paths = {
   lesson: (id, view = 'sections') => (view === 'sections' ? `#/review/${id}` : `#/review/${id}/${view}`),
   tab: (name) => `#/${name}`,
   study: (deck) => `#/flashcards/${deck}`,
+  quiz: (lessonId) => `#/quiz/${lessonId}`,
 };
 
 export const navigate = (to) => {
@@ -44,5 +47,6 @@ export const useRoute = () => parseRoute(useSyncExternalStore(subscribe, () => w
 // Which bottom tab a route belongs to (Settings has no tab).
 export const tabOf = (route) => {
   if (route.name === 'library' || route.name === 'lesson') return 'review';
-  return route.name === 'study' ? 'flashcards' : route.name;
+  if (route.name === 'study') return 'flashcards';
+  return route.name === 'quizRun' ? 'quiz' : route.name;
 };

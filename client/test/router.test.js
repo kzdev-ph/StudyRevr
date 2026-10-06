@@ -17,8 +17,14 @@ describe('parseRoute', () => {
   it('builds paths that parse back', () => {
     for (const view of ['sections', 'points', 'terms']) assert.equal(parseRoute(paths.lesson(7, view)).view, view);
   });
+  it('parses a quiz on a lesson', () => {
+    assert.deepEqual(parseRoute('#/quiz/12'), { name: 'quizRun', lessonId: 12 });
+    assert.deepEqual(parseRoute(paths.quiz(5)), { name: 'quizRun', lessonId: 5 });
+    assert.deepEqual(parseRoute('#/quiz/abc'), { name: 'quiz' });
+  });
   it('maps routes to bottom tabs', () => {
     assert.equal(tabOf(parseRoute('#/review/3')), 'review');
     assert.equal(tabOf(parseRoute('#/quiz')), 'quiz');
+    assert.equal(tabOf(parseRoute('#/quiz/3')), 'quiz');
   });
 });

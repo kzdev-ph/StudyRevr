@@ -1,12 +1,7 @@
-import { QuizIcon, StatsIcon } from '../components/Icons.jsx';
+import { StatsIcon } from '../components/Icons.jsx';
 import { paths } from '../lib/router.js';
 
 const COPY = {
-  quiz: {
-    Icon: QuizIcon,
-    title: 'Mock quizzes are on their way',
-    text: 'Soon you will be able to take a multiple-choice quiz on any lesson and see how your score improves.',
-  },
   stats: {
     Icon: StatsIcon,
     title: 'Stats are on their way',
