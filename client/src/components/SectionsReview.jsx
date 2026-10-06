@@ -73,6 +73,8 @@ export default function SectionsReview({ lesson, sections, progress, keyTermCoun
   const chooseVariant = (kind) => {
     if (variant === kind) return setVariant('summary');
     setVariant(kind);
+    // a self-monitoring event every time the student opens a rewrite, made now or already saved
+    api.logEvent(kind === 'simple' ? 'section_simplify' : 'section_translate', { lesson_id: lesson.id, section_index: index });
     const have = kind === 'simple' ? section.simple_version : section.filipino_version;
     if (!have && !busy[`${section.id}:${kind}`]) generate(section, kind);
   };

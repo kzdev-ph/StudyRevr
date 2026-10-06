@@ -4,9 +4,11 @@ import FlipCard from '../components/FlipCard.jsx';
 import { CheckIcon, ChevronLeft, UndoIcon } from '../components/Icons.jsx';
 import Notice from '../components/Notice.jsx';
 import { Counts } from './FlashcardsScreen.jsx';
+import { useStudySession } from '../hooks/useStudySession.js';
 import { api } from '../lib/api.js';
-import { describeNextDue, keyAction, RATINGS, spellInterval } from '../lib/flashcards.js';
+import { describeNextDue, keyAction, RATINGS, sessionRecap, spellInterval } from '../lib/flashcards.js';
 import { prettyTitle } from '../lib/format.js';
+import { formatDuration } from '../lib/quiz.js';
 import { paths } from '../lib/router.js';
 
 const REFRESH_WITHIN_MS = 60 * 60 * 1000; // a card due within the hour is picked up without a reload
@@ -37,6 +39,7 @@ export default function StudyScreen({ deck }) {
   const [busy, setBusy] = useState(false);
   const [undoStack, setUndoStack] = useState([]); // { id, rating } answered in this session, newest last
   const [answered, setAnswered] = useState(0);
+  const [ratings, setRatings] = useState([]); // every answer on this screen, minus undone ones (the done card's recap)
   const [undone, setUndone] = useState(null); // 'Undid Good.' after an undo, until the next answer
   const [announce, setAnnounce] = useState(''); // read out by the live region that is always on the page
   const [showHint] = useState(() => readAnswered() < HINT_UNTIL);
@@ -45,6 +48,7 @@ export default function StudyScreen({ deck }) {
   const ratingGroup = useRef(null);
   const doneHeading = useRef(null);
   const focusAfter = useRef(null); // 'show' | 'rate': where focus goes after the next render
+  const activeMs = useStudySession(deck === 'all' ? null : deck, 'flashcards');
 
   const take = useCallback((next) => {
     setState((prev) => ({ ...next, deck: next.deck ?? prev?.deck }));
@@ -101,6 +105,7 @@ export default function StudyScreen({ deck }) {
         const timeMs = Math.round(performance.now() - shownAt.current);
         const next = await api.answerCard(state.card.id, { rating, timeMs, deck });
         setUndoStack((s) => [...s, { id: next.review_id, rating }]);
+        setRatings((r) => [...r, rating]);
         setAnswered((n) => n + 1);
         setUndone(null);
         setAnnounce('');
@@ -124,6 +129,7 @@ export default function StudyScreen({ deck }) {
       const next = await api.undoAnswer(last.id, deck);
       const { name } = RATINGS[last.rating - 1];
       setUndoStack((s) => s.slice(0, -1));
+      setRatings((r) => r.slice(0, -1));
       setAnswered((n) => Math.max(0, n - 1));
       setUndone(`Undid ${name}.`);
       setAnnounce(`Undid ${name}. Back to: ${next.card?.front ?? 'the last card'}`);
@@ -226,7 +232,7 @@ export default function StudyScreen({ deck }) {
         </>
       ) : (
         <>
-          <DoneCard state={state} answered={answered} deck={deck} headingRef={doneHeading} />
+          <DoneCard state={state} recap={sessionRecap(ratings, activeMs())} deck={deck} headingRef={doneHeading} />
           {undoBar}
         </>
       )}
@@ -251,7 +257,28 @@ function UndoBar({ undone, onUndo, disabled }) {
   );
 }
 
-function DoneCard({ state, answered, deck, headingRef }) {
+// What this sitting added up to: cards studied, active time and the share answered Good or Easy.
+function Recap({ recap }) {
+  if (!recap.cards) return null;
+  return (
+    <dl className="recap" aria-label="This session">
+      <div className="recap__item">
+        <dt>Cards studied</dt>
+        <dd>{recap.cards}</dd>
+      </div>
+      <div className="recap__item">
+        <dt>Time</dt>
+        <dd>{formatDuration(recap.timeMs)}</dd>
+      </div>
+      <div className="recap__item">
+        <dt>Good or Easy</dt>
+        <dd>{recap.goodEasyPct}%</dd>
+      </div>
+    </dl>
+  );
+}
+
+function DoneCard({ state, recap, deck, headingRef }) {
   const empty = state.total === 0;
   const next = describeNextDue(state.next_due_at);
   const soon = state.next_due_at && Date.parse(state.next_due_at) - Date.now() < REFRESH_WITHIN_MS;
@@ -261,9 +288,12 @@ function DoneCard({ state, answered, deck, headingRef }) {
       <h2 className="done__title" tabIndex={-1} ref={headingRef}>{empty ? 'No cards in this deck yet' : soon ? 'Done for now' : 'Done for today'}</h2>
       <p className="done__text">
         {empty
-          ? 'Cards are made when a lesson finishes preparing. For a lesson uploaded earlier, go back to All decks and tap Make cards.'
-          : `${answered ? `You answered ${answered} ${answered === 1 ? 'card' : 'cards'}. ` : ''}${next ? `The next card is due ${next}.` : 'No more cards are scheduled.'}`}
+          ? 'Cards are made when a lesson finishes preparing. If this lesson has none, ask your teacher to make them.'
+          : next
+            ? `The next card is due ${next}.`
+            : 'No more cards are scheduled.'}
       </p>
+      <Recap recap={recap} />
       {soon && <p className="muted">The card appears here when it’s due.</p>}
       <div className="done__actions">
         {deck === 'all' ? (

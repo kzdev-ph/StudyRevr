@@ -9,16 +9,24 @@ const TABS = [
   { id: 'stats', label: 'Stats', Icon: StatsIcon, to: paths.tab('stats') },
 ];
 
-export function Header({ settingsActive }) {
+// The participant chip shows who this device is studying as (tap it to switch, in Settings).
+export function Header({ settingsActive, participant }) {
   return (
     <header className="header">
       <a className="wordmark" href={paths.library()}>
         <LogoMark />
         <span>StudyRevr</span>
       </a>
-      <a className="icon-btn" href={paths.tab('settings')} aria-label="Settings" title="Settings" aria-current={settingsActive ? 'page' : undefined}>
-        <GearIcon />
-      </a>
+      {participant && (
+        <div className="header__end">
+          <a className="participant-chip" href={paths.tab('settings')} aria-label={`Studying as ${participant}. Settings`} title="Switch participant in Settings">
+            <span>{participant}</span>
+          </a>
+          <a className="icon-btn" href={paths.tab('settings')} aria-label="Settings" title="Settings" aria-current={settingsActive ? 'page' : undefined}>
+            <GearIcon />
+          </a>
+        </div>
+      )}
     </header>
   );
 }

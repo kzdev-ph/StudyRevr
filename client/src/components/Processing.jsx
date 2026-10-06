@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { CheckIcon, RetryIcon } from './Icons.jsx';
 import Notice from './Notice.jsx';
+import { useAdminPin } from '../lib/admin.js';
 import { api } from '../lib/api.js';
 import { paths } from '../lib/router.js';
 
@@ -30,6 +31,7 @@ export default function Processing({ lessonId, title, warning, onReady }) {
   const [problem, setProblem] = useState(null);
   const [retrying, setRetrying] = useState(false);
   const [polling, setPolling] = useState(true);
+  const admin = Boolean(useAdminPin()); // only the researcher can retry a lesson
 
   useEffect(() => {
     if (!polling) return undefined;
@@ -111,12 +113,18 @@ export default function Processing({ lessonId, title, warning, onReady }) {
       {failed ? (
         <div className="stack stack--tight">
           <Notice action={null}>{failure}</Notice>
-          <div>
-            <button type="button" className="btn btn--primary" onClick={retry} disabled={retrying}>
-              <RetryIcon size={18} /> {retrying ? 'Retrying…' : 'Retry'}
-            </button>
-          </div>
-          <p className="muted">Steps that already finished are kept, so a retry picks up where it stopped.</p>
+          {admin ? (
+            <>
+              <div>
+                <button type="button" className="btn btn--primary" onClick={retry} disabled={retrying}>
+                  <RetryIcon size={18} /> {retrying ? 'Retrying…' : 'Retry'}
+                </button>
+              </div>
+              <p className="muted">Steps that already finished are kept, so a retry picks up where it stopped.</p>
+            </>
+          ) : (
+            <p className="muted">Your teacher can retry it from admin.</p>
+          )}
         </div>
       ) : (
         <p className="muted" aria-live="polite">

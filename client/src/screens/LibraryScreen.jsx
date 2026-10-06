@@ -1,19 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
+import { ReviewIcon } from '../components/Icons.jsx';
 import LessonRow from '../components/LessonRow.jsx';
 import Notice from '../components/Notice.jsx';
-import UploadZone from '../components/UploadZone.jsx';
 import { api } from '../lib/api.js';
-import { navigate, paths } from '../lib/router.js';
-import { setWarning } from '../lib/warnings.js';
 
 const POLL_MS = 3000;
 
+// The lessons everyone studies. The researcher adds them in admin; students open and study them here.
 export default function LibraryScreen() {
   const [lessons, setLessons] = useState(null);
   const [loadError, setLoadError] = useState(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState(null);
-  const [deleteError, setDeleteError] = useState(null);
 
   const load = useCallback(async (signal) => {
     try {
@@ -39,56 +35,29 @@ export default function LibraryScreen() {
     return () => clearInterval(timer);
   }, [anyProcessing, load]);
 
-  const upload = async (file) => {
-    setUploadError(null);
-    setUploading(true);
-    try {
-      const { lesson, warning } = await api.uploadLesson(file);
-      if (warning) setWarning(lesson.id, warning);
-      navigate(paths.lesson(lesson.id));
-    } catch (err) {
-      setUploadError(err.message);
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const remove = async (id) => {
-    setDeleteError(null);
-    try {
-      await api.deleteLesson(id);
-      setLessons((list) => list.filter((l) => l.id !== id));
-    } catch (err) {
-      setDeleteError(err.message);
-    }
-  };
-
-  const hasLessons = lessons?.length > 0;
+  if (lessons?.length === 0) {
+    return (
+      <section className="empty">
+        <ReviewIcon size={36} className="empty__icon" />
+        <h1 className="empty__title">No lessons yet</h1>
+        <p className="empty__text">Your teacher adds them. Check back soon.</p>
+      </section>
+    );
+  }
 
   return (
     <section className="stack">
-      <h1 className="screen-title">{hasLessons ? 'Your lessons' : 'Lessons'}</h1>
-
-      {uploadError && (
-        <Notice onDismiss={() => setUploadError(null)}>
-          <strong>That file wasn’t added.</strong> {uploadError}
-        </Notice>
-      )}
-      {deleteError && <Notice onDismiss={() => setDeleteError(null)}>{deleteError}</Notice>}
+      <h1 className="screen-title">Lessons</h1>
       {loadError && (
         <Notice action={<button type="button" className="btn btn--quiet btn--small" onClick={() => load()}>Try again</button>}>
           {loadError}
         </Notice>
       )}
-
-      <UploadZone onFile={upload} onReject={setUploadError} busy={uploading} empty={lessons && !hasLessons} />
-
       {lessons === null && !loadError && <p className="muted" aria-live="polite">Loading your lessons…</p>}
-
-      {hasLessons && (
-        <ul className="lessons" aria-label="Your lessons">
+      {lessons?.length > 0 && (
+        <ul className="lessons" aria-label="Lessons">
           {lessons.map((lesson) => (
-            <LessonRow key={lesson.id} lesson={lesson} onDelete={remove} />
+            <LessonRow key={lesson.id} lesson={lesson} />
           ))}
         </ul>
       )}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { CardsIcon, RetryIcon } from '../components/Icons.jsx';
 import Notice from '../components/Notice.jsx';
+import { useAdminPin } from '../lib/admin.js';
 import { api } from '../lib/api.js';
 import { COUNTS, describeCounts, describeNextDue, studyMinutes, totalDue } from '../lib/flashcards.js';
 import { prettyTitle } from '../lib/format.js';
@@ -26,7 +27,7 @@ export function Counts({ counts, current }) {
 }
 
 // The right-hand side of a lesson row: Start, or why there is nothing to start yet.
-function DeckAction({ deck, onMake, making }) {
+function DeckAction({ deck, onMake, making, admin }) {
   if (deck.status === 'processing') {
     return (
       <span className="chip chip--busy">
@@ -35,6 +36,7 @@ function DeckAction({ deck, onMake, making }) {
     );
   }
   if (deck.status === 'failed') {
+    if (!admin) return <span className="deck__total">Not ready yet</span>;
     return (
       <a className="btn btn--quiet" href={paths.lesson(deck.lesson_id)}>
         Open lesson to retry
@@ -49,6 +51,8 @@ function DeckAction({ deck, onMake, making }) {
     );
   }
   if (!deck.total) {
+    // making cards calls the AI, so only the researcher (admin) can start it
+    if (!admin) return <span className="deck__total">Cards aren’t ready yet</span>;
     return (
       <button type="button" className="btn btn--quiet" onClick={() => onMake(deck.lesson_id)} disabled={making}>
         {deck.job?.status === 'failed' ? <RetryIcon size={18} /> : null}
@@ -70,6 +74,7 @@ export default function FlashcardsScreen() {
   const [error, setError] = useState(null);
   const [makeError, setMakeError] = useState(null);
   const [making, setMaking] = useState(null); // lesson id while its request is in flight
+  const admin = Boolean(useAdminPin());
 
   const load = useCallback(async (signal) => {
     try {
@@ -122,10 +127,7 @@ export default function FlashcardsScreen() {
       <section className="empty">
         <CardsIcon size={36} className="empty__icon" />
         <h1 className="empty__title">No flashcards yet</h1>
-        <p className="empty__text">Upload a lesson and its flashcards are made for you, along with the review.</p>
-        <a className="btn btn--primary" href={paths.library()}>
-          Upload a lesson
-        </a>
+        <p className="empty__text">Flashcards appear here once your teacher adds a lesson.</p>
       </section>
     );
   }
@@ -182,7 +184,7 @@ export default function FlashcardsScreen() {
                 <span className="deck__total">{deck.status === 'ready' && !deck.job ? 'No cards yet' : ' '}</span>
               )}
             </div>
-            <DeckAction deck={deck} onMake={make} making={making === deck.lesson_id} />
+            <DeckAction deck={deck} onMake={make} making={making === deck.lesson_id} admin={admin} />
           </li>
         ))}
       </ul>

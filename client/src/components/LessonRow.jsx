@@ -18,7 +18,8 @@ function Status({ lesson }) {
   return null;
 }
 
-// One lesson on the ruled list. Delete asks first, in place, so a slip of the thumb can't remove a lesson.
+// One lesson on the ruled list. With `onDelete` (admin), Delete asks first, in place, so a slip of the thumb can't
+// remove a lesson.
 export default function LessonRow({ lesson, onDelete }) {
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -34,7 +35,7 @@ export default function LessonRow({ lesson, onDelete }) {
     return (
       <li className="lesson lesson--confirm">
         <p className="lesson__ask">
-          Delete <strong>{prettyTitle(lesson.title)}</strong>? Its review and your progress go with it.
+          Delete <strong>{prettyTitle(lesson.title)}</strong>? Its review, cards and quizzes go with it, for every participant.
         </p>
         <div className="lesson__confirm-actions">
           <button type="button" className="btn btn--quiet" onClick={() => setConfirming(false)} disabled={deleting}>
@@ -60,9 +61,11 @@ export default function LessonRow({ lesson, onDelete }) {
         <Status lesson={lesson} />
         <ChevronRight size={20} className="lesson__chevron" />
       </a>
-      <button type="button" className="icon-btn" onClick={() => setConfirming(true)} aria-label={`Delete ${prettyTitle(lesson.title)}`}>
-        <TrashIcon size={20} />
-      </button>
+      {onDelete && (
+        <button type="button" className="icon-btn" onClick={() => setConfirming(true)} aria-label={`Delete ${prettyTitle(lesson.title)}`}>
+          <TrashIcon size={20} />
+        </button>
+      )}
     </li>
   );
 }

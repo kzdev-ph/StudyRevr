@@ -1,4 +1,5 @@
 import { CheckIcon, QuizIcon, RetryIcon } from './Icons.jsx';
+import { api } from '../lib/api.js';
 import { truncateAtWord } from '../lib/format.js';
 import { bestLine, formatDuration, questionText, scoreLine } from '../lib/quiz.js';
 import { paths } from '../lib/router.js';
@@ -37,7 +38,11 @@ export default function QuizResults({ results, onRetake, busy, headingRef }) {
             Back to lesson
           </a>
           {!all && (
-            <a className="btn btn--quiet" href={paths.study(attempt.lesson_id)}>
+            <a
+              className="btn btn--quiet"
+              href={paths.study(attempt.lesson_id)}
+              onClick={() => api.logEvent('review_flashcards_tap', { lesson_id: attempt.lesson_id, attempt_id: attempt.id })}
+            >
               Review these flashcards
             </a>
           )}

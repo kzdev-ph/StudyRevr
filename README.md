@@ -2,7 +2,7 @@
 
 Open-source, mobile-first study app. Upload a lesson (.docx / .pptx / .pdf) and get a sectioned review, Anki-style flashcards, and mock quizzes. Study activity is logged and exportable for research.
 
-> **Status:** Phase 5 of 7 — React app with the lesson library, upload, processing screen, the Review tab (sections, quick checks, simpler / Filipino-Taglish rewrites, key points, key terms, original text, resume), the Flashcard tab (grounded cards, Anki-style SM-2 scheduling, undo) and the Mock Quiz tab (questions from the lesson's flashcards, every answer logged). Stats and Settings are placeholders until their phases.
+> **Status:** Phase 6 of 7 — React app with the lesson library, the Review tab (sections, quick checks, simpler / Filipino-Taglish rewrites, key points, key terms, original text, resume), the Flashcard tab (grounded cards, Anki-style SM-2 scheduling, undo), the Mock Quiz tab (questions from the lesson's flashcards, every answer logged), participant codes, active-time session logging, the Stats tab, and a PIN-protected researcher admin (lesson upload, participant codes, research CSV export). The full Settings screen arrives in Phase 7.
 
 ## Running it
 
@@ -14,6 +14,7 @@ cp .env.example .env     # then add your AI key (GOOGLE_API_KEY by default); upl
 npm run dev              # API on http://localhost:3001 and the app on http://localhost:5173 (Vite proxies /api)
 npm test                 # server and client tests
 npm run build            # production build of the client into client/dist
+npm run study            # build the client and serve app + API on one port (for phones on the same Wi-Fi)
 ```
 
 The SQLite database is created at `server/data/studyrevr.db` on first start, and migrations run automatically.
@@ -25,6 +26,7 @@ The SQLite database is created at `server/data/studyrevr.db` on first start, and
 | `PORT` | `3001` | API port |
 | `DB_PATH` | `server/data/studyrevr.db` | SQLite file (relative to repo root). Git-ignored: it can hold API keys saved in Settings |
 | `MAX_UPLOAD_MB` | `20` | Upload size limit |
+| `ADMIN_PIN` | – | The researcher's admin PIN (upload, participant codes, AI settings, export). Empty: admin is off |
 | `AI_PROVIDER` | `google` | `google`, `nvidia-nim`, `openrouter`, `ollama`, `llamacpp` or `custom` |
 | `GOOGLE_API_KEY` / `NVIDIA_API_KEY` / `OPENROUTER_API_KEY` | – | One key per provider; only the active provider's key is sent. Never logged or returned by the API |
 | `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL` | – | Optional overrides for the `AI_PROVIDER` provider (an older `.env` with only `AI_BASE_URL` still works: the provider is recognised from the URL) |
@@ -47,13 +49,38 @@ Provider presets (base URL, default model, chunk tokens, concurrency):
 
 Each value resolves as: a one-off request value → what is saved in the `settings` table → `.env` → the preset. The `.env` overrides (`AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`, `AI_EXTRA_BODY`) belong to the `.env` provider and are not used for any other provider you switch to. The model is never fixed: any id works, and the provider's list comes from `GET /api/settings/models`. Settings keys (the Settings screen arrives in Phase 7): `ai_provider`, and per provider `ai_model:<provider>`, `ai_base_url:<provider>`, `ai_api_key:<provider>`; plus `ai_concurrency`, `ai_chunk_tokens`, `ai_temperature`, `key_terms_max`, `summary_length` (`short`/`detailed`). Switching provider brings back that provider's last model and key. **A backup export (Phase 7) must leave `ai_api_key:*` out.**
 
+## Running a study session (shared host, phones on Wi-Fi)
+
+1. In `.env`, set `ADMIN_PIN` (at least 6 characters students can't guess) and your AI key. Without `ADMIN_PIN`, admin is off.
+2. `npm run study` builds the app and starts the server. It prints the addresses phones can open, e.g. `http://192.168.1.20:3001`. On Termux, run it the same way; keep the phone awake. The host and the phones must be on the same Wi-Fi.
+3. On any device, open that address, tap **Researcher admin** under the code box (or Settings › Researcher admin), and enter the PIN. In **Admin**:
+   - **Lessons**: upload every lesson and wait until it is ready (students cannot upload, retry, delete or make cards).
+   - **Participants**: add the codes, e.g. `P01-P10`. Students can only type a code that is on this list; P00 (made by the Phase 6 migration) holds your own earlier test data.
+   - **Research export**: `Download all (zip)` or single CSVs; tick **Include P00** to include your test data. `README.txt` in the zip explains every column.
+4. Each student opens the address on their phone and types their code. The code stays on that phone until **Settings › Switch participant**. The header shows the code in use.
+5. Withdrawal: on the host, `npm run participant:delete -- P07` shows what will be deleted and asks you to type the code again; it deletes everything recorded for that participant (shared lessons stay) and rewrites the database file so nothing can be read back. Add `--yes` to skip the question.
+
+**What is logged, per participant:** flashcard schedule and every answer (Again/Hard/Good/Easy), quiz attempts and every answer (abandoned attempts and retakes included and marked), Review-tab position, study sessions (reading / flashcards / quiz) with active time, and self-monitoring events (Stats views, quiz retakes, "Review these flashcards" taps, "Explain simpler" and "Filipino/Taglish" taps). Active time stops when the app goes to the background and a session ends after 5 minutes without a tap, scroll or key press. Days follow the flashcard study day: 04:00 to 04:00 Asia/Manila. The export never contains names, settings or API keys.
+
+The Stats tab shows each student their own study time this week (reading / flashcards / quiz), cards reviewed and % Good or Easy, first and best quiz score per lesson, and cards due tomorrow. In admin, tap a code to see that participant's Stats (this is not logged as their view).
+
 ### Try the API
 
+Study routes need the participant header (`-H "x-participant: P01"`, a code on the list); admin routes (upload, retry, delete, making cards, AI settings, participant codes, export) need the PIN (`-H "x-admin-pin: $PIN"`).
+
 ```bash
-curl -F "file=@lesson.docx" http://localhost:3001/api/lessons    # upload
+curl -H "x-admin-pin: $PIN" -H 'content-type: application/json' -d '{"codes":"P01-P10"}' http://localhost:3001/api/admin/participants
+curl http://localhost:3001/api/participants/P01                                    # is this code on the list? (404 if not)
+curl -H "x-participant: P01" http://localhost:3001/api/stats                       # the Stats tab's numbers
+curl -H "x-admin-pin: $PIN" -o export.zip http://localhost:3001/api/admin/export.zip   # ?include_p00=1 to include P00
+curl -H "x-admin-pin: $PIN" http://localhost:3001/api/admin/export/summary.csv
+```
+
+```bash
+curl -H "x-admin-pin: $PIN" -F "file=@lesson.docx" http://localhost:3001/api/lessons    # upload
 curl http://localhost:3001/api/lessons                           # list
 curl http://localhost:3001/api/lessons/1                         # one lesson, with extracted text
-curl -X DELETE http://localhost:3001/api/lessons/1               # delete
+curl -H "x-admin-pin: $PIN" -X DELETE http://localhost:3001/api/lessons/1               # delete
 ```
 
 Supported formats: `.docx`, `.pptx` and `.pdf` (up to `MAX_UPLOAD_MB`). A `.docx`/`.pptx` that would unpack to more than 200 MB or hold more than 10,000 parts is rejected before it is read (zip-bomb guard). Slides and PDF pages are separated by a blank line in the extracted text, with one paragraph per line inside each. For PowerPoint files this includes bullet lists, tables, SmartArt text and (by default) speaker notes under a `Notes:` line; set the `include_speaker_notes` row in the `settings` table to `false` to leave notes out of future uploads. For PDFs, lines that repeat on most pages (headers, footers, page numbers) are removed and wrapped lines are rejoined into paragraphs.
@@ -67,7 +94,7 @@ After an upload the lesson is `processing` and a background job runs, one lesson
 ```bash
 curl http://localhost:3001/api/lessons/1/status       # { lesson: { id, status, error }, job: { stage, status, progress: { done, total }, error } }
 curl http://localhost:3001/api/lessons/1              # lesson + sections, key_points, key_terms once ready
-curl -X POST http://localhost:3001/api/lessons/1/retry   # re-run a failed lesson (finished stages are kept)
+curl -H "x-admin-pin: $PIN" -X POST http://localhost:3001/api/lessons/1/retry   # re-run a failed lesson (finished stages are kept)
 ```
 
 `status` is `processing`, `ready` or `failed`; `job.stage` is `sections`, `key_points`, `key_terms` or `done`; `progress.done` counts finished AI calls in the current stage. A job still running when the server stops is marked failed on the next start and can be retried.
@@ -75,12 +102,12 @@ curl -X POST http://localhost:3001/api/lessons/1/retry   # re-run a failed lesso
 Provider and model (backend only; the Settings screen arrives in Phase 7). API keys go in and never come out: responses only say `keySet: true/false`.
 
 ```bash
-curl http://localhost:3001/api/settings/ai                    # active provider, each provider's model / base URL, keySet flags
-curl -X PUT http://localhost:3001/api/settings/ai -H 'content-type: application/json' \
+curl -H "x-admin-pin: $PIN" http://localhost:3001/api/settings/ai                    # active provider, each provider's model / base URL, keySet flags
+curl -H "x-admin-pin: $PIN" -X PUT http://localhost:3001/api/settings/ai -H 'content-type: application/json' \
      -d '{"provider":"google","model":"gemini-3.5-flash-lite","apiKey":"..."}'   # save (any model id; "" clears a value)
-curl "http://localhost:3001/api/settings/models?provider=google"   # chat models offered by the provider, sorted;
+curl -H "x-admin-pin: $PIN" "http://localhost:3001/api/settings/models?provider=google"   # chat models offered by the provider, sorted;
                                                                    # { models: [], freeText: true, error } if it can't be listed
-curl -X POST http://localhost:3001/api/settings/test-ai -H 'content-type: application/json' \
+curl -H "x-admin-pin: $PIN" -X POST http://localhost:3001/api/settings/test-ai -H 'content-type: application/json' \
      -d '{"provider":"google","model":"gemini-3.5-flash-lite"}'    # tiny JSON round-trip; tries what's in the body, saves nothing
 ```
 
@@ -97,8 +124,8 @@ npm run pipeline -- lesson.pdf --summary=short --chunk-tokens=1500 --concurrency
 ```bash
 curl -X POST http://localhost:3001/api/sections/1/simplify    # { section_id, kind, version: { text, example }, cached }
 curl -X POST http://localhost:3001/api/sections/1/translate   # { ..., version: { title, content, check_questions } }
-curl -X PUT http://localhost:3001/api/lessons/1/review-progress -H 'content-type: application/json'      -d '{"last_section":2,"completed_sections":[0,1]}'      # 0-based indices into the lesson's sections
-curl http://localhost:3001/api/lessons/1/review-progress      # { review_progress: { last_section, completed_sections, updated_at } | null }
+curl -H "x-participant: P01" -X PUT http://localhost:3001/api/lessons/1/review-progress -H 'content-type: application/json'      -d '{"last_section":2,"completed_sections":[0,1]}'      # 0-based indices into the lesson's sections
+curl -H "x-participant: P01" http://localhost:3001/api/lessons/1/review-progress      # { review_progress: { last_section, completed_sections, updated_at } | null }
 ```
 
 `simplify` and `translate` call the active AI provider once per section and kind, save the result in the `sections` row (`simple_version`, `filipino_version`, as JSON) and answer from that cache afterwards; two taps at the same time share one call. `simplify` gives a plain-words rewrite plus an everyday example; `translate` gives natural Filipino/Taglish for the title, content and quick-check questions, keeping the lesson's key terms in English with the Filipino meaning in parentheses. The stored summary is never changed. `GET /api/lessons/:id` returns both versions (or `null`) on each section, the saved `review_progress`, and where each section came from: `lesson.source` (`{ kind, total, numbers }`, the real slide / page / paragraph number of each block of `raw_text`; `null` for lessons uploaded before this was recorded) and `sections[].sources` (the slide / page numbers the section was written from, checked against the file's real count; `null` when unknown, and Original text then falls back to an approximate match).
@@ -114,13 +141,13 @@ Scheduling is Anki's SM-2 (`server/src/flashcards/scheduler.js`, a pure module t
 Settings rows (Settings screen in Phase 7): `flashcard_new_per_day` (20), `flashcard_reviews_per_day` (200), `flashcard_learning_steps` (`1m 10m`), `flashcards_max` (30); optional overrides `flashcard_graduating_interval`, `flashcard_easy_interval`, `flashcard_starting_ease`, `flashcard_easy_bonus`, `flashcard_hard_interval`, `flashcard_relearning_steps`, `flashcard_lapse_interval`, `flashcard_min_interval`, `flashcard_max_interval`, `study_timezone`.
 
 ```bash
-curl http://localhost:3001/api/flashcards/decks                    # every lesson's New / Learning / Due counts, plus "All lessons"
-curl http://localhost:3001/api/lessons/1/flashcards/due            # the next card (with each button's interval) or next_due_at
-curl http://localhost:3001/api/flashcards/due                      # the same for All lessons
-curl -X POST http://localhost:3001/api/flashcards/5/review -H 'content-type: application/json' \
+curl -H "x-participant: P01" http://localhost:3001/api/flashcards/decks                    # every lesson's New / Learning / Due counts, plus "All lessons"
+curl -H "x-participant: P01" http://localhost:3001/api/lessons/1/flashcards/due            # the next card (with each button's interval) or next_due_at
+curl -H "x-participant: P01" http://localhost:3001/api/flashcards/due                      # the same for All lessons
+curl -H "x-participant: P01" -X POST http://localhost:3001/api/flashcards/5/review -H 'content-type: application/json' \
      -d '{"rating":3,"time_ms":4200,"deck":1}'                     # 1 Again, 2 Hard, 3 Good, 4 Easy -> review_id + the deck's next card
-curl -X POST http://localhost:3001/api/flashcards/reviews/17/undo -H 'content-type: application/json' -d '{"deck":1}'
-curl -X POST http://localhost:3001/api/lessons/1/flashcards/generate   # make cards for a lesson that has none
+curl -H "x-participant: P01" -X POST http://localhost:3001/api/flashcards/reviews/17/undo -H 'content-type: application/json' -d '{"deck":1}'
+curl -H "x-admin-pin: $PIN" -X POST http://localhost:3001/api/lessons/1/flashcards/generate   # make cards for a lesson that has none
 ```
 
 In the app: Space flips the card, 1–4 answer, U or Ctrl+Z undoes.
@@ -132,11 +159,11 @@ A quiz is built from the lesson's flashcards when it starts: up to 10 questions,
 Every question is saved in `quiz_answers` when the quiz starts, and each answer the moment it is given (choice, right or wrong, time on the question, timestamp), so a quiz left part-way is still logged. `quiz_attempts` records start, finish, total time and `retake_of` (a retake asks the same questions in a new order). The quiz never changes flashcard scheduling.
 
 ```bash
-curl http://localhost:3001/api/quiz                                     # one row per lesson: questions it supports, best score, attempts
-curl -X POST http://localhost:3001/api/lessons/1/quiz/attempts          # start: questions without answers (body {"retake_of": 4} for a retake)
-curl -X POST http://localhost:3001/api/quiz/attempts/4/answers -H 'content-type: application/json' \
+curl -H "x-participant: P01" http://localhost:3001/api/quiz                                     # one row per lesson: questions it supports, best score, attempts
+curl -H "x-participant: P01" -X POST http://localhost:3001/api/lessons/1/quiz/attempts          # start: questions without answers (body {"retake_of": 4} for a retake)
+curl -H "x-participant: P01" -X POST http://localhost:3001/api/quiz/attempts/4/answers -H 'content-type: application/json' \
      -d '{"position":0,"choice":2,"time_ms":5200}'                      # -> correct, the right option, the card's evidence
-curl -X POST http://localhost:3001/api/quiz/attempts/4/finish -H 'content-type: application/json' -d '{"total_ms":61000}'
+curl -H "x-participant: P01" -X POST http://localhost:3001/api/quiz/attempts/4/finish -H 'content-type: application/json' -d '{"total_ms":61000}'
 ```
 
 In the app: 1–4 answer (1–2 on true / false), Enter goes to the next question.

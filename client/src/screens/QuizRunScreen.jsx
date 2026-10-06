@@ -5,6 +5,7 @@ import { ChevronLeft } from '../components/Icons.jsx';
 import Notice from '../components/Notice.jsx';
 import QuizQuestion from '../components/QuizQuestion.jsx';
 import QuizResults from '../components/QuizResults.jsx';
+import { useStudySession } from '../hooks/useStudySession.js';
 import { api } from '../lib/api.js';
 import { prettyTitle } from '../lib/format.js';
 import { elapsed, quizKeyAction } from '../lib/quiz.js';
@@ -19,6 +20,7 @@ const reduceMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)
 //   phase: 'loading' | 'shuffle' | 'question' | 'feedback' | 'results'
 export default function QuizRunScreen({ lessonId }) {
   const [phase, setPhase] = useState('loading');
+  useStudySession(lessonId, 'quiz');
   const [quiz, setQuiz] = useState(null); // { attempt, questions, notice }
   const [index, setIndex] = useState(0);
   const [feedback, setFeedback] = useState(null);

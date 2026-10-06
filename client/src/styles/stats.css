@@ -1,0 +1,186 @@
+/* Stats tab (and admin's view of one participant's stats). Chart colours are existing tokens:
+   reading = accent, flashcards = margin, quiz = warn. */
+
+.stats {
+  --series-reading: var(--accent);
+  --series-flashcards: var(--margin);
+  --series-quiz: var(--warn);
+}
+
+.stat-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (min-width: 40rem) {
+  .stat-tiles {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+.stat-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--sheet);
+}
+.stat-tile dt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-2);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.stat-tile dd {
+  font-family: var(--font-read);
+  font-size: 1.5rem;
+  font-weight: 650;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+.stat-tile dd.stat-tile__note {
+  color: var(--ink-2);
+  font-family: var(--font-ui);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.swatch {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--swatch);
+}
+
+.stats-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--sheet);
+}
+.stats-card__title {
+  font-family: var(--font-read);
+  font-size: 1.1875rem;
+  font-weight: 650;
+}
+.stats-chart {
+  width: 100%;
+  height: 220px;
+}
+.stats-chart--small {
+  height: 92px;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: 0.875rem;
+  color: var(--ink-2);
+}
+.legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chart-tip {
+  padding: 8px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--sheet);
+  color: var(--ink);
+  font-size: 0.875rem;
+}
+.chart-tip__title {
+  margin-bottom: 4px;
+  font-weight: 700;
+}
+.chart-tip__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.quiz-scores {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.quiz-scores__title {
+  font-weight: 650;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+.data-table th,
+.data-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+  white-space: nowrap;
+}
+.data-table th:first-child,
+.data-table td:first-child {
+  text-align: left;
+}
+.data-table thead th {
+  background: var(--paper);
+  color: var(--ink-2);
+  font-weight: 650;
+}
+.data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+details.table-view summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  color: var(--accent);
+  font-weight: 650;
+  cursor: pointer;
+}
+
+/* the flashcard done card's recap of the sitting */
+.recap {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+}
+.recap__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  background: var(--paper);
+}
+.recap dt {
+  color: var(--ink-2);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.recap dd {
+  font-size: 1.125rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}

@@ -81,3 +81,10 @@ export function spellInterval(label) {
   const n = Number(m[1]);
   return `${m[1]} ${UNITS[m[2]]}${n === 1 ? '' : 's'}`;
 }
+
+// The done card's recap of this sitting: ratings answered (undone ones removed) and active time.
+// -> { cards, timeMs, goodEasyPct (null when nothing was answered) }
+export function sessionRecap(ratings, activeMs) {
+  const goodEasy = ratings.filter((r) => r >= 3).length;
+  return { cards: ratings.length, timeMs: Math.max(0, activeMs), goodEasyPct: ratings.length ? Math.round((goodEasy / ratings.length) * 100) : null };
+}

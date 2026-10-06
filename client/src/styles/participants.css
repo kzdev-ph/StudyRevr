@@ -1,0 +1,97 @@
+/* Participant code screen, the participant chip in the header, and form fields shared with admin. */
+
+.gate {
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;
+  padding: 24px var(--gutter);
+  background: var(--paper);
+}
+.gate__card {
+  width: 100%;
+  max-width: 26rem;
+  padding: 28px 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--sheet);
+}
+.gate__input {
+  font-size: 1.375rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.gate__admin {
+  align-self: flex-start;
+  color: var(--ink-2);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.field__label {
+  font-weight: 650;
+}
+.field__input {
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 12px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 1rem;
+}
+.field__input:focus-visible {
+  border-color: var(--accent);
+}
+.field__input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.header__end {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.participant-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 4px;
+}
+.participant-chip span {
+  padding: 3px 10px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--sheet);
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+.participant-chip:hover span {
+  border-color: var(--accent);
+}
+
+/* a labelled row with an action (Settings) */
+.setting-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--sheet);
+}
+.setting-row__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.setting-row__title {
+  font-weight: 650;
+}

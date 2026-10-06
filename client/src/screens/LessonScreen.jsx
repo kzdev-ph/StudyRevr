@@ -6,6 +6,7 @@ import Processing from '../components/Processing.jsx';
 import SectionsReview from '../components/SectionsReview.jsx';
 import { ChevronLeft } from '../components/Icons.jsx';
 import { useLesson } from '../hooks/useLesson.js';
+import { useStudySession } from '../hooks/useStudySession.js';
 import { prettyTitle, readingMinutes } from '../lib/format.js';
 import { paths } from '../lib/router.js';
 import { clearWarning, getWarning } from '../lib/warnings.js';
@@ -19,6 +20,8 @@ const VIEWS = [
 export default function LessonScreen({ id, view }) {
   const { data, error, loading, reload, setVersion } = useLesson(id);
   const [warning, setWarning] = useState(() => getWarning(id));
+  // reading time: logged while a ready lesson is open, on any of its views (sections, key points, key terms)
+  useStudySession(id, 'reading', { enabled: data?.lesson.status === 'ready' && data.sections.length > 0 });
 
   useEffect(() => () => clearWarning(id), [id]);
 

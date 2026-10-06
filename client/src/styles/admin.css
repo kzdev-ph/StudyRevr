@@ -1,0 +1,49 @@
+/* Researcher admin (PIN): lessons, participant codes, the summary table and the export. */
+
+.admin-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.admin-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.admin-section__title {
+  font-family: var(--font-read);
+  font-size: 1.25rem;
+  font-weight: 650;
+}
+.admin-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+.admin-add .field {
+  flex: 1 1 14rem;
+}
+.export-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.check-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  font-weight: 600;
+}
+.check-row input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+}
+.data-table a {
+  color: var(--accent);
+  font-weight: 700;
+}

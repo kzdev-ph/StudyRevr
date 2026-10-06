@@ -43,7 +43,31 @@ One adapter speaking the OpenAI-compatible `/v1/chat/completions` API. This cove
 - Request JSON only; strip code fences before parsing
 
 ## Screens
-Bottom tab bar: **Review | Flashcard | Mock Quiz | Stats**. Gear icon in header opens **Settings**. Home/upload is reachable from the header or an empty state.
+Bottom tab bar: **Review | Flashcard | Mock Quiz | Stats**. Gear icon in header opens **Settings**; beside it a chip shows the participant code in use. Lesson upload lives in **Admin** (Phase 6); the Review tab lists lessons only.
+
+### Participants (Phase 6)
+- The app is used by several students on one shared host over local Wi-Fi (`npm run study`: builds the client and the API server serves `client/dist` on one port; it prints the LAN addresses). Every student studies the same lessons.
+- On open, a code screen (`ParticipantScreen.jsx`, type-only: no list, no suggestions, P00 never shown) asks for a participant code. `GET /api/participants/:code` checks it; an unknown code shows "That code isn't on the list. Check with your teacher." Codes are normalised (`p7`, `P 7`, `P007` → `P07`; `P` + 1-3 digits). The code is kept in localStorage until **Settings › Switch participant**.
+- Codes are created only in admin (`POST /api/admin/participants { codes: "P01-P10, P12" }`); there is no public list or create route. Migration 008 creates `P00` and gives it every record made before it (the researcher's test data).
+- Every study request sends `X-Participant`; the server (`server/src/middleware/participant.js`) answers 401 `participant_required` / `participant_unknown` without a listed code, and the client then shows the code screen again.
+- Shared by everyone: lessons, sections (and their cached rewrites), key points/terms, flashcards (the cards), `quiz_distractors`. Per participant: flashcard schedule (`flashcard_progress`), `flashcard_reviews`, daily new/review limits, quiz attempts and answers (resume, retake, previous best), review progress, sessions, events, stats.
+- Withdrawal: `npm run participant:delete -- P07` (`server/scripts/delete-participant.js`) shows the rows per table, asks for the code again (`--yes` skips), deletes the participant row (everything cascades), then `secure_delete` + `VACUUM` + WAL checkpoint so nothing can be read back. Lessons stay.
+
+### Session logging and events (Phase 6)
+- A study session starts when a participant opens a lesson's Review (`reading`, any of its views), a flashcard deck (`flashcards`; the All lessons deck has lesson NULL) or the Mock Quiz (`quiz`). `client/src/lib/session.js` (pure, fake-clock tested) + `hooks/useStudySession.js`:
+  - only active time counts: interactions are pointerdown, keydown, wheel, touchstart, scroll;
+  - 5 min without interaction ends the session at the last interaction (`idle`; the idle minutes are not counted), the next interaction starts a new one;
+  - `visibilitychange` hidden pauses the clock and sends the time at once (fetch keepalive); back within 5 min carries on, after longer the session ended when the app went away (`background`) and a new one starts;
+  - heartbeat every 30 s (counting only up to the last interaction), `left` when the screen closes, `switched` on Switch participant.
+- Server (`server/src/sessions/store.js`): `active_ms` only grows and never exceeds the time since the start; a session with no report for 5 min reads as `unclosed`, ended at its last report.
+- Self-monitoring events (`events`): `stats_view` (the app, once per Stats open; never from the admin view), `quiz_retake` (the server, when a retake starts), `review_flashcards_tap` (quiz results link), `section_simplify` / `section_translate` (every tap that opens that rewrite, cached or not, with `section_index`).
+- Every `study_date` uses the flashcard day: 04:00 Asia/Manila (`server/src/stats/days.js`, built on the scheduler's `studyDay`). A study week runs Monday 04:00 to Monday 04:00.
+- Planning metric (`server/src/stats/planning.js`, pure): for each due review of a review-state card (learning steps don't count), the due day comes from the answer's `snapshot.due_at`: answered that study day `on_time`, later `late` with `days_late`; not answered after its due day `still_overdue`; due today and not done yet is not counted.
+
+### Admin (Phase 6)
+- `#/admin`, reached from Settings or the code screen. `ADMIN_PIN` in `.env` (empty: admin off, 403 `admin_off` everywhere). The client sends `X-Admin-Pin` (kept in sessionStorage after `POST /api/admin/unlock` accepts it); the server compares digests in constant time (`server/src/middleware/admin.js`); missing/wrong PIN 401 `admin_pin`; 5 wrong PINs from one address lock it for 60 s (429).
+- Behind the PIN: everything under `/api/admin`, plus upload / retry / delete of lessons, `POST /api/lessons/:id/flashcards/generate`, and all of `/api/settings/*`. Section rewrites and the quiz's first-time wrong-answer call stay open (studying).
+- Screen: **Participants** (add codes; summary table; a code opens `#/admin/participants/P03`, that participant's StatsView), **Research export**, **Lessons** (upload zone, list with delete; retry on the lesson's processing page). Students see no upload, delete, retry or Make cards ("Cards aren't ready yet").
 
 ### Upload
 Drag-drop or pick file → progress states: Extracting → Summarizing → Flashcards → Quiz → Done. Accepts .docx, .pptx and .pdf. Warn if extracted text is very short (e.g. image-heavy slides); for PDFs with almost no text, warn that it looks scanned or image-only.
@@ -88,16 +112,24 @@ Drag-drop or pick file → progress states: Extracting → Summarizing → Flash
 - Endpoints: `GET /api/quiz` · `POST /api/lessons/:id/quiz/attempts` (body `{ retake_of? }`; returns questions without answers) · `POST /api/quiz/attempts/:id/answers` (`{ position, choice, time_ms }`; each question once; returns correct, answer_index, answer_text, evidence) · `POST /api/quiz/attempts/:id/finish` (`{ total_ms }`; every question answered first; returns score, missed questions, previous best).
 
 ### Stats
-- Overview cards: study time today/this week, streak (days), cards due today, lessons uploaded/completed
-- Charts (Recharts): study time per day (bar, 7/30 days), quiz score trend per lesson (line), flashcard state (donut: New / Learning / Mature), time per activity (Review vs Flashcard vs Quiz)
-- Per-lesson drill-down: attempts, accuracy, time spent
-- "Export CSV" of study sessions, quiz attempts, and flashcard reviews (for research analysis)
+- Per participant (`GET /api/stats`, `server/src/stats/participant.js`); `StatsScreen.jsx` and `StatsView.jsx` are lazy-loaded so Recharts only loads on Stats.
+- Study time this week: tiles (total, reading, flashcards, quiz) and a stacked bar per day Mon–Sun (Recharts) with a "Show as a table" view.
+- Flashcards: reviewed this week, % Good or Easy this week, due tomorrow (cards whose `due_at` falls in the next study day), all-time line.
+- Quiz scores: first and best finished score per lesson (abandoned attempts not counted), one small horizontal bar chart per lesson.
+- Chart colours are existing tokens via `--series-reading` (accent), `--series-flashcards` (margin), `--series-quiz` (warn) in `stats.css`; every value is also written out (tiles, labels, table).
+- Flashcard done card recap: cards studied this sitting, active time, % Good/Easy (undone answers removed; `sessionRecap` in `lib/flashcards.js`).
+
+### Research export (admin only)
+- `GET /api/admin/export.zip` (all files + `README.txt` codebook) and `GET /api/admin/export/<file>.csv`; `?include_p00=1` includes P00 (left out by default). UTF-8 with BOM, CRLF, text starting with `= + - @` prefixed with `'`. Only study tables are read, never `settings`: no names, settings, keys or PIN.
+- Files: `summary`, `sessions`, `flashcard_reviews` (with due_date / due_status / days_late), `due_reviews` (planning: on_time / late / still_overdue), `quiz_attempts` (status finished / abandoned / open, `is_retake`, `retake_of`, `is_first_attempt`), `quiz_answers`, `events`.
+- `summary.csv`, one row per participant, columns grouped by SDL dimension: `planning_days_active, planning_total_sessions, planning_reading_min, planning_flashcards_min, planning_quiz_min, planning_total_min, planning_first_study_date, planning_last_study_date, planning_reviews_on_time, planning_reviews_late, planning_reviews_still_overdue, planning_avg_days_late, planning_on_time_rate` (= on_time / (on_time + late + still_overdue)); `retention_cards_reviewed, retention_good_easy_pct, retention_quiz_first_pct_mean, retention_quiz_first_pct_L<lesson id>`…; `self_monitoring_stats_views, self_monitoring_quiz_retakes, self_monitoring_review_flashcards_taps, self_monitoring_simplify_taps, self_monitoring_translate_taps`. Days active = study days with active session time, a flashcard answer or a quiz answer; total sessions = sessions with active time.
 
 ### Settings (gear icon)
 - AI provider: presets (Google Gemini (default), NVIDIA NIM, OpenRouter, Ollama, llama.cpp, Custom) that prefill base URL; per-provider API key (shown only as set / not set); model picker fed by `GET /api/settings/models` with a free-text fallback; "Test connection" tests the provider + model in the form before saving
 - Quiz question count; flashcards per lesson; summary length (short / detailed); include speaker notes (`include_speaker_notes`, default on; applies to pptx uploads made after changing it)
 - Flashcard: new cards/day, max reviews/day, learning steps
 - Data: delete lesson, reset flashcard progress, export/import JSON backup
+- Built in Phase 6: "Participant P03 · Switch participant" and a "Researcher admin" link
 - About: version, GitHub link, license
 
 ## Data Model
@@ -110,14 +142,18 @@ Drag-drop or pick file → progress states: Extracting → Summarizing → Flash
   - `review_progress.last_section` and `completed_sections` are 0-based indices into the lesson's sections in order.
 - `key_points` (id, lesson_id, position, text)
 - `key_terms` (id, lesson_id, term, definition, evidence)
-- `review_progress` (lesson_id, last_section, completed_sections JSON, updated_at)
+- `participants` (id, code UNIQUE, created_at) (migration 008; `P00` made by the migration). Deleting a row cascades to every per-participant table.
+- `review_progress` (participant_id, lesson_id, last_section, completed_sections JSON, updated_at), PK (participant_id, lesson_id)
 - `flashcards` (id, lesson_id, front, back, state, ease, interval, due_at, reps, lapses, step, kind, evidence, position)
-  - state 0 new / 1 learning / 2 review / 3 relearning; `kind` `term` | `concept`; `position` is the new-card order within the lesson; `interval` in days.
-- `flashcard_reviews` (id, flashcard_id, rating, reviewed_at, prev_interval, new_interval, state, ease, time_ms, snapshot)
-  - one row per answer: rating = button (1 Again … 4 Easy), `state` before the answer (daily limits count it), `ease` after, intervals in days (a learning step is a fraction of a day), `snapshot` = the card's scheduling fields before the answer (for undo; undo deletes the row).
+  - `kind` `term` | `concept`; `position` is the new-card order within the lesson. Since migration 008 the scheduling columns here are no longer read: the schedule is per participant in `flashcard_progress`.
+- `flashcard_progress` (participant_id, flashcard_id, state, step, ease, interval, due_at, reps, lapses), PK (participant_id, flashcard_id)
+  - state 0 new / 1 learning / 2 review / 3 relearning; `interval` in days. No row = the card is new for that participant.
+- `flashcard_reviews` (id, participant_id, flashcard_id, rating, reviewed_at, prev_interval, new_interval, state, ease, time_ms, snapshot)
+  - one row per answer: rating = button (1 Again … 4 Easy), `state` before the answer (daily limits count it), `ease` after, intervals in days (a learning step is a fraction of a day), `snapshot` = the participant's scheduling fields before the answer plus `existed` (for undo: a card that had no progress row gets none again; undo deletes the row).
 - `quiz_questions` (id, lesson_id, question, choices JSON, answer_index, explanation)
-- `quiz_attempts` (id, lesson_id, score, total, answers JSON, taken_at)
-- `study_sessions` (id, lesson_id, tab, started_at, duration_sec)
+- `quiz_attempts` (id, participant_id, lesson_id, score, total, answers JSON, taken_at, + migration 007 columns)
+- `study_sessions` (id, participant_id, lesson_id (SET NULL; NULL = All lessons deck), activity `reading`|`flashcards`|`quiz`, started_at, last_active_at, ended_at, active_ms, end_reason `left`|`idle`|`background`|`switched` (NULL while open), study_date) (rebuilt in migration 008)
+- `events` (id, participant_id, type `stats_view`|`quiz_retake`|`review_flashcards_tap`|`section_simplify`|`section_translate`, lesson_id, attempt_id, section_index, created_at, study_date)
 - `settings` (key, value)
 
 ## API
@@ -129,8 +165,8 @@ Drag-drop or pick file → progress states: Extracting → Summarizing → Flash
 - `GET /api/lessons/:id/flashcards/due` / `POST /api/flashcards/:id/review`
 - `GET /api/flashcards/decks` / `GET /api/flashcards/due` (All lessons) / `POST /api/flashcards/reviews/:id/undo` / `POST /api/lessons/:id/flashcards/generate`
 - `GET /api/lessons/:id/quiz` (shuffled) / `POST /api/lessons/:id/quiz/attempt` / `POST /api/lessons/:id/quiz/regenerate`
-- `POST /api/sessions`
-- `GET /api/stats` / `GET /api/stats/export.csv`
+- Phase 6 (study routes need `X-Participant`): `GET /api/participants/:code` (check a code) · `POST /api/sessions` (`{ lesson_id, activity }`) / `POST /api/sessions/:id` (`{ active_ms, end_reason?, ended_ago_ms? }`) · `POST /api/events` (`{ type, lesson_id?, attempt_id?, section_index? }`) · `GET /api/stats`
+- Admin (`X-Admin-Pin`): `POST /api/admin/unlock` · `GET /api/admin/participants` (summary rows) / `POST /api/admin/participants` (`{ codes }`) · `GET /api/admin/participants/:code/stats` · `GET /api/admin/export.zip` / `GET /api/admin/export/:file.csv` (`?include_p00=1`); upload / retry / delete lesson, make flashcards and `/api/settings/*` also need the PIN
 - `GET /api/settings` / `PUT /api/settings` / `POST /api/settings/test-ai`
 - AI settings (backend done in Phase 2.5): `GET /api/settings/ai` / `PUT /api/settings/ai` (active provider, per-provider model/URL/key; keys never returned), `GET /api/settings/models?provider=`, `POST /api/settings/test-ai` (tests the provider + model in the body without saving)
 - `POST /api/lessons/:id/retry` (re-run a failed lesson; finished stages are kept)
@@ -142,7 +178,7 @@ Drag-drop or pick file → progress states: Extracting → Summarizing → Flash
 3. React app shell, tab bar, upload flow, Review tab — **done** (incl. `POST /api/sections/:id/simplify|translate` and review-progress save/load)
 4. Flashcard generation + SM-2 + Flashcard tab — **done**
 5. Quiz generation + attempts + shuffle animation + Mock Quiz tab — **done**
-6. Session logging + Stats tab + CSV export
+6. Session logging + Stats tab + CSV export — **done** (incl. participant codes, per-participant scheduling, self-monitoring events, planning metric, PIN admin, research export, withdrawal script)
 7. Settings, backup/import, polish, README, LICENSE (MIT)
 
 Phase 7 carry-over from the Phase 5 quiz audit (Low findings, not fixed yet):

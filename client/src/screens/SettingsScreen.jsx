@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { switchParticipant, useParticipant } from '../lib/participant.js';
+import { paths } from '../lib/router.js';
 import { getThemeChoice, setThemeChoice } from '../lib/theme.js';
 
 const CHOICES = [
@@ -9,6 +11,7 @@ const CHOICES = [
 
 export default function SettingsScreen() {
   const [theme, setTheme] = useState(getThemeChoice);
+  const participant = useParticipant();
   const choose = (id) => {
     setThemeChoice(id);
     setTheme(id);
@@ -17,6 +20,15 @@ export default function SettingsScreen() {
   return (
     <section className="stack">
       <h1 className="screen-title">Settings</h1>
+      <div className="setting-row">
+        <p className="setting-row__text">
+          <span className="setting-row__title">Participant {participant}</span>
+          <span className="muted">Everything you study is saved under this code.</span>
+        </p>
+        <button type="button" className="btn btn--quiet" onClick={() => switchParticipant()}>
+          Switch participant
+        </button>
+      </div>
       <fieldset className="choice">
         <legend>Appearance</legend>
         <div className="segmented">
@@ -29,6 +41,9 @@ export default function SettingsScreen() {
         </div>
       </fieldset>
       <p className="muted">AI provider, quiz length, flashcard pacing and backups will be set here soon.</p>
+      <a className="link-btn" href={paths.admin()}>
+        Researcher admin
+      </a>
     </section>
   );
 }
