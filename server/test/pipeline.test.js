@@ -42,7 +42,7 @@ function fakeAi({ fail } = {}) {
         value = { cards: [{ question: `What does call ${n} ask?`, answer: 'Something from the lesson.', evidence: quoteFromPrompt(user, 8) }] };
       } else {
         const evidence = quoteFromPrompt(user);
-        value = { terms: [{ term: 'Media', definition: `Defined in call ${n}.`, evidence }, { term: `Term ${n}`, definition: 'Another definition.', evidence }] };
+        value = { terms: [{ term: 'Media', definition: `Defined in call ${n}.`, evidence }, { term: `Term ${n}`, definition: 'Another definition.', evidence: quoteFromPrompt(user, 7) }] };
       }
       return schema.parse(value);
     },

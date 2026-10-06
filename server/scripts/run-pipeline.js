@@ -104,7 +104,8 @@ const timed = {
 };
 
 console.error('Running pipeline...');
-await runPipeline({ db, ai: timed, lessonId, chunkTokens, concurrency, keyTermsMax: provider.keyTermsMax });
+const onStage = ({ stage, event }) => console.error(`[${event === 'start' ? 'start' : 'end  '} +${secondsSince(started)}s] ${stage}`);
+await runPipeline({ db, ai: timed, lessonId, chunkTokens, concurrency, keyTermsMax: provider.keyTermsMax, onStage });
 const seconds = secondsSince(started);
 
 const { lesson, job } = getJobStatus(db, lessonId);

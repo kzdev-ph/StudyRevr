@@ -97,6 +97,18 @@ describe('de-duplication', () => {
     assert.deepEqual(kept.map((c) => c.front), ['Hypothesis', 'Why sample at random?']);
     assert.equal(dropped[0].duplicateOf, term);
   });
+
+  it('treats cards that quote the same evidence as duplicates, and keeps the term card', () => {
+    const quote = 'Random sampling gives every member of the population an equal chance to be chosen.';
+    const concept = { kind: 'concept', front: 'Why is random sampling fair?', back: 'Everyone has the same chance.', evidence: quote };
+    const termCard = { kind: 'term', front: 'Random sampling', back: 'Choosing so all members have equal odds.', evidence: `"${quote.toUpperCase()}  "` };
+    assert.ok(isDuplicate(concept, termCard), 'case, spacing and quotes ignored');
+    const { kept, dropped } = dedupeCards([concept, termCard]);
+    assert.deepEqual(kept, [termCard], 'term card wins even when the concept card comes first');
+    assert.equal(dropped[0].card, concept);
+    const other = { ...concept, front: 'What reduces bias?', evidence: 'It reduces bias in the results of the study.' };
+    assert.ok(!isDuplicate(other, { kind: 'concept', front: 'What does the dependent variable measure?', back: 'The outcome.', evidence: quote }));
+  });
 });
 
 describe('concept cards (mocked AI)', () => {
@@ -190,7 +202,8 @@ describe('the whole set', () => {
   it('term cards take at most half, unless there are too few concept cards to fill the set', async () => {
     const chunks = chunkLesson(LESSON);
     const names = ['Ant', 'Bee', 'Cat', 'Dog', 'Eel', 'Fox', 'Gnu', 'Hen'];
-    const many = names.map((name, i) => ({ term: name, definition: `${name} stands for idea ${name.toLowerCase()}word.`, evidence: KEY_TERMS[i % 2].evidence }));
+    const quotes = LESSON.split('\n').filter((line) => line.split(' ').length >= 6); // a different evidence quote per term
+    const many = names.map((name, i) => ({ term: name, definition: `${name} stands for idea ${name.toLowerCase()}word.`, evidence: quotes[i % quotes.length] }));
     const none = await generateFlashcards({ ai: fakeAi(() => ({ cards: [] })), chunks, lessonText: LESSON, keyTerms: many, wordCount: 300, maxCards: 30 });
     assert.equal(none.length, 6, 'no concept cards: terms fill the set (target 6)');
     assert.ok(none.every((c) => c.kind === 'term'));

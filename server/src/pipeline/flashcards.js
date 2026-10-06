@@ -59,9 +59,11 @@ const jaccard = (a, b) => {
 };
 const sameSet = (a, b) => a.size === b.size && [...a].every((w) => b.has(w));
 
-// Two cards ask the same thing when their fronts have the same content words ("What is a hypothesis?" and the term
-// card "Hypothesis"), when their fronts nearly match, or when front and back together mostly overlap.
+// Two cards ask the same thing when they quote the same evidence (case, spacing and punctuation ignored), when their
+// fronts have the same content words ("What is a hypothesis?" and the term card "Hypothesis"), when their fronts
+// nearly match, or when front and back together mostly overlap.
 export function isDuplicate(a, b) {
+  if (a.evidence && b.evidence && comparable(a.evidence) === comparable(b.evidence)) return true;
   const fa = contentWords(a.front);
   const fb = contentWords(b.front);
   if (fa.size && sameSet(fa, fb)) return true;
@@ -69,11 +71,13 @@ export function isDuplicate(a, b) {
   return jaccard(contentWords(`${a.front} ${a.back}`), contentWords(`${b.front} ${b.back}`)) >= 0.6;
 }
 
-// Keeps the first card of each group of duplicates, in order. -> { kept, dropped: [{ card, duplicateOf }] }
+// Keeps one card of each group of duplicates: a term card over a concept card, otherwise the first.
+// -> { kept, dropped: [{ card, duplicateOf }] }, each list in input order within its kind (term cards first).
 export function dedupeCards(cards) {
   const kept = [];
   const dropped = [];
-  for (const card of cards) {
+  const ordered = [...cards.filter((c) => c.kind === 'term'), ...cards.filter((c) => c.kind !== 'term')];
+  for (const card of ordered) {
     const twin = kept.find((k) => isDuplicate(k, card));
     if (twin) dropped.push({ card, duplicateOf: twin });
     else kept.push(card);

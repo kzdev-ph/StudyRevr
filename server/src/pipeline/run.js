@@ -25,8 +25,9 @@ const count = (db, table, lessonId) => db.prepare(`SELECT COUNT(*) AS c FROM ${t
 // A stage whose output is already saved is skipped, so retrying a failed lesson continues where it stopped. Never
 // throws: the outcome is written to the job and lesson rows. A lesson that was already ready (flashcards made later
 // for an older lesson) stays ready even if this run fails; only its job records the failure. `ai` is { generateJSON }.
-// `concurrency` parallel AI calls within a stage; `keyTermsMax` caps the key terms kept per lesson.
-export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUNK_TOKENS, concurrency = 1, keyTermsMax = 12, log = console }) {
+// `concurrency` parallel AI calls within a stage; `keyTermsMax` caps the key terms kept per lesson. `onStage({ stage,
+// event })` is told when each stage starts and ends ('start' | 'end'), e.g. for a timeline in the pipeline script.
+export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUNK_TOKENS, concurrency = 1, keyTermsMax = 12, log = console, onStage = () => {} }) {
   const lesson = db.prepare('SELECT id, raw_text, word_count, status, source_kind, source_numbers, source_total FROM lessons WHERE id = ?').get(lessonId);
   if (!lesson) return;
   const job = db.prepare('SELECT id, stage FROM jobs WHERE lesson_id = ? ORDER BY id DESC LIMIT 1').get(lessonId);
@@ -132,7 +133,9 @@ export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUN
     for (stage of STAGES.slice(Math.max(0, STAGES.indexOf(job.stage)))) {
       if (stages[stage].saved()) continue;
       begin(stage);
+      onStage({ stage, event: 'start' });
       await stages[stage].run(chunks);
+      onStage({ stage, event: 'end' });
     }
     updateJob({ stage: 'done', status: 'done' });
     db.prepare(`UPDATE lessons SET status = 'ready', error = NULL WHERE id = ?`).run(lessonId);
