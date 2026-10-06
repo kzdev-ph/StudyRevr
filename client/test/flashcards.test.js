@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { describeCounts, describeNextDue, keyAction, RATINGS, studyMinutes, totalDue } from '../src/lib/flashcards.js';
+import { describeCounts, describeNextDue, keyAction, RATINGS, spellInterval, studyMinutes, totalDue } from '../src/lib/flashcards.js';
 import { parseRoute, paths, tabOf } from '../src/lib/router.js';
 
 const opts = { timeZone: 'Asia/Manila', locale: 'en-US' };
@@ -60,6 +60,20 @@ describe('counts', () => {
     assert.equal(totalDue({ new: 2, learning: 1, due: 3 }), 6);
     assert.equal(totalDue(null), 0);
     assert.equal(describeCounts({ new: 2, learning: 1, due: 3 }), '2 new, 1 learning, 3 due');
+    assert.equal(describeCounts({ new: 2, learning: 1, due: 3 }, 'learning'), '2 new, 1 learning, 3 due. This is a learning card.');
+    assert.equal(describeCounts({ new: 0, learning: 0, due: 3 }, 'review'), '0 new, 0 learning, 3 due. This is a due card.');
+    assert.equal(describeCounts({ new: 1, learning: 0, due: 0 }, undefined), '1 new, 0 learning, 0 due');
+  });
+  it('spells interval labels out for screen readers', () => {
+    assert.equal(spellInterval('<1m'), 'less than a minute');
+    assert.equal(spellInterval('1m'), '1 minute');
+    assert.equal(spellInterval('10m'), '10 minutes');
+    assert.equal(spellInterval('1.5h'), '1.5 hours');
+    assert.equal(spellInterval('1d'), '1 day');
+    assert.equal(spellInterval('4d'), '4 days');
+    assert.equal(spellInterval('2.3mo'), '2.3 months');
+    assert.equal(spellInterval('1y'), '1 year');
+    assert.equal(spellInterval('soon'), 'soon', 'anything else is left as it is');
   });
   it('has the four Anki buttons in order', () => {
     assert.deepEqual(RATINGS.map((r) => `${r.rating}:${r.name}`), ['1:Again', '2:Hard', '3:Good', '4:Easy']);

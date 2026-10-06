@@ -41,17 +41,20 @@ export function flashcardsRouter({ db, runner, clock = () => new Date() }) {
     const done = doneToday(db, studyDay(now, cfg).start);
     const all = deckCards(db);
     const byLesson = Map.groupBy(all, (c) => c.lesson_id);
-    const countsFor = (cards) => buildQueue(cards, { now, config: cfg, doneToday: done }).counts;
+    // counts, and when nothing is left today, when the next card becomes available
+    const summary = (cards) => {
+      const q = buildQueue(cards, { now, config: cfg, doneToday: done });
+      return { counts: q.counts, next_due_at: q.card ? null : q.nextDueAt?.toISOString() ?? null };
+    };
     const lessons = db.prepare('SELECT id, title, status, created_at FROM lessons ORDER BY created_at DESC, id DESC').all();
     const decks = lessons.map((lesson) => {
       const cards = byLesson.get(lesson.id) ?? [];
       const { job } = getJobStatus(db, lesson.id);
       const making = job?.stage === 'flashcards' && job.status !== 'done' ? { status: job.status, error: job.error, progress: job.progress } : null;
-      return { lesson_id: lesson.id, title: lesson.title, status: lesson.status, total: cards.length, counts: countsFor(cards), job: making };
+      return { lesson_id: lesson.id, title: lesson.title, status: lesson.status, total: cards.length, ...summary(cards), job: making };
     });
-    const whole = buildQueue(all, { now, config: cfg, doneToday: done });
     res.json({
-      all: { total: all.length, counts: whole.counts, next_due_at: whole.card ? null : whole.nextDueAt?.toISOString() ?? null },
+      all: { total: all.length, ...summary(all) },
       decks,
       limits: { new_per_day: cfg.newPerDay, reviews_per_day: cfg.reviewsPerDay, new_done: done.newCards, reviews_done: done.reviews },
     });

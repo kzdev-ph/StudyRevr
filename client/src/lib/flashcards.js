@@ -55,7 +55,29 @@ export function keyAction(event, { revealed }) {
   return null;
 }
 
-// "3 new, 1 learning, 5 due" for screen readers and summaries.
-export function describeCounts(counts) {
-  return `${counts.new} new, ${counts.learning} learning, ${counts.due} due`;
+// The three counts in the order they are shown; `queue` is the study queue each one belongs to.
+export const COUNTS = [
+  { key: 'new', queue: 'new', name: 'new' },
+  { key: 'learning', queue: 'learning', name: 'learning' },
+  { key: 'due', queue: 'review', name: 'due' },
+];
+
+// "3 new, 1 learning, 5 due" for screen readers and summaries; with `current` (the queue of the card on screen)
+// it adds which one the card comes from: "... This is a learning card."
+export function describeCounts(counts, current) {
+  const text = COUNTS.map((c) => `${counts[c.key]} ${c.name}`).join(', ');
+  const from = COUNTS.find((c) => c.queue === current);
+  if (!from) return text;
+  return `${text}. This is ${from.key === 'due' ? 'a due' : `a ${from.name}`} card.`;
+}
+
+const UNITS = { m: 'minute', h: 'hour', d: 'day', mo: 'month', y: 'year' };
+
+// A button's interval label ("<1m", "10m", "1.5h", "4d", "2.3mo", "1y") in words, for screen readers.
+export function spellInterval(label) {
+  if (label === '<1m') return 'less than a minute';
+  const m = /^(\d+(?:\.\d+)?)(mo|m|h|d|y)$/.exec(label ?? '');
+  if (!m) return label;
+  const n = Number(m[1]);
+  return `${m[1]} ${UNITS[m[2]]}${n === 1 ? '' : 's'}`;
 }

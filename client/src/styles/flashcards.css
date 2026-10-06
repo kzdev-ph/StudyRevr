@@ -2,35 +2,46 @@
    the way Anki colours them blue / red / green. */
 
 /* ---- counts ---- */
-.counts {
+.counts__list {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: 10px;
-  font-weight: 700;
+  gap: 2px 12px;
   font-size: 0.9375rem;
   font-variant-numeric: tabular-nums;
 }
-.count--new {
+.count__n {
+  font-weight: 700;
+}
+.count__name {
+  color: var(--ink-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.count--new .count__n {
   color: var(--accent);
 }
-.count--learning {
+.count--learning .count__n {
   color: var(--danger);
 }
-.count--due {
+.count--due .count__n {
   color: var(--ok);
 }
-/* the queue the card on screen comes from */
-.count--current {
+/* the queue the card on screen comes from: an ink underline on paper (the highlighter is too faint on white),
+   the highlighter on the dark sheet */
+.count--current .count__n {
   text-decoration: underline;
   text-decoration-thickness: 3px;
   text-underline-offset: 4px;
-  text-decoration-color: var(--hi);
+  text-decoration-color: var(--ink);
 }
-.counts-legend {
-  display: flex;
-  gap: 10px;
-  font-size: 0.8125rem;
-  font-weight: 650;
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .count--current .count__n {
+    text-decoration-color: var(--hi);
+  }
+}
+:root[data-theme='dark'] .count--current .count__n {
+  text-decoration-color: var(--hi);
 }
 
 /* ---- decks ---- */
@@ -62,13 +73,7 @@
 }
 
 .decks-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
   margin-bottom: -12px;
-}
-.decks-head__title {
   font-size: 0.9375rem;
   font-weight: 700;
   color: var(--ink-2);
@@ -277,8 +282,12 @@
   font-weight: 650;
 }
 
-/* Show answer / the four buttons stay in reach: pinned above the tab bar while the card is long. */
+/* Show answer / the four buttons stay in reach: pinned above the tab bar while the card is long. Undo and errors
+   live here too, next to the buttons they belong to. */
 .study-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   position: sticky;
   bottom: calc(var(--tabbar-h) + var(--safe-bottom) + var(--lessonnav-gap));
   z-index: 10;
@@ -309,8 +318,30 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
 }
-.rate:focus-visible {
+/* focus lands on the group after the flip; base.css hides the ring on [tabindex='-1'], so show it here */
+.rate[tabindex='-1']:focus-visible {
+  outline: 3px solid var(--accent);
   outline-offset: 4px;
+}
+.rate-hint {
+  padding: 0 4px;
+  color: var(--ink-2);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.undo-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.undo-bar__status {
+  min-width: 0;
+  padding-left: 4px;
+  color: var(--ink-2);
+  font-size: 0.875rem;
+  font-weight: 600;
 }
 .rate__btn {
   display: flex;
@@ -348,6 +379,7 @@
   color: var(--danger);
 }
 .rate__btn--hard {
+  border-color: var(--ink-2);
   background: var(--paper);
 }
 .rate__btn--good {
@@ -436,10 +468,10 @@
 
 /* a focused element never ends up under the pinned buttons (see the same rule for the lesson nav in review.css) */
 html:has(.study-actions) {
-  scroll-padding-bottom: calc(var(--tabbar-h) + var(--safe-bottom) + var(--lessonnav-gap) + 96px);
+  scroll-padding-bottom: calc(var(--tabbar-h) + var(--safe-bottom) + var(--lessonnav-gap) + 168px);
 }
 @media (min-width: 56rem) {
   html:has(.study-actions) {
-    scroll-padding-bottom: calc(16px + 96px);
+    scroll-padding-bottom: calc(16px + 168px);
   }
 }

@@ -152,6 +152,8 @@ describe('flashcards API', () => {
     const decks = (await get('/api/flashcards/decks')).body;
     assert.equal(decks.limits.new_done, 2);
     assert.deepEqual(decks.decks.map((d) => d.counts.new), [0, 0], 'the daily budget is shared by every lesson');
+    assert.deepEqual(decks.decks.map((d) => d.next_due_at), [TOMORROW_4AM, TOMORROW_4AM], 'each lesson row says when it opens again');
+    assert.equal(decks.all.next_due_at, TOMORROW_4AM);
     const all = await get('/api/flashcards/due');
     assert.equal(all.body.card, null);
     assert.equal(all.body.next_due_at, TOMORROW_4AM);

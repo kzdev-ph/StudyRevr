@@ -2,30 +2,26 @@ import { useCallback, useEffect, useState } from 'react';
 import { CardsIcon, RetryIcon } from '../components/Icons.jsx';
 import Notice from '../components/Notice.jsx';
 import { api } from '../lib/api.js';
-import { describeCounts, describeNextDue, studyMinutes, totalDue } from '../lib/flashcards.js';
+import { COUNTS, describeCounts, describeNextDue, studyMinutes, totalDue } from '../lib/flashcards.js';
 import { prettyTitle } from '../lib/format.js';
 import { paths } from '../lib/router.js';
 
 const POLL_MS = 2500;
 
-// New / Learning / Due, in Anki's colours (blue, red, green from the existing tokens).
+// New / Learning / Due, in Anki's colours (blue, red, green from the existing tokens). Every number carries its name,
+// so colour is never the only cue; screen readers get the whole thing as one sentence instead.
 export function Counts({ counts, current }) {
   return (
-    <span className="counts" aria-label={describeCounts(counts)}>
-      <span className={`count count--new${current === 'new' ? ' count--current' : ''}`} title="New">{counts.new}</span>
-      <span className={`count count--learning${current === 'learning' ? ' count--current' : ''}`} title="Learning">{counts.learning}</span>
-      <span className={`count count--due${current === 'review' ? ' count--current' : ''}`} title="Due">{counts.due}</span>
+    <span className="counts">
+      <span className="visually-hidden">{describeCounts(counts, current)}</span>
+      <span className="counts__list" aria-hidden="true">
+        {COUNTS.map((c) => (
+          <span key={c.key} className={`count count--${c.key}${current === c.queue ? ' count--current' : ''}`}>
+            <span className="count__n">{counts[c.key]}</span> <span className="count__name">{c.name}</span>
+          </span>
+        ))}
+      </span>
     </span>
-  );
-}
-
-function CountsLegend() {
-  return (
-    <p className="counts-legend" aria-hidden="true">
-      <span className="count count--new">New</span>
-      <span className="count count--learning">Learning</span>
-      <span className="count count--due">Due</span>
-    </p>
   );
 }
 
@@ -41,7 +37,7 @@ function DeckAction({ deck, onMake, making }) {
   if (deck.status === 'failed') {
     return (
       <a className="btn btn--quiet" href={paths.lesson(deck.lesson_id)}>
-        Needs retry
+        Open lesson to retry
       </a>
     );
   }
@@ -60,10 +56,11 @@ function DeckAction({ deck, onMake, making }) {
       </button>
     );
   }
+  // Same rule as the All lessons deck: Start when there is something to study, Open when there is not.
   const ready = totalDue(deck.counts) > 0;
   return (
-    <a className={`btn ${ready ? 'btn--primary' : 'btn--quiet'}`} href={paths.study(deck.lesson_id)} aria-label={`Start ${prettyTitle(deck.title)}`}>
-      Start
+    <a className={`btn ${ready ? 'btn--primary' : 'btn--quiet'}`} href={paths.study(deck.lesson_id)} aria-label={`${ready ? 'Start' : 'Open'} ${prettyTitle(deck.title)}`}>
+      {ready ? 'Start' : 'Open'}
     </a>
   );
 }
@@ -158,7 +155,7 @@ export default function FlashcardsScreen() {
                 ? `About ${studyMinutes(all.counts)} min for today’s cards.`
                 : `All done for today. ${all.next_due_at ? `Next card ${describeNextDue(all.next_due_at)}.` : ''}`}
           </p>
-          {all.total > 0 && <Counts counts={all.counts} />}
+          {allDue > 0 && <Counts counts={all.counts} />}
         </div>
         {all.total > 0 && (
           <a className={`btn ${allDue ? 'btn--primary' : 'btn--quiet'}`} href={paths.study('all')}>
@@ -167,10 +164,7 @@ export default function FlashcardsScreen() {
         )}
       </div>
 
-      <div className="decks-head">
-        <h2 className="decks-head__title">By lesson</h2>
-        <CountsLegend />
-      </div>
+      <h2 className="decks-head">Lesson decks</h2>
       <ul className="decks" aria-label="Lessons">
         {data.decks.map((deck) => (
           <li key={deck.lesson_id} className="deck">
@@ -178,7 +172,11 @@ export default function FlashcardsScreen() {
               <span className="deck__title">{prettyTitle(deck.title)}</span>
               {deck.total > 0 ? (
                 <span className="deck__meta">
-                  <Counts counts={deck.counts} /> <span className="deck__total">{deck.total} {deck.total === 1 ? 'card' : 'cards'}</span>
+                  {totalDue(deck.counts) > 0 && <Counts counts={deck.counts} />}
+                  <span className="deck__total">
+                    {deck.total} {deck.total === 1 ? 'card' : 'cards'}
+                    {!totalDue(deck.counts) && deck.next_due_at ? ` · next card ${describeNextDue(deck.next_due_at)}` : ''}
+                  </span>
                 </span>
               ) : (
                 <span className="deck__total">{deck.status === 'ready' && !deck.job ? 'No cards yet' : ' '}</span>

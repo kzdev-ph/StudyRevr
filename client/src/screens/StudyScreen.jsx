@@ -5,11 +5,28 @@ import { CheckIcon, ChevronLeft, UndoIcon } from '../components/Icons.jsx';
 import Notice from '../components/Notice.jsx';
 import { Counts } from './FlashcardsScreen.jsx';
 import { api } from '../lib/api.js';
-import { describeNextDue, keyAction, RATINGS } from '../lib/flashcards.js';
+import { describeNextDue, keyAction, RATINGS, spellInterval } from '../lib/flashcards.js';
 import { prettyTitle } from '../lib/format.js';
 import { paths } from '../lib/router.js';
 
 const REFRESH_WITHIN_MS = 60 * 60 * 1000; // a card due within the hour is picked up without a reload
+const HINT_KEY = 'studyrevr.answered'; // answers on this device, so the button hint only shows to a new student
+const HINT_UNTIL = 10;
+
+const readAnswered = () => {
+  try {
+    return Number(window.localStorage.getItem(HINT_KEY)) || 0;
+  } catch {
+    return HINT_UNTIL;
+  }
+};
+const countAnswer = () => {
+  try {
+    window.localStorage.setItem(HINT_KEY, String(readAnswered() + 1));
+  } catch {
+    // no storage: nothing to remember
+  }
+};
 
 // One study session on a deck (`deck`: a lesson id or 'all'). The server picks every card (learning, then due
 // reviews, then new, within the daily limits); this screen shows it, times the answer, and can undo.
@@ -18,11 +35,15 @@ export default function StudyScreen({ deck }) {
   const [error, setError] = useState(null);
   const [revealed, setRevealed] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [undoStack, setUndoStack] = useState([]); // review ids answered in this session, newest last
+  const [undoStack, setUndoStack] = useState([]); // { id, rating } answered in this session, newest last
   const [answered, setAnswered] = useState(0);
+  const [undone, setUndone] = useState(null); // 'Undid Good.' after an undo, until the next answer
+  const [announce, setAnnounce] = useState(''); // read out by the live region that is always on the page
+  const [showHint] = useState(() => readAnswered() < HINT_UNTIL);
   const shownAt = useRef(0);
   const showButton = useRef(null);
   const ratingGroup = useRef(null);
+  const doneHeading = useRef(null);
   const focusAfter = useRef(null); // 'show' | 'rate': where focus goes after the next render
 
   const take = useCallback((next) => {
@@ -60,7 +81,8 @@ export default function StudyScreen({ deck }) {
   }, [state, load]);
 
   useEffect(() => {
-    if (focusAfter.current === 'show') showButton.current?.focus({ preventScroll: true });
+    // no Show answer button means the deck is done: focus its heading rather than letting focus drop to the page
+    if (focusAfter.current === 'show') (showButton.current ?? doneHeading.current)?.focus({ preventScroll: true });
     if (focusAfter.current === 'rate') ratingGroup.current?.focus({ preventScroll: true });
     focusAfter.current = null;
   });
@@ -78,8 +100,11 @@ export default function StudyScreen({ deck }) {
       try {
         const timeMs = Math.round(performance.now() - shownAt.current);
         const next = await api.answerCard(state.card.id, { rating, timeMs, deck });
-        setUndoStack((s) => [...s, next.review_id]);
+        setUndoStack((s) => [...s, { id: next.review_id, rating }]);
         setAnswered((n) => n + 1);
+        setUndone(null);
+        setAnnounce('');
+        countAnswer();
         take(next);
       } catch (err) {
         setError(err.message);
@@ -91,14 +116,17 @@ export default function StudyScreen({ deck }) {
   );
 
   const undo = useCallback(async () => {
-    const reviewId = undoStack.at(-1);
-    if (!reviewId || busy) return;
+    const last = undoStack.at(-1);
+    if (!last || busy) return;
     setBusy(true);
     setError(null);
     try {
-      const next = await api.undoAnswer(reviewId, deck);
+      const next = await api.undoAnswer(last.id, deck);
+      const { name } = RATINGS[last.rating - 1];
       setUndoStack((s) => s.slice(0, -1));
       setAnswered((n) => Math.max(0, n - 1));
+      setUndone(`Undid ${name}.`);
+      setAnnounce(`Undid ${name}. Back to: ${next.card?.front ?? 'the last card'}`);
       take(next);
     } catch (err) {
       setError(err.message);
@@ -137,12 +165,14 @@ export default function StudyScreen({ deck }) {
         <Notice action={<button type="button" className="btn btn--quiet btn--small" onClick={() => load()}>Try again</button>}>{error}</Notice>
       </section>
     ) : (
-      <p className="muted" aria-live="polite">Shuffling your cards…</p>
+      <p className="muted" aria-live="polite">Getting your cards…</p>
     );
   }
 
   const title = state.deck?.lesson_id ? prettyTitle(state.deck.title) : 'All lessons';
   const { card } = state;
+  const undoBar = (undoStack.length > 0 || undone) && <UndoBar undone={undone} onUndo={undo} disabled={!undoStack.length || busy} />;
+  const errorNotice = error && <Notice onDismiss={() => setError(null)}>{error}</Notice>;
 
   return (
     <section className="study">
@@ -152,12 +182,10 @@ export default function StudyScreen({ deck }) {
           <h1 className="study-head__title">{title}</h1>
           <Counts counts={state.counts} current={card?.queue} />
         </div>
-        <button type="button" className="study-undo" onClick={undo} disabled={!undoStack.length || busy} title="Undo the last answer (U or Ctrl+Z)">
-          <UndoIcon size={20} /> <span>Undo</span>
-        </button>
       </header>
 
-      {error && <Notice onDismiss={() => setError(null)}>{error}</Notice>}
+      {/* With a card on screen, errors and undo sit in the pinned bar, next to the buttons that caused them. */}
+      {!card && errorNotice}
 
       {card ? (
         <>
@@ -166,58 +194,92 @@ export default function StudyScreen({ deck }) {
           </motion.div>
 
           <div className="study-actions">
+            {errorNotice}
+            {undoBar}
             {revealed ? (
-              <div className="rate" role="group" aria-label="How well did you remember it?" tabIndex={-1} ref={ratingGroup}>
-                {card.buttons.map((b) => {
-                  const { name, tone } = RATINGS[b.rating - 1];
-                  return (
-                    <button key={b.rating} type="button" className={`rate__btn rate__btn--${tone}`} onClick={() => rate(b.rating)} disabled={busy} aria-label={`${name}, next in ${b.label}`}>
-                      <span className="rate__name">{name}</span>
-                      <span className="rate__ivl">{b.label}</span>
-                      <kbd className="rate__key" aria-hidden="true">{b.rating}</kbd>
-                    </button>
-                  );
-                })}
-              </div>
+              <>
+                {showHint && <p className="rate-hint">Again brings the card back soon. Easy waits the longest.</p>}
+                <div className="rate" role="group" aria-label="How well did you remember it?" aria-describedby="study-answer" tabIndex={-1} ref={ratingGroup}>
+                  {card.buttons.map((b) => {
+                    const { name, tone } = RATINGS[b.rating - 1];
+                    return (
+                      <button key={b.rating} type="button" className={`rate__btn rate__btn--${tone}`} onClick={() => rate(b.rating)} disabled={busy} aria-label={`${name}, next in ${spellInterval(b.label)}`}>
+                        <span className="rate__name">{name}</span>
+                        <span className="rate__ivl">{b.label}</span>
+                        <kbd className="rate__key" aria-hidden="true">{b.rating}</kbd>
+                      </button>
+                    );
+                  })}
+                </div>
+                {/* read once, together with the group, when focus lands on it after the flip */}
+                <p id="study-answer" className="visually-hidden">
+                  Answer: {card.back}
+                  {card.evidence ? ` From the lesson: ${card.evidence}` : ''}
+                </p>
+              </>
             ) : (
               <button type="button" className="btn btn--primary study-show" onClick={reveal} ref={showButton} disabled={busy}>
                 Show answer <kbd className="study-show__key" aria-hidden="true">Space</kbd>
               </button>
             )}
           </div>
-          <p className="visually-hidden" aria-live="polite">
-            {revealed ? `Answer: ${card.back}` : ''}
-          </p>
         </>
       ) : (
-        <DoneCard state={state} answered={answered} deck={deck} />
+        <>
+          <DoneCard state={state} answered={answered} deck={deck} headingRef={doneHeading} />
+          {undoBar}
+        </>
       )}
+
+      <p className="visually-hidden" aria-live="polite">
+        {announce}
+      </p>
     </section>
   );
 }
 
-function DoneCard({ state, answered, deck }) {
+// Undo the last answer (several levels, within this session). It sits beside the answer buttons, where a mis-tap
+// happens, and says what it undid.
+function UndoBar({ undone, onUndo, disabled }) {
+  return (
+    <div className="undo-bar">
+      <p className="undo-bar__status">{undone}</p>
+      <button type="button" className="study-undo" onClick={onUndo} disabled={disabled} title="Undo the last answer (U or Ctrl+Z)" aria-keyshortcuts="U Control+Z">
+        <UndoIcon size={20} /> <span>Undo</span>
+      </button>
+    </div>
+  );
+}
+
+function DoneCard({ state, answered, deck, headingRef }) {
   const empty = state.total === 0;
   const next = describeNextDue(state.next_due_at);
   const soon = state.next_due_at && Date.parse(state.next_due_at) - Date.now() < REFRESH_WITHIN_MS;
   return (
-    <div className="done" role="status">
+    <div className="done">
       <CheckIcon size={36} className="done__icon" />
-      <h2 className="done__title">{empty ? 'No cards in this deck yet' : soon ? 'Done for now' : 'Done for today'}</h2>
+      <h2 className="done__title" tabIndex={-1} ref={headingRef}>{empty ? 'No cards in this deck yet' : soon ? 'Done for now' : 'Done for today'}</h2>
       <p className="done__text">
         {empty
-          ? 'Cards are made when a lesson finishes preparing. Lessons uploaded earlier can get theirs from the Flashcard tab.'
+          ? 'Cards are made when a lesson finishes preparing. For a lesson uploaded earlier, go back to All decks and tap Make cards.'
           : `${answered ? `You answered ${answered} ${answered === 1 ? 'card' : 'cards'}. ` : ''}${next ? `The next card is due ${next}.` : 'No more cards are scheduled.'}`}
       </p>
-      {soon && <p className="muted">Keep this page open and it comes up on its own.</p>}
+      {soon && <p className="muted">The card appears here when it’s due.</p>}
       <div className="done__actions">
-        <a className="btn btn--primary" href={paths.tab('flashcards')}>
-          All decks
-        </a>
-        {deck !== 'all' && (
-          <a className="btn btn--quiet" href={paths.lesson(deck)}>
-            Read the lesson
+        {deck === 'all' ? (
+          <a className="btn btn--primary" href={paths.tab('flashcards')}>
+            All decks
           </a>
+        ) : (
+          <>
+            {/* TODO(Phase 5): make "Take the mock quiz" the primary action here and "Read the lesson" the quiet one. */}
+            <a className="btn btn--primary" href={paths.lesson(deck)}>
+              Read the lesson
+            </a>
+            <a className="btn btn--quiet" href={paths.tab('flashcards')}>
+              All decks
+            </a>
+          </>
         )}
       </div>
     </div>
