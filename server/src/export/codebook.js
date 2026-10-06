@@ -4,7 +4,8 @@ export const CODEBOOK = ({ now, includeP00, lessons }) => `StudyRevr research ex
 Made ${now.toISOString()} (UTC). ${includeP00 ? 'Includes P00 (researcher test data).' : 'P00 (researcher test data) is left out.'}
 
 General
-- Participants appear by code only (P01, P02, ...). No names, settings or API keys are exported.
+- Participants appear by code only (P01, P02, ...). No names, settings or API keys (the researcher's or students')
+  are exported.
 - Timestamps (*_at) are UTC, ISO 8601. study_date is the study day in Asia/Manila; a study day starts at 04:00,
   so 01:30 on Tuesday belongs to Monday. Flashcard scheduling uses the same boundary.
 - Times: *_ms are milliseconds, *_min minutes. Percentages are 0-100.
@@ -69,4 +70,24 @@ quiz_answers.csv - one row per question of each attempt above
 events.csv - self-monitoring events
   type  stats_view | quiz_retake | review_flashcards_tap | section_simplify | section_translate
   section_index  0-based section number, for section_simplify and section_translate
+  (every tap that opens a rewrite is an event, whether or not the AI was asked; see ai_calls.csv for the AI requests)
+
+ai_calls.csv - one row per live AI request for Explain simpler (kind simplify) or Filipino/Taglish (kind translate):
+  the rewrite was not already saved for everyone, or the student uses their own key. Rewrites saved ahead of time by
+  the researcher ("Prepare") and taps served from that saved version are not AI requests and are not listed.
+  outcome              ok | failed (nothing answered; error_code says why)
+  ai_source            who answered: student (the student's own key) | default (the app's AI, set by the
+                       researcher) | gemma (the backup model, used when the default was busy or down); blank if failed
+  ai_provider, ai_model  the provider and model that answered (if failed: the last one tried)
+  ai_fallback_steps    how many steps failed before the answer: 0 = the first choice answered. The order is the
+                       student's key (only if they saved one), then default, then gemma.
+  ai_fallback_reasons  each failed step as source:reason, e.g. student:auth;default:rate_limit. Reasons: rate_limit,
+                       timeout, network, provider_error (the provider's 5xx), auth (key rejected), no_credit,
+                       bad_request, invalid_json
+  from_cache           1 if the answer was the default version already saved (the student's own key had failed)
+  saved_shared         1 if this answer was saved as the version everyone sees (default answers only; answers
+                       from a student's key or from gemma are shown to that student only)
+  error_code           when failed: the last step's reason (for rate_limit the student saw "The AI is busy, try
+                       again in a minute.")
+  ms                   time the whole request took, all steps included
 `;

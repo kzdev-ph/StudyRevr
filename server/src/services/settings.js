@@ -25,7 +25,7 @@ export function getIntSetting(db, key) {
 // A sampling temperature (0 to 2), or undefined when the row is missing or not one.
 const getTemperatureSetting = (db, key) => parseTemperature(getSetting(db, key));
 
-function setSetting(db, key, value) {
+export function setSetting(db, key, value) {
   if (value === '') db.prepare('DELETE FROM settings WHERE key = ?').run(key);
   else db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, value);
 }
@@ -64,7 +64,8 @@ export function resolveAiConfig(db, envAi = {}, overrides = {}) {
     temperature: getTemperatureSetting(db, 'ai_temperature') ?? envAi.temperature ?? preset.temperature,
     timeoutMs: envAi.timeoutMs ?? tuning.timeoutMs, // AI_TIMEOUT_SECONDS > the model's tuning > the preset
     requestsPerMinute: tuning.requestsPerMinute, // client-side limit, from the preset's model tuning (none: unlimited)
-    extraBody: env.extraBody,
+    // the model's own options (Gemma's reasoning_effort), then AI_EXTRA_BODY for the .env provider
+    extraBody: tuning.extraBody || env.extraBody ? { ...tuning.extraBody, ...env.extraBody } : undefined,
     jsonSchema: preset.jsonSchema,
     needsKey: preset.needsKey,
     keyEnv: preset.keyEnv,
@@ -113,5 +114,24 @@ export function saveAiSettings(db, input, envAi = {}) {
     if (input.model !== undefined) setSetting(db, providerKey('model', provider), bareModelId(input.model));
     if (input.baseUrl !== undefined) setSetting(db, providerKey('base_url', provider), input.baseUrl);
     if (input.apiKey !== undefined) setSetting(db, providerKey('api_key', provider), input.apiKey);
+  })();
+}
+
+// The app settings admin changes besides the AI provider (GET / PUT /api/settings).
+//   flashcard_new_per_day  new flashcards a participant is shown per study day (scheduler default 20)
+//   allow_student_keys     students may use their own AI key for Explain simpler and Filipino/Taglish (default off)
+export const appSettingsBody = z.strictObject({
+  flashcard_new_per_day: z.number().int().min(0).max(9999).optional(),
+  allow_student_keys: z.boolean().optional(),
+});
+
+export function describeAppSettings(db, { newPerDay }) {
+  return { flashcard_new_per_day: newPerDay, allow_student_keys: getBoolSetting(db, 'allow_student_keys', false) };
+}
+
+export function saveAppSettings(db, input) {
+  db.transaction(() => {
+    if (input.flashcard_new_per_day !== undefined) setSetting(db, 'flashcard_new_per_day', String(input.flashcard_new_per_day));
+    if (input.allow_student_keys !== undefined) setSetting(db, 'allow_student_keys', String(input.allow_student_keys));
   })();
 }

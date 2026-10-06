@@ -2,10 +2,11 @@ import { chunkLesson, DEFAULT_CHUNK_TOKENS } from '../ai/chunk.js';
 import { HttpError } from '../middleware/errors.js';
 import { flashcardsMax } from '../flashcards/config.js';
 import { cardsNeedingDistractors, ensureDistractors } from '../quiz/distractors.js';
+import { prepareVersions, missingVersions } from '../services/prepare-versions.js';
 import { getSetting } from '../services/settings.js';
 import { generateFlashcards } from './flashcards.js';
 import { generateKeyPoints, generateKeyTerms, generateSections } from './generate.js';
-import { STAGES } from './jobs.js';
+import { ON_DEMAND_STAGES, STAGES } from './jobs.js';
 
 class LessonGone extends Error {}
 
@@ -28,7 +29,9 @@ const count = (db, table, lessonId) => db.prepare(`SELECT COUNT(*) AS c FROM ${t
 // for an older lesson) stays ready even if this run fails; only its job records the failure. `ai` is { generateJSON }.
 // `concurrency` parallel AI calls within a stage; `keyTermsMax` caps the key terms kept per lesson. `onStage({ stage,
 // event })` is told when each stage starts and ends ('start' | 'end'), e.g. for a timeline in the pipeline script.
-export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUNK_TOKENS, concurrency = 1, keyTermsMax = 12, log = console, onStage = () => {} }) {
+// `madeBy` ({ provider, model }, the admin Default) is recorded with the section versions the "Prepare" step makes.
+// A job queued at an on-demand stage (ON_DEMAND_STAGES) runs only that stage.
+export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUNK_TOKENS, concurrency = 1, keyTermsMax = 12, madeBy = null, log = console, onStage = () => {} }) {
   const lesson = db.prepare('SELECT id, raw_text, word_count, status, source_kind, source_numbers, source_total FROM lessons WHERE id = ?').get(lessonId);
   if (!lesson) return;
   const job = db.prepare('SELECT id, stage FROM jobs WHERE lesson_id = ? ORDER BY id DESC LIMIT 1').get(lessonId);
@@ -143,7 +146,16 @@ export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUN
         if (error) throw new HttpError(502, `The quiz answer options couldn’t be made: ${error}`);
       },
     },
+    section_versions: {
+      saved: () => missingVersions(db, lessonId).length === 0,
+      async run() {
+        const { failed, error } = await prepareVersions({ db, ai, lessonId, config: madeBy, concurrency, log, onProgress: progress });
+        // versions that worked are saved, so a retry only makes the rest
+        if (failed) throw new HttpError(502, `${failed} simpler / Taglish version${failed === 1 ? '' : 's'} couldn’t be made: ${error} Run Prepare again to make the rest.`);
+      },
+    },
   };
+  const onDemand = ON_DEMAND_STAGES.includes(job.stage);
 
   let stage = STAGES[0];
   try {
@@ -151,7 +163,7 @@ export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUN
     const numbers = parseNumbers(lesson.source_numbers);
     const chunks = chunkLesson(lesson.raw_text, { maxTokens: chunkTokens, numbers: numbers ?? undefined });
     if (!chunks.length) throw new HttpError(422, NO_TEXT);
-    for (stage of STAGES.slice(Math.max(0, STAGES.indexOf(job.stage)))) {
+    for (stage of onDemand ? [job.stage] : STAGES.slice(Math.max(0, STAGES.indexOf(job.stage)))) {
       if (stages[stage].saved()) continue;
       begin(stage);
       onStage({ stage, event: 'start' });
@@ -169,7 +181,7 @@ export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUN
       updateJob({ stage, status: 'failed', error: message });
       // The review and cards are complete by the quiz_options stage, so its failure leaves the lesson ready; the job
       // keeps the error for admin to retry, and the quiz makes the missing options when first started.
-      if (stage === 'quiz_options') db.prepare(`UPDATE lessons SET status = 'ready', error = NULL WHERE id = ?`).run(lessonId);
+      if (stage === 'quiz_options' || onDemand) db.prepare(`UPDATE lessons SET status = 'ready', error = NULL WHERE id = ?`).run(lessonId);
       else if (!wasReady) db.prepare(`UPDATE lessons SET status = 'failed', error = ? WHERE id = ?`).run(message, lessonId);
     } catch (inner) {
       if (!(inner instanceof LessonGone)) throw inner;

@@ -39,7 +39,7 @@ describe('migration 008: participants', () => {
   it('moves every existing record to P00 and loses nothing', () => {
     const { db, lesson, studied, fresh, attempt } = phase5Db();
     const before = Object.fromEntries(['flashcards', 'flashcard_reviews', 'quiz_attempts', 'quiz_answers', 'review_progress', 'study_sessions'].map((t) => [t, db.prepare(`SELECT COUNT(*) n FROM ${t}`).get().n]));
-    assert.deepEqual(runMigrations(db), ['008_participants.sql']);
+    assert.equal(runMigrations(db)[0], '008_participants.sql');
 
     const p00 = db.prepare("SELECT id FROM participants WHERE code = 'P00'").get().id;
     assert.deepEqual(db.prepare('SELECT code FROM participants').all(), [{ code: 'P00' }]);

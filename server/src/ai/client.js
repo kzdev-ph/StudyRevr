@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { HttpError } from '../middleware/errors.js';
 import { parseJsonReply } from './json.js';
@@ -20,6 +21,7 @@ const DEFAULT_RETRY_DELAYS_MS = [2_000, 6_000, 15_000, 30_000];
 const MAX_RETRY_AFTER_MS = 60_000; // a provider asking for a longer wait gets this one (then the next attempt)
 const MAX_TOKENS_CEILING = 16_000; // upper bound when a cut-off reply is retried with a bigger budget
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
+const LIVE_MAX_QUEUE_MS = 3_000; // a live call waits at most this long for the client-side request limit
 
 export function normalizeBaseUrl(url) {
   return String(url ?? '')
@@ -184,6 +186,8 @@ export function createAiClient({
       failure = new AiError('auth', `The AI provider rejected the API key (HTTP ${s}). Check the API key in Settings${keyHint}.`);
     } else if (s === 404) {
       failure = new AiError('not_found', `The AI provider couldn't find that model or endpoint (HTTP 404). Check the model in Settings, and the base URL if you use a custom one.`);
+    } else if (s === 402) {
+      failure = new AiError('no_credit', `The AI provider says this account has no credit left (HTTP 402). Check the account's balance or plan.`);
     } else if (s === 429) {
       failure = new AiError('rate_limit', `The AI provider is rate limiting requests (HTTP 429). Try again shortly.`);
     } else if (s >= 500) {
@@ -193,6 +197,8 @@ export function createAiClient({
       failure = new AiError('bad_request', `The AI provider rejected the request (HTTP ${s}). Check the model in Settings.${tooLong}`);
     }
     failure.detail = detail;
+    failure.body = body; // redacted; lets a caller tell a used-up quota from a per-minute limit
+    failure.providerStatus = s;
     return failure;
   }
 
@@ -221,16 +227,25 @@ export function createAiClient({
   // wait; a timeout is retried once. The reply body is read inside the attempt, under the same timeout, so a reply that
   // stalls halfway is a timeout like one that never starts. Each attempt first takes a slot from the client-side limit
   // (cfg.requestsPerMinute) and is reported to onAttempt: 'throttle' (waited for a slot), 'start', 'ok', 'fail'.
-  async function send(cfg, path, { method = 'GET', body, label = path } = {}) {
+  // `live` (a student is waiting, and a fallback is ready): one attempt, no retry waits, and a request that would wait
+  // more than LIVE_MAX_QUEUE_MS for the client-side limit fails at once as a rate limit without being sent.
+  async function send(cfg, path, { method = 'GET', body, label = path, live = false } = {}) {
     const headers = { Accept: 'application/json' };
     if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`;
     if (body !== undefined) headers['Content-Type'] = 'application/json';
-    const limitKey = `${cfg.host}|${cfg.model}`;
+    // per key too: a student's own key has its own quota, separate from the admin's
+    const keyTag = cfg.apiKey ? createHash('sha256').update(cfg.apiKey).digest('hex').slice(0, 8) : '';
+    const limitKey = `${cfg.host}|${cfg.model}|${keyTag}`;
 
     let timedOut = false; // a timeout is retried once: a stuck request often succeeds when sent again
     for (let attempt = 1; ; attempt++) {
-      const canRetry = attempt <= retryDelaysMs.length;
-      const waitedMs = await limiter.acquire(limitKey, cfg.requestsPerMinute);
+      const canRetry = !live && attempt <= retryDelaysMs.length;
+      const waitedMs = await limiter.acquire(limitKey, cfg.requestsPerMinute, live ? { maxWaitMs: LIVE_MAX_QUEUE_MS } : undefined);
+      if (waitedMs === null) {
+        stats.failedAttempts.rate_limit = (stats.failedAttempts.rate_limit ?? 0) + 1;
+        onAttempt({ type: 'fail', label, attempt, ms: 0, reason: 'rate_limit', retry: false, waitMs: 0, local: true });
+        throw new AiError('rate_limit', `Too many AI requests to ${cfg.model} right now (the app's own limit of ${cfg.requestsPerMinute} a minute). Try again shortly.`);
+      }
       if (waitedMs) {
         stats.throttledMs += waitedMs;
         onAttempt({ type: 'throttle', label, attempt, waitMs: waitedMs });
@@ -293,7 +308,7 @@ export function createAiClient({
   // `responseSchema` ({ name, schema } as JSON Schema) is sent as response_format only to providers that support it;
   // if one turns out not to, the request is repeated without it and the host is remembered.
   // AI_EXTRA_BODY options are merged in, but can't replace the model or the messages.
-  async function chat({ messages, maxTokens = 4000, temperature, responseSchema, config, label }) {
+  async function chat({ messages, maxTokens = 4000, temperature, responseSchema, config, label, live = false }) {
     const cfg = readConfig({ needModel: true }, config);
     // sampling temperature: this call > the provider's setting (preset default 0.2); AI_EXTRA_BODY can still override it
     const body = { temperature: temperature ?? cfg.temperature ?? 0.2, max_tokens: maxTokens, stream: false, ...cfg.extraBody, model: cfg.model, messages };
@@ -303,15 +318,15 @@ export function createAiClient({
       const withFormat = { ...body, response_format: { type: 'json_schema', json_schema: { name: responseSchema.name, schema: responseSchema.schema } } };
       try {
         stats.schemaSent += 1;
-        data = await send(cfg, '/chat/completions', { method: 'POST', body: withFormat, label });
+        data = await send(cfg, '/chat/completions', { method: 'POST', body: withFormat, label, live });
       } catch (err) {
         if (err.code !== 'bad_request') throw err;
         stats.schemaRejected += 1;
-        data = await send(cfg, '/chat/completions', { method: 'POST', body, label });
+        data = await send(cfg, '/chat/completions', { method: 'POST', body, label, live });
         noJsonSchema.add(cfg.host); // the same request works without response_format, so that was the problem
       }
     }
-    data ??= await send(cfg, '/chat/completions', { method: 'POST', body, label });
+    data ??= await send(cfg, '/chat/completions', { method: 'POST', body, label, live });
     const choice = data?.choices?.[0];
     if (!choice) throw new AiError('bad_response', "The AI provider's reply had no answer in it. Check that the model name is a chat model.");
     stats.calls += 1;
@@ -326,7 +341,8 @@ export function createAiClient({
   // retried once, telling the model what was wrong; provider/HTTP failures are not retried here (see send()).
   // A reply cut off by the token limit is retried with double the budget: reasoning models spend max_tokens on
   // thinking before they write any JSON, so the same limit would just fail again.
-  async function generateJSON({ system, user, schema, responseSchema, maxTokens, temperature, label = 'this request', config }) {
+  // `live`: see send(). The one retry for an unusable reply still applies.
+  async function generateJSON({ system, user, schema, responseSchema, maxTokens, temperature, label = 'this request', config, live = false }) {
     let problem = '';
     let budget = maxTokens;
     for (let attempt = 1; attempt <= 2; attempt++) {
@@ -343,6 +359,7 @@ export function createAiClient({
         responseSchema,
         config,
         label,
+        live,
       });
       if (finishReason === 'length') stats.truncated += 1;
       if (finishReason === 'length' && budget) budget = Math.min(budget * 2, MAX_TOKENS_CEILING);
@@ -366,8 +383,9 @@ export function createAiClient({
 
   const connectionTestSchema = z.object({ ok: z.literal(true), word: z.string().min(1) });
 
-  // Tiny round-trip proving URL, key, model and JSON output all work.
-  async function testConnection(config) {
+  // Tiny round-trip proving URL, key, model and JSON output all work. `live`: one attempt, no retry waits (a student's
+  // "Test key" answers at once).
+  async function testConnection(config, { live = false } = {}) {
     const cfg = readConfig({ needModel: true }, config);
     const started = Date.now();
     const reply = await generateJSON({
@@ -381,15 +399,16 @@ export function createAiClient({
       maxTokens: 1024,
       label: 'the connection test',
       config,
+      live,
     });
     return { ok: true, model: cfg.model, latencyMs: Date.now() - started, reply };
   }
 
   // Chat-capable model ids from {baseUrl}/models, sorted, without a "models/" prefix. [] when the provider lists none
   // (the caller then offers a free-text model id).
-  async function listModels(config) {
+  async function listModels(config, { live = false } = {}) {
     const cfg = readConfig({ needModel: false }, config);
-    return chatModelIds(await send(cfg, '/models', { label: 'the model list' }));
+    return chatModelIds(await send(cfg, '/models', { label: 'the model list', live }));
   }
 
   return { chat, generateJSON, testConnection, listModels, stats };

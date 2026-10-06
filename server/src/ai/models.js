@@ -8,6 +8,11 @@ const NON_CHAT_NAME = new RegExp(
     'embed', 'rerank', 'reward', 'retriev', 'guard', 'safety', 'moderation', 'jailbreak', 'topic-control',
     'whisper', 'parakeet', 'canary', 'fastpitch', 'speech', 'stable-diffusion', 'flux', 'sdxl', 'cosmos-(?:predict|transfer)',
     'detector', 'deplot', 'robotics',
+    // Gemini: attributed QA, research agents, browser / computer agents, image generation (nano-banana) and the omni
+    // (any-to-any media) and custom-tools variants, none of which suit a plain study chat request
+    '(?:^|[/_.-])aqa(?:[/_.-]|$)', 'deep-research', 'antigravity', 'computer-use', 'nano-banana', 'customtools', 'gemini-omni',
+    // Qwen (DashScope): image / video generation, speech synthesis and recognition
+    'wanx', '(?:^|[/_.-])wan\\d', 'cosyvoice', 'paraformer', 'sambert', 'qwen-tts', 'qwen-omni',
     // short tokens only count as whole name parts ('nemotron-parse' yes, 'derivative' no); the last five are
     // Gemini's image / video generation and realtime (live) / audio models
     '(?:^|[/_.-])(?:riva|tts|asr|clip|nvclip|sd3|ocr|parse|bge|e5|gte|nvolve|imagen|veo|live|audio|image|transcribe|lyria)(?:[/_.-]|$)',

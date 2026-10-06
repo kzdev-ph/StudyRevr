@@ -67,6 +67,9 @@ describe('section rewrites and review progress', () => {
         kind: 'simple',
         version: { text: 'A hypothesis is a guess you can test.', example: 'Like guessing it will rain and checking the sky.' },
         cached: false,
+        shared: true,
+        answered_by: { source: 'default', provider: 'google', model: 'gemini-3.5-flash-lite' },
+        fallback: null,
       });
       const again = await send('POST', `/api/sections/${sectionIds[0]}/simplify`);
       assert.equal(again.body.cached, true);

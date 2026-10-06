@@ -53,6 +53,9 @@ describe('research export', () => {
     for (const r of t.db.prepare('SELECT id, code FROM participants').all()) ids[r.code] = r.id;
     // secrets that must never appear in an export
     t.db.prepare("INSERT INTO settings (key, value) VALUES ('ai_api_key:google', ?), ('ai_model:google', 'gemini-secret-model')").run(SECRET_KEY);
+    // a student's own key (Phase 7A) and a live AI call of theirs
+    t.db.prepare("INSERT INTO participant_ai_keys VALUES (?, 'deepseek', 'deepseek-chat', 'sk-STUDENT-EXPORT-SECRET', 'CRET', 'x', 'x')").run(ids.P01);
+    t.db.prepare("INSERT INTO ai_calls (participant_id, kind, outcome, source, provider, model, created_at, study_date) VALUES (?, 'simplify', 'ok', 'student', 'deepseek', 'deepseek-chat', '2026-10-05T05:00:00.000Z', '2026-10-05')").run(ids.P01);
     t.db.prepare("INSERT INTO quiz_distractors (flashcard_id, choices) SELECT id, '[]' FROM flashcards").run();
 
     // P01: two flashcard answers (Good, Again), 12 min reading + 6 min flashcards over two days, a finished quiz
@@ -102,10 +105,10 @@ describe('research export', () => {
     assert.equal(res.headers.get('content-type'), 'application/zip');
     const zip = await JSZip.loadAsync(Buffer.from(await res.arrayBuffer()));
     const names = Object.keys(zip.files).sort();
-    assert.deepEqual(names, ['README.txt', 'due_reviews.csv', 'events.csv', 'flashcard_reviews.csv', 'quiz_answers.csv', 'quiz_attempts.csv', 'sessions.csv', 'summary.csv']);
+    assert.deepEqual(names, ['README.txt', 'ai_calls.csv', 'due_reviews.csv', 'events.csv', 'flashcard_reviews.csv', 'quiz_answers.csv', 'quiz_attempts.csv', 'sessions.csv', 'summary.csv']);
     for (const name of names) {
       const text = await zip.file(name).async('string');
-      for (const secret of [SECRET_KEY, TEST_PIN, 'gemini-secret-model', 'ai_api_key']) assert.ok(!text.includes(secret), `${secret} in ${name}`);
+      for (const secret of [SECRET_KEY, TEST_PIN, 'gemini-secret-model', 'ai_api_key', 'sk-STUDENT-EXPORT-SECRET']) assert.ok(!text.includes(secret), `${secret} in ${name}`);
     }
     const readme = await zip.file('README.txt').async('string');
     for (const col of ['self_monitoring_simplify_taps', 'self_monitoring_translate_taps', 'planning_on_time_rate', `L${lessonId} = =Risky title`]) assert.ok(readme.includes(col), col);

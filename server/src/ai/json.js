@@ -1,5 +1,6 @@
-// Models wrap JSON in prose, code fences, or <think> blocks. Pull out the JSON value without being clever about it.
-const THINK_BLOCK = /<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/gi;
+// Models wrap JSON in prose, code fences, or <think> blocks (Gemma on Google writes <thought>). Pull out the JSON
+// value without being clever about it.
+const THINK_BLOCK = /<(think|thinking|thought)>[\s\S]*?<\/\1>/gi;
 
 export function stripCodeFences(text) {
   const fenced = /```(?:json|JSON)?\s*\n?([\s\S]*?)\n?```/.exec(text);

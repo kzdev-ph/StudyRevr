@@ -6,6 +6,7 @@ import { assertSignature, createUpload, fileExtension } from '../middleware/uplo
 import { extractText } from '../services/extract.js';
 import { getJobStatus, queueJob } from '../pipeline/jobs.js';
 import { cardsNeedingDistractors } from '../quiz/distractors.js';
+import { missingVersions, versionCounts } from '../services/prepare-versions.js';
 import { parseFilipino, parseSimple } from '../services/section-versions.js';
 import { getBoolSetting } from '../services/settings.js';
 
@@ -96,6 +97,8 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin) {
 
   // `quiz_options`: concept cards still without AI wrong answers (`missing`) and, when the last job was making them,
   // its `status` (queued | running | done | failed) and `error`. Admin uses it to show progress and a retry button.
+  // `section_versions`: the shared Explain simpler / Filipino-Taglish versions still missing (`missing` of `total`, two
+  // per section) and, when the last job was making them ("Prepare"), its `status`, `error` and `progress`.
   router.get('/', (_req, res) => {
     const missing = new Map(
       db
@@ -106,12 +109,23 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin) {
         .all()
         .map((r) => [r.lesson_id, r.missing]),
     );
+    const versions = versionCounts(db);
     const lessons = db.prepare(`SELECT ${SUMMARY_COLUMNS} FROM lessons ORDER BY created_at DESC, id DESC`).all();
     res.json({
       lessons: lessons.map((lesson) => {
         const { job } = getJobStatus(db, lesson.id);
         const own = job?.stage === 'quiz_options';
-        return { ...lesson, quiz_options: { missing: missing.get(lesson.id) ?? 0, status: own ? job.status : null, error: own ? job.error : null } };
+        const preparing = job?.stage === 'section_versions';
+        return {
+          ...lesson,
+          quiz_options: { missing: missing.get(lesson.id) ?? 0, status: own ? job.status : null, error: own ? job.error : null },
+          section_versions: {
+            ...(versions.get(lesson.id) ?? { missing: 0, total: 0 }),
+            status: preparing ? job.status : null,
+            error: preparing ? job.error : null,
+            progress: preparing ? job.progress : null,
+          },
+        };
       }),
     });
   });
@@ -198,6 +212,22 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin) {
     if (job && ['queued', 'running'].includes(job.status)) throw new HttpError(409, 'This lesson is already being worked on.');
     if (!cardsNeedingDistractors(db, id).length) throw new HttpError(409, 'This lesson has no flashcards that still need quiz answer options.');
     db.transaction(() => queueJob(db, id, { stage: 'quiz_options', keepLesson: true }))();
+    runner.enqueue(id);
+    res.status(202).json(getJobStatus(db, id));
+  });
+
+  // "Prepare simpler and Taglish versions": makes the shared rewrite of every section that has none yet, with the admin
+  // Default, so students' taps need no live AI call. The lesson stays readable while it runs; taps meanwhile are served
+  // as usual (a version made by a tap is kept and skipped here).
+  router.post('/:id/section-versions', requireAdmin, (req, res) => {
+    const id = parseId(req);
+    const lesson = db.prepare('SELECT status FROM lessons WHERE id = ?').get(id);
+    if (!lesson) throw new HttpError(404, 'Lesson not found.');
+    if (lesson.status !== 'ready') throw new HttpError(409, 'Prepare works on a lesson that has finished processing.');
+    const { job } = getJobStatus(db, id);
+    if (job && ['queued', 'running'].includes(job.status)) throw new HttpError(409, 'This lesson is already being worked on.');
+    if (!missingVersions(db, id).length) throw new HttpError(409, 'Every section already has its simpler and Taglish versions.');
+    db.transaction(() => queueJob(db, id, { stage: 'section_versions', keepLesson: true }))();
     runner.enqueue(id);
     res.status(202).json(getJobStatus(db, id));
   });

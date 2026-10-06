@@ -14,7 +14,7 @@ import { CODEBOOK } from './codebook.js';
 const RATING = { 1: 'again', 2: 'hard', 3: 'good', 4: 'easy' };
 const STATE = { 0: 'new', 1: 'learning', 2: 'review', 3: 'relearning' };
 
-export const EXPORT_FILES = ['summary', 'sessions', 'flashcard_reviews', 'due_reviews', 'quiz_attempts', 'quiz_answers', 'events'];
+export const EXPORT_FILES = ['summary', 'sessions', 'flashcard_reviews', 'due_reviews', 'quiz_attempts', 'quiz_answers', 'events', 'ai_calls'];
 
 const who = (includeP00) => (includeP00 ? '' : "AND p.code <> 'P00'");
 
@@ -167,12 +167,38 @@ function events(db, { includeP00 }) {
   );
 }
 
+// Live AI requests (Explain simpler / Filipino-Taglish not served from the shared cache): who answered and how many
+// fallbacks it took. Requests made without a participant code (an admin preview) are not participant data.
+function aiCalls(db, { includeP00 }) {
+  const rows = db
+    .prepare(
+      `SELECT p.code AS participant, c.*, l.title AS lesson_title FROM ai_calls c JOIN participants p ON p.id = c.participant_id
+       LEFT JOIN lessons l ON l.id = c.lesson_id WHERE 1 = 1 ${who(includeP00)} ORDER BY p.code, c.created_at, c.id`,
+    )
+    .all();
+  return toCsv(
+    ['participant', 'call_id', 'lesson_id', 'lesson_title', 'section_index', 'kind', 'outcome', 'ai_source', 'ai_provider', 'ai_model',
+      'ai_fallback_steps', 'ai_fallback_reasons', 'from_cache', 'saved_shared', 'error_code', 'ms', 'created_at', 'study_date'],
+    rows.map((c) => ({
+      ...c,
+      call_id: c.id,
+      ai_source: c.source,
+      ai_provider: c.provider,
+      ai_model: c.model,
+      ai_fallback_steps: c.fallback_steps,
+      ai_fallback_reasons: c.fallback_reasons,
+      from_cache: Boolean(c.from_cache),
+      saved_shared: Boolean(c.saved_shared),
+    })),
+  );
+}
+
 function summary(db, opts) {
   const { columns, rows } = summaryTable(db, opts);
   return toCsv(columns, rows);
 }
 
-const MAKERS = { summary, sessions, flashcard_reviews: flashcardReviews, due_reviews: dueReviewsCsv, quiz_attempts: quizAttempts, quiz_answers: quizAnswers, events };
+const MAKERS = { summary, sessions, flashcard_reviews: flashcardReviews, due_reviews: dueReviewsCsv, quiz_attempts: quizAttempts, quiz_answers: quizAnswers, events, ai_calls: aiCalls };
 
 // One file's CSV text. opts: { now, config, includeP00 }
 export function exportCsv(db, name, opts) {

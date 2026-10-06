@@ -58,6 +58,8 @@ export function loadConfig(env = process.env) {
         google: env.GOOGLE_API_KEY || '',
         'nvidia-nim': env.NVIDIA_API_KEY || '',
         openrouter: env.OPENROUTER_API_KEY || '',
+        deepseek: env.DEEPSEEK_API_KEY || '',
+        qwen: env.DASHSCOPE_API_KEY || '',
       },
       // Left undefined, these come from the provider preset.
       timeoutMs: timeoutSeconds && timeoutSeconds * 1000, // per request (google 60 s, gemini-3.5-flash-lite 25 s, others 300 s)

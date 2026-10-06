@@ -2,22 +2,31 @@ import { Router } from 'express';
 import { AiError } from '../ai/client.js';
 import { isProviderId, PRESETS } from '../ai/providers.js';
 import { HttpError } from '../middleware/errors.js';
-import { aiSettingsBody, describeAiSettings, resolveAiConfig, saveAiSettings } from '../services/settings.js';
+import { loadSchedulerConfig } from '../flashcards/config.js';
+import { aiSettingsBody, appSettingsBody, describeAiSettings, describeAppSettings, resolveAiConfig, saveAiSettings, saveAppSettings } from '../services/settings.js';
 
 // Reads a request body with the zod schema; the first problem becomes a 400 that names the field.
-function parseBody(body) {
-  const parsed = aiSettingsBody.safeParse(body ?? {});
+function parseBody(body, schema = aiSettingsBody) {
+  const parsed = schema.safeParse(body ?? {});
   if (parsed.success) return parsed.data;
   const issue = parsed.error.issues[0];
   const field = issue.path.join('.');
   throw new HttpError(400, field ? `Invalid ${field}: ${issue.message}.` : `Invalid request: ${issue.message}.`);
 }
 
-// AI provider endpoints. API keys are only ever written here, never returned: responses carry a `keySet` flag.
-// Phase 7 puts the Settings screen on top of these, and adds the other settings to GET/PUT /api/settings.
+// Admin settings (all behind the PIN): the app settings and the AI provider. API keys are only ever written here,
+// never returned: responses carry a `keySet` flag.
 export function settingsRouter({ ai, db, config }) {
   const router = Router();
   const envAi = config.ai ?? {};
+  const appSettings = () => describeAppSettings(db, loadSchedulerConfig(db));
+
+  // New flashcards per day and whether students may use their own AI key.
+  router.get('/', (_req, res) => res.json(appSettings()));
+  router.put('/', (req, res) => {
+    saveAppSettings(db, parseBody(req.body, appSettingsBody));
+    res.json(appSettings());
+  });
 
   // The active provider, each provider's saved model / base URL, and whether its key is set.
   router.get('/ai', (_req, res) => {

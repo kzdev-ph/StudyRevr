@@ -78,12 +78,19 @@ const saveProgress = (db, participantId, cardId, fields) =>
     )
     .run({ ...fields, participantId, cardId });
 
-// Applies one answer to this participant's schedule and writes their review-log row in one transaction.
+// A review-state card is due on its due day: the study screen offers it from the start of that study day (the queue's
+// rule in buildQueue). Before then, an answer would be an early review, which the app never offers.
+export const isEarlyReview = (card, { now, config }) => card.state === REVIEW && card.due_at !== null && Date.parse(card.due_at) >= studyDay(now, config).end.getTime();
+
+// Applies one answer to this participant's schedule and writes their review-log row in one transaction. An answer to a
+// review card that isn't due yet (sent outside the study screen, or from a second tab after the first answered it)
+// is refused with 409 not_due, so it can't move the schedule or count in the planning metric.
 // -> { review_id, card }
 export function recordAnswer(db, { participantId, cardId, rating, timeMs = 0, now, config }) {
   return db.transaction(() => {
     const card = db.prepare(`SELECT ${CARD_COLUMNS} FROM ${CARD_FROM} WHERE f.id = @cardId`).get({ cardId, participantId });
     if (!card) throw new HttpError(404, 'Flashcard not found.');
+    if (isEarlyReview(card, { now, config })) throw new HttpError(409, 'This card isn’t due yet.', { code: 'not_due', due_at: card.due_at });
     const result = answer(card, rating, { now, config });
     const next = result.card;
     saveProgress(db, participantId, card.id, next);

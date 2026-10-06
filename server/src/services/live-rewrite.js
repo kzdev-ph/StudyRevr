@@ -1,0 +1,143 @@
+import { AiError } from '../ai/client.js';
+import { fallbackNote, OUTAGE, runChain, STUDENT_FALLBACK } from '../ai/live.js';
+import { bareModelId, GEMMA_MODEL, modelTuning } from '../ai/providers.js';
+import { studyDate } from '../stats/days.js';
+import { MADE_BY_COLUMN, makeVersion, saveSharedVersion, SMALL_MAX_TOKENS } from './section-versions.js';
+import { resolveAiConfig } from './settings.js';
+import { readStudentKey, studentConfig, studentKeysAllowed } from './student-ai.js';
+
+// A live rewrite (Explain simpler / Filipino-Taglish) for one section, made while the student waits:
+//   1. the student's own key, when admin allows it and they saved one (not cached: only they see it)
+//   2. the admin Default (the shared cached version when there is one; otherwise a new one, cached for everyone)
+//   3. Gemma on the admin's Google key (shown, not cached, so the next request tries Default again)
+// Without a student key, a cached shared version is served without any AI call (the route does that).
+
+// Live Default calls for the same section and kind share one request (two students tapping at once).
+const inflight = new WeakMap(); // db -> Map(`${sectionId}:${kind}` -> Promise)
+
+function sharedDefault({ db, ai, section, kind, config }) {
+  if (!inflight.has(db)) inflight.set(db, new Map());
+  const running = inflight.get(db);
+  const key = `${section.id}:${kind}`;
+  if (!running.has(key)) {
+    const made = (async () => {
+      const version = await makeVersion({ db, ai, section, kind, call: { config, live: true } });
+      saveSharedVersion(db, section.id, kind, version, config);
+      return version;
+    })().finally(() => running.delete(key));
+    running.set(key, made);
+  }
+  return running.get(key);
+}
+
+// The Gemma step's config: the admin's Google settings (key, base URL) with the Gemma model and its own tuning (its
+// timeout and reasoning_effort win over AI_TIMEOUT_SECONDS / AI_EXTRA_BODY, which are meant for the main model).
+// null when there is no Google key, or when Default already is that model.
+export function gemmaConfig(db, envAi, defaultCfg) {
+  if (defaultCfg.provider === 'google' && bareModelId(defaultCfg.model) === GEMMA_MODEL) return null;
+  const cfg = resolveAiConfig(db, envAi, { provider: 'google', model: GEMMA_MODEL });
+  if (!cfg.apiKey) return null;
+  const tuning = modelTuning('google', GEMMA_MODEL);
+  return { ...cfg, timeoutMs: tuning.timeoutMs, extraBody: { ...cfg.extraBody, ...tuning.extraBody } };
+}
+
+// The chain's steps for this request. `shared` is the cached Default version, if any.
+export function rewriteSteps({ db, ai, envAi, section, kind, participant, shared }) {
+  const steps = [];
+  const own = participant && studentKeysAllowed(db) ? readStudentKey(db, participant.id) : null;
+  if (own) {
+    const config = studentConfig({ provider: own.provider, model: own.model, apiKey: own.api_key });
+    steps.push({
+      source: 'student',
+      provider: own.provider,
+      model: own.model,
+      fallbackOn: STUDENT_FALLBACK,
+      run: () => makeVersion({ db, ai, section, kind, call: { config, live: true } }),
+    });
+  }
+  const defaultCfg = resolveAiConfig(db, envAi);
+  if (shared) {
+    // made_by is "provider/model"; the model part may itself contain slashes (NIM, OpenRouter)
+    const [provider, ...model] = String(section[MADE_BY_COLUMN[kind]] ?? '').split('/');
+    steps.push({ source: 'default', provider: provider || null, model: model.join('/') || null, fromCache: true, fallbackOn: OUTAGE, run: async () => shared });
+  } else {
+    steps.push({ source: 'default', provider: defaultCfg.provider, model: defaultCfg.model, fallbackOn: OUTAGE, run: () => sharedDefault({ db, ai, section, kind, config: defaultCfg }) });
+  }
+  const gemma = gemmaConfig(db, envAi, defaultCfg);
+  if (gemma) {
+    steps.push({
+      source: 'gemma',
+      provider: 'google',
+      model: GEMMA_MODEL,
+      fallbackOn: OUTAGE,
+      run: () => makeVersion({ db, ai, section, kind, call: { config: gemma, live: true, maxTokens: SMALL_MAX_TOKENS[kind] } }),
+    });
+  }
+  return steps;
+}
+
+// What a student sees when no step answered. The last step's outage becomes a short "try again" message; any other
+// error (a bad request, an unusable reply) keeps its own message.
+function finalError(error) {
+  if (error?.code === 'rate_limit') return new AiError('ai_busy', 'The AI is busy, try again in a minute.', 503);
+  if (OUTAGE.has(error?.code)) return new AiError('ai_unavailable', 'The AI couldn’t answer right now. Try again in a minute.', 503);
+  return error;
+}
+
+export function logAiCall(db, row, { now, config }) {
+  db.prepare(
+    `INSERT INTO ai_calls (participant_id, lesson_id, section_id, section_index, kind, outcome, source, provider, model, fallback_steps,
+       fallback_reasons, from_cache, saved_shared, error_code, ms, created_at, study_date)
+     VALUES (@participant_id, @lesson_id, @section_id, @section_index, @kind, @outcome, @source, @provider, @model, @fallback_steps,
+       @fallback_reasons, @from_cache, @saved_shared, @error_code, @ms, @created_at, @study_date)`,
+  ).run({ ...row, created_at: now.toISOString(), study_date: studyDate(now, config) });
+}
+
+// Runs the chain for one rewrite, logs it (ai_calls and the server log) and returns what the route sends, or throws
+// the error the student should see. -> { version, answered_by: { source, provider, model }, shared, fallback }
+export async function liveRewrite({ db, ai, envAi, section, kind, participant, shared, clock, schedulerConfig, log = console }) {
+  const steps = rewriteSteps({ db, ai, envAi, section, kind, participant, shared });
+  const started = Date.now();
+  const result = await runChain(steps);
+  const ms = Date.now() - started;
+  const answered = result.ok ? result.step : null;
+  const savedShared = Boolean(answered && answered.source === 'default' && !answered.fromCache);
+  const reasons = result.failures.map((f) => `${f.source}:${f.code}`).join(';') || null;
+  const last = result.step;
+  logAiCall(
+    db,
+    {
+      participant_id: participant?.id ?? null,
+      lesson_id: section.lesson_id,
+      section_id: section.id,
+      section_index: section.index ?? null,
+      kind,
+      outcome: result.ok ? 'ok' : 'failed',
+      source: answered?.source ?? null,
+      provider: last.provider,
+      model: last.model,
+      fallback_steps: result.ok ? result.steps : result.failures.length,
+      fallback_reasons: reasons,
+      from_cache: answered?.fromCache ? 1 : 0,
+      saved_shared: savedShared ? 1 : 0,
+      error_code: result.ok ? null : (result.error?.code ?? 'error'),
+      ms,
+    },
+    { now: clock(), config: schedulerConfig },
+  );
+  const who = participant?.code ?? 'no participant';
+  const tag = `[ai-live] ${who} ${kind} section ${section.id}`;
+  if (result.ok) {
+    const fell = result.steps ? ` after ${result.steps} fallback(s) (${reasons})` : '';
+    log.log?.(`${tag}: ${answered.source}${answered.fromCache ? ' (cached)' : ''} ${answered.provider ?? ''}/${answered.model ?? ''} answered${fell} in ${(ms / 1000).toFixed(1)}s`);
+  } else {
+    log.warn?.(`${tag}: failed (${reasons}) in ${(ms / 1000).toFixed(1)}s`);
+    throw finalError(result.error);
+  }
+  return {
+    version: result.value,
+    answered_by: { source: answered.source, provider: answered.provider, model: answered.model },
+    shared: savedShared || Boolean(answered.fromCache),
+    fallback: result.steps ? { steps: result.steps, note: fallbackNote({ source: answered.source, failures: result.failures }) } : null,
+  };
+}
