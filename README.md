@@ -2,14 +2,14 @@
 
 Open-source, mobile-first study app. Upload a lesson (.docx / .pptx / .pdf) and get a sectioned review, Anki-style flashcards, and mock quizzes. Study activity is logged and exportable for research.
 
-> **Status:** Phase 6 of 7 — React app with the lesson library, the Review tab (sections, quick checks, simpler / Filipino-Taglish rewrites, key points, key terms, original text, resume), the Flashcard tab (grounded cards, Anki-style SM-2 scheduling, undo), the Mock Quiz tab (questions from the lesson's flashcards, every answer logged), participant codes, active-time session logging, the Stats tab, and a PIN-protected researcher admin (lesson upload, participant codes, research CSV export). The full Settings screen arrives in Phase 7.
+> **Status:** Phase 7A of 7 — React app with the lesson library, the Review tab (sections, quick checks, simpler / Filipino-Taglish rewrites, key points, key terms, original text, resume), the Flashcard tab (grounded cards, Anki-style SM-2 scheduling, undo), the Mock Quiz tab (questions from the lesson's flashcards, every answer logged), participant codes, active-time session logging, the Stats tab, and a PIN-protected researcher admin (lesson upload, participant codes, research CSV export, AI and study settings, "Prepare" for the rewrites, database backup). Students can optionally use their own AI key for the rewrites, with a fallback chain (their key → the app's Default → Gemma). The rest of Phase 7 (polish, LICENSE) is still to come.
 
 ## Running it
 
 **Requirements:** Node.js 22.13 or newer.
 
 ```bash
-npm install
+npm ci                   # in the repo root only: it installs the server and the client (npm workspaces)
 cp .env.example .env     # then add your AI key (GOOGLE_API_KEY by default); uploads work without one, AI generation needs it
 npm run dev              # API on http://localhost:3001 and the app on http://localhost:5173 (Vite proxies /api)
 npm test                 # server and client tests
@@ -19,6 +19,8 @@ npm run study            # build the client and serve app + API on one port (for
 
 The SQLite database is created at `server/data/studyrevr.db` on first start, and migrations run automatically.
 
+**Installing:** run `npm ci` (or `npm install`) in the repo root only. `server/` and `client/` are npm workspaces of the root, with one shared `package-lock.json` and `node_modules/`; running `npm ci` inside `client/` (or `server/`) deletes the root `node_modules` and installs only that workspace's packages, which breaks the server. If that happened, run `npm ci` in the root again.
+
 ### Configuration (`.env`)
 
 | Variable | Default | Purpose |
@@ -27,8 +29,8 @@ The SQLite database is created at `server/data/studyrevr.db` on first start, and
 | `DB_PATH` | `server/data/studyrevr.db` | SQLite file (relative to repo root). Git-ignored: it can hold API keys saved in Settings |
 | `MAX_UPLOAD_MB` | `20` | Upload size limit |
 | `ADMIN_PIN` | – | The researcher's admin PIN (upload, participant codes, AI settings, export). Empty: admin is off |
-| `AI_PROVIDER` | `google` | `google`, `nvidia-nim`, `openrouter`, `ollama`, `llamacpp` or `custom` |
-| `GOOGLE_API_KEY` / `NVIDIA_API_KEY` / `OPENROUTER_API_KEY` | – | One key per provider; only the active provider's key is sent. Never logged or returned by the API |
+| `AI_PROVIDER` | `google` | `google`, `deepseek`, `qwen`, `nvidia-nim`, `openrouter`, `ollama`, `llamacpp` or `custom` |
+| `GOOGLE_API_KEY` / `DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` / `NVIDIA_API_KEY` / `OPENROUTER_API_KEY` | – | One key per provider; only the active provider's key is sent. Never logged or returned by the API. The Google key also serves the Gemma fallback for live rewrites |
 | `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL` | – | Optional overrides for the `AI_PROVIDER` provider (an older `.env` with only `AI_BASE_URL` still works: the provider is recognised from the URL) |
 | `AI_EXTRA_BODY` | – | JSON object merged into every chat request for provider options, e.g. `{"reasoning_effort":"none"}` to switch thinking off. Ignored, with a warning, if it isn't a JSON object |
 | `AI_CONCURRENCY` | preset | Parallel AI calls within one stage of a lesson |
@@ -42,12 +44,14 @@ Provider presets (base URL, default model, chunk tokens, concurrency):
 | Preset | Base URL | Default model | Chunk | Parallel |
 | --- | --- | --- | --- | --- |
 | `google` | `https://generativelanguage.googleapis.com/v1beta/openai` | `gemini-3.5-flash-lite` | 30000 | 2 (free tier: 15 requests/min) |
+| `deepseek` | `https://api.deepseek.com/v1` | `deepseek-chat` | 2400 | 2 |
+| `qwen` | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1` (Alibaba Cloud, Singapore) | `qwen-plus` | 2400 | 2 |
 | `nvidia-nim` | `https://integrate.api.nvidia.com/v1` | `deepseek-ai/deepseek-v4.1-flash` | 2400 | 2 |
 | `openrouter` | `https://openrouter.ai/api/v1` | `openrouter/auto` | 2400 | 2 |
 | `ollama` | `http://localhost:11434/v1` | `llama3.1:8b` | 2400 | 1 |
 | `llamacpp` | `http://localhost:8080/v1` | `local` | 2400 | 1 |
 
-Each value resolves as: a one-off request value → what is saved in the `settings` table → `.env` → the preset. The `.env` overrides (`AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`, `AI_EXTRA_BODY`) belong to the `.env` provider and are not used for any other provider you switch to. The model is never fixed: any id works, and the provider's list comes from `GET /api/settings/models`. Settings keys (the Settings screen arrives in Phase 7): `ai_provider`, and per provider `ai_model:<provider>`, `ai_base_url:<provider>`, `ai_api_key:<provider>`; plus `ai_concurrency`, `ai_chunk_tokens`, `ai_temperature`, `key_terms_max`, `summary_length` (`short`/`detailed`). Switching provider brings back that provider's last model and key. **A backup export (Phase 7) must leave `ai_api_key:*` out.**
+Each value resolves as: a one-off request value → what is saved in the `settings` table → `.env` → the preset. The `.env` overrides (`AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`, `AI_EXTRA_BODY`) belong to the `.env` provider and are not used for any other provider you switch to. The model is never fixed: any id works, and the provider's list comes from `GET /api/settings/models`. Settings keys (set in Admin › AI and study settings): `ai_provider`, and per provider `ai_model:<provider>`, `ai_base_url:<provider>`, `ai_api_key:<provider>`; plus `ai_concurrency`, `ai_chunk_tokens`, `ai_temperature`, `key_terms_max`, `summary_length` (`short`/`detailed`). Switching provider brings back that provider's last model and key. A backup (Admin › Download backup) leaves every `ai_api_key:*` out, and students' own keys too.
 
 ## Running a study session (shared host, phones on Wi-Fi)
 
@@ -58,10 +62,16 @@ Each value resolves as: a one-off request value → what is saved in the `settin
    - **Lessons**: upload every lesson and wait until it is ready; the last step makes the quiz answer options, so students never wait on the AI when they start a quiz (if that step fails the lesson is still usable; use **Retry quiz answers** on its row). Students cannot upload, retry, delete or make cards. A lesson that participants (other than P00) have answered or logged study time on cannot be deleted; the app tells you how many records it would remove.
    - **Participants**: add the codes, e.g. `P01-P10`. Students can only type a code that is on this list; P00 (made by the Phase 6 migration) holds your own earlier test data.
    - **Research export**: `Download all (zip)` or single CSVs; tick **Include P00** to include your test data. `README.txt` in the zip explains every column.
+   - **AI and study settings**: the Default AI (provider, key, model; the model list shows chat models only; **Test connection** tries it before you save), **New flashcards per day** (default 20), and **Allow students to use their own API key** (off by default).
+   - **Prepare simpler and Taglish** on each lesson row (after processing): makes the Explain simpler and Filipino/Taglish version of every section with the Default ahead of time, within the 15 requests/min limit, with progress on the row. Then study day needs no live AI calls (unless a student uses their own key).
+   - **Backup**: **Download backup** saves `studyrevr-backup-YYYY-MM-DD-HHMM.db` (Manila time), a copy of the whole database made while the app runs, without any API key or the PIN; "Last backup" shows when you last did it.
 4. Each student opens the address on their phone and types their code. The code stays on that phone until **Settings › Switch participant**. The header shows the code in use.
-5. Withdrawal: on the host, `npm run participant:delete -- P07` shows what will be deleted and asks you to type the code again; it deletes everything recorded for that participant (shared lessons stay) and rewrites the database file so nothing can be read back. Add `--yes` to skip the question.
+5. Withdrawal: on the host, `npm run participant:delete -- P07` shows what will be deleted and asks you to type the code again; it deletes everything recorded for that participant, their own AI key included (shared lessons stay), and rewrites the database file so nothing can be read back. Add `--yes` to skip the question.
+6. Restore a backup: stop the server, then `npm run restore -- studyrevr-backup-2026-10-06-1430.db`. It refuses while the server runs, checks the file, asks you to type `RESTORE`, keeps the current database as `pre-restore-<time>.db` next to it, and brings the backup up to date. Afterwards enter the API key again in Admin (backups hold no keys) and check `ADMIN_PIN` in `.env`.
 
-**What is logged, per participant:** flashcard schedule and every answer (Again/Hard/Good/Easy), quiz attempts and every answer (abandoned attempts and retakes included and marked), Review-tab position, study sessions (reading / flashcards / quiz) with active time, and self-monitoring events (Stats views, quiz retakes, "Review these flashcards" taps, "Explain simpler" and "Filipino/Taglish" taps). Active time stops when the app goes to the background and a session ends after 5 minutes without a tap, scroll or key press. Days follow the flashcard study day: 04:00 to 04:00 Asia/Manila. The export never contains names, settings or API keys.
+**Students' own AI keys (optional):** with the admin switch on, Settings shows "AI for Explain simpler and Filipino/Taglish": **Default** or **Use your own key** (Google, DeepSeek, Qwen, NVIDIA NIM or OpenRouter, a pasted key, and a chat model from the provider's list). **Test key** sends one tiny request and saves the key only if it works; the key is stored on the host under the participant code, shown back only as its last 4 characters, never exported or backed up, and removed by **Remove my key** or `participant:delete`. A student's key is used only for their own Explain simpler and Filipino/Taglish taps; lessons are always prepared with the Default.
+
+**What is logged, per participant:** flashcard schedule and every answer (Again/Hard/Good/Easy), quiz attempts and every answer (abandoned attempts and retakes included and marked), Review-tab position, study sessions (reading / flashcards / quiz) with active time, self-monitoring events (Stats views, quiz retakes, "Review these flashcards" taps, "Explain simpler" and "Filipino/Taglish" taps), and every live AI request for a rewrite (`ai_calls.csv`: which source, provider and model answered and how many fallbacks it took). Active time stops when the app goes to the background and a session ends after 5 minutes without a tap, scroll or key press. Days follow the flashcard study day: 04:00 to 04:00 Asia/Manila. The export never contains names, settings or API keys (yours or students').
 
 The Stats tab shows each student their own study time this week (reading / flashcards / quiz), cards reviewed and % Good or Easy, first and best quiz score per lesson, and cards due tomorrow. In admin, tap a code to see that participant's Stats (this is not logged as their view).
 
@@ -75,6 +85,11 @@ curl http://localhost:3001/api/participants/P01                                 
 curl -H "x-participant: P01" http://localhost:3001/api/stats                       # the Stats tab's numbers
 curl -H "x-admin-pin: $PIN" -o export.zip http://localhost:3001/api/admin/export.zip   # ?include_p00=1 to include P00
 curl -H "x-admin-pin: $PIN" http://localhost:3001/api/admin/export/summary.csv
+curl -H "x-admin-pin: $PIN" -OJ http://localhost:3001/api/admin/backup             # studyrevr-backup-YYYY-MM-DD-HHMM.db, no keys or PIN
+curl -H "x-admin-pin: $PIN" http://localhost:3001/api/settings                      # { flashcard_new_per_day, allow_student_keys } (PUT to change)
+curl -H "x-participant: P01" http://localhost:3001/api/my-ai                        # the student's AI choice (allowed, default, key: { provider, model, last4 } | null)
+curl -H "x-participant: P01" -X POST http://localhost:3001/api/my-ai/key -H 'content-type: application/json' \
+     -d '{"provider":"deepseek","model":"deepseek-chat","apiKey":"..."}'           # Test key: saved only if a tiny request works
 ```
 
 ```bash
@@ -100,7 +115,7 @@ curl -H "x-admin-pin: $PIN" -X POST http://localhost:3001/api/lessons/1/retry   
 
 `status` is `processing`, `ready` or `failed`; `job.stage` is `sections`, `key_points`, `key_terms` or `done`; `progress.done` counts finished AI calls in the current stage. A job still running when the server stops is marked failed on the next start and can be retried.
 
-Provider and model (backend only; the Settings screen arrives in Phase 7). API keys go in and never come out: responses only say `keySet: true/false`.
+Provider and model (Admin › AI and study settings uses these). API keys go in and never come out: responses only say `keySet: true/false`.
 
 ```bash
 curl -H "x-admin-pin: $PIN" http://localhost:3001/api/settings/ai                    # active provider, each provider's model / base URL, keySet flags
@@ -123,13 +138,14 @@ npm run pipeline -- lesson.pdf --summary=short --chunk-tokens=1500 --concurrency
 ### Review endpoints
 
 ```bash
-curl -X POST http://localhost:3001/api/sections/1/simplify    # { section_id, kind, version: { text, example }, cached }
-curl -X POST http://localhost:3001/api/sections/1/translate   # { ..., version: { title, content, check_questions } }
+curl -H "x-participant: P01" -X POST http://localhost:3001/api/sections/1/simplify    # { section_id, kind, version: { text, example }, cached, shared, answered_by, fallback }
+curl -H "x-participant: P01" -X POST http://localhost:3001/api/sections/1/translate   # { ..., version: { title, content, check_questions } }
+curl -H "x-admin-pin: $PIN" -X POST http://localhost:3001/api/lessons/1/section-versions   # Prepare: make every missing version now (202; progress on GET /api/lessons)
 curl -H "x-participant: P01" -X PUT http://localhost:3001/api/lessons/1/review-progress -H 'content-type: application/json'      -d '{"last_section":2,"completed_sections":[0,1]}'      # 0-based indices into the lesson's sections
 curl -H "x-participant: P01" http://localhost:3001/api/lessons/1/review-progress      # { review_progress: { last_section, completed_sections, updated_at } | null }
 ```
 
-`simplify` and `translate` call the active AI provider once per section and kind, save the result in the `sections` row (`simple_version`, `filipino_version`, as JSON) and answer from that cache afterwards; two taps at the same time share one call. `simplify` gives a plain-words rewrite plus an everyday example; `translate` gives natural Filipino/Taglish for the title, content and quick-check questions, keeping the lesson's key terms in English with the Filipino meaning in parentheses. The stored summary is never changed. `GET /api/lessons/:id` returns both versions (or `null`) on each section, the saved `review_progress`, and where each section came from: `lesson.source` (`{ kind, total, numbers }`, the real slide / page / paragraph number of each block of `raw_text`; `null` for lessons uploaded before this was recorded) and `sections[].sources` (the slide / page numbers the section was written from, checked against the file's real count; `null` when unknown, and Original text then falls back to an approximate match).
+`simplify` and `translate` answer from the shared version saved in the `sections` row (`simple_version`, `filipino_version`, as JSON) when there is one. Otherwise they make it live, through a fallback chain, one try per step with no retry waits: the student's own key (if admin allows it and they saved one) → the app's Default → `gemma-4-26b-a4b-it` on the admin's Google key → an error with "Try again". Only the Default's answer is saved as the shared version (two taps at the same time share one call); answers from a student's key or from Gemma are shown to that student only, so the next request tries the Default again. A step falls back only on a rate limit, timeout, network error or 5xx (the student's key also on a rejected key or no credit), never on a bad request; an answer that came from a fallback carries a short note ("Your key didn't work, so the default AI answered."). Every live request is logged in `ai_calls`. `simplify` gives a plain-words rewrite plus an everyday example; `translate` gives natural Filipino/Taglish for the title, content and quick-check questions, keeping the lesson's key terms in English with the Filipino meaning in parentheses. The stored summary is never changed. `GET /api/lessons/:id` returns both versions (or `null`) on each section, the saved `review_progress`, and where each section came from: `lesson.source` (`{ kind, total, numbers }`, the real slide / page / paragraph number of each block of `raw_text`; `null` for lessons uploaded before this was recorded) and `sections[].sources` (the slide / page numbers the section was written from, checked against the file's real count; `null` when unknown, and Original text then falls back to an approximate match).
 
 Errors are always JSON: `{ "error": { "message": "..." } }`. A failing AI provider gets a message that says what to change (wrong model, wrong API key, rate limited, too slow); the provider's own reply is written to the server log with keys removed.
 
@@ -139,7 +155,7 @@ The last pipeline stage makes the lesson's cards: **term → definition** cards 
 
 Scheduling is Anki's SM-2 (`server/src/flashcards/scheduler.js`, a pure module tested with a fake clock): learning steps `1m 10m`, graduating interval 1 day, easy interval 4 days, starting ease 2.5, easy bonus 1.3, hard interval 1.2, relearning step 10m, lapse new interval 0 (so 1 day), max interval 36500 days, at most 20 new cards and 200 reviews a day across all lessons. The study day starts at 04:00 Asia/Manila. Intervals get Anki's fuzz from a seeded generator, so the interval printed on each button is exactly what the card gets. Every answer writes a `flashcard_reviews` row (button, previous / new interval, ease, time on the card in ms, timestamp, state before the answer, and a snapshot used by Undo).
 
-Settings rows (Settings screen in Phase 7): `flashcard_new_per_day` (20), `flashcard_reviews_per_day` (200), `flashcard_learning_steps` (`1m 10m`), `flashcards_max` (30); optional overrides `flashcard_graduating_interval`, `flashcard_easy_interval`, `flashcard_starting_ease`, `flashcard_easy_bonus`, `flashcard_hard_interval`, `flashcard_relearning_steps`, `flashcard_lapse_interval`, `flashcard_min_interval`, `flashcard_max_interval`, `study_timezone`.
+Settings rows: `flashcard_new_per_day` (20, editable in Admin), `flashcard_reviews_per_day` (200), `flashcard_learning_steps` (`1m 10m`), `flashcards_max` (30); optional overrides `flashcard_graduating_interval`, `flashcard_easy_interval`, `flashcard_starting_ease`, `flashcard_easy_bonus`, `flashcard_hard_interval`, `flashcard_relearning_steps`, `flashcard_lapse_interval`, `flashcard_min_interval`, `flashcard_max_interval`, `study_timezone`.
 
 ```bash
 curl -H "x-participant: P01" http://localhost:3001/api/flashcards/decks                    # every lesson's New / Learning / Due counts, plus "All lessons"
@@ -151,7 +167,7 @@ curl -H "x-participant: P01" -X POST http://localhost:3001/api/flashcards/review
 curl -H "x-admin-pin: $PIN" -X POST http://localhost:3001/api/lessons/1/flashcards/generate   # make cards for a lesson that has none
 ```
 
-In the app: Space flips the card, 1–4 answer, U or Ctrl+Z undoes.
+In the app: Space flips the card, 1–4 answer, U or Ctrl+Z undoes. The server refuses (409 `not_due`) an answer to a review card that isn't due yet, so a card can't be reviewed early through the API or from a second tab.
 
 ### Mock Quiz
 
