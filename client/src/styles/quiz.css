@@ -125,12 +125,6 @@
   display: block;
   font-weight: 400;
 }
-.quiz-q__label {
-  color: var(--ink-2);
-  font-family: var(--font-ui);
-  font-size: 0.9375rem;
-  font-weight: 650;
-}
 
 .quiz-opts {
   display: flex;

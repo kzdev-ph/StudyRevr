@@ -21,14 +21,29 @@ export function quizKeyAction(event, { phase, optionCount = 0 }) {
 
 // The small line above a question, telling the student what kind of question it is.
 export function questionLead(q) {
-  if (q.type === 'tf') return q.kind === 'term' ? 'True or false?' : 'Is this answer true or false?';
+  if (q.type === 'tf') return 'Yes or no?';
   return q.kind === 'term' ? 'Which term matches this description?' : 'Choose the best answer';
+}
+
+// A true / false question is shown as a Yes / No question; the server still stores and exports it as True / False
+// (choices, chosen_answer, right_answer). Term: "Does this describe [term]?"; concept: "Is this the right answer to
+// [question]?" -> { before, subject, after }, with the statement shown under it.
+export function yesNoAsk(q) {
+  if (q.kind === 'term') return { before: 'Does this describe', subject: q.question, after: '?' };
+  return { before: 'Is this the right answer to', subject: String(q.question).replace(/[?\s]+$/, ''), after: '?' };
+}
+
+// "True" / "False" as the student sees them on a true / false question; any other text is left as it is.
+export function yesNo(q, text) {
+  if (q.type !== 'tf') return text;
+  return text === 'True' ? 'Yes' : text === 'False' ? 'No' : text;
 }
 
 // The whole question in one sentence, for screen readers and the results list.
 export function questionText(q) {
   if (q.type !== 'tf') return q.question;
-  return q.kind === 'term' ? `${q.question} means: ${q.statement}` : `${q.question} Suggested answer: ${q.statement}`;
+  const { before, subject, after } = yesNoAsk(q);
+  return `${before} ${subject}${after} “${q.statement}”`;
 }
 
 export const percent = (score, total) => (total ? Math.round((score / total) * 100) : 0);
