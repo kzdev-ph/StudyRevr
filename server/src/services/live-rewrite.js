@@ -105,12 +105,13 @@ export function rewriteSteps({ db, ai, envAi, section, kind, participant, shared
   return steps;
 }
 
-// What a student sees when no step answered. The last step's outage becomes a short "try again" message; any other
-// error (a bad request, an unusable reply) keeps its own message.
+// What a student sees when no step answered: a rate limit says the AI is busy, anything else (an outage, a retired
+// model, a rejected key, an unusable reply) is the same plain "try again". A student can't fix any of those, so the
+// message never mentions Settings or the provider's own wording; the real reason is in ai_calls.error_code and
+// fallback_reasons, which admin sees (services/ai-problems.js).
 function finalError(error) {
   if (error?.code === 'rate_limit') return new AiError('ai_busy', 'The AI is busy, try again in a minute.', 503);
-  if (OUTAGE.has(error?.code)) return new AiError('ai_unavailable', 'The AI couldn’t answer right now. Try again in a minute.', 503);
-  return error;
+  return new AiError('ai_unavailable', 'The AI couldn’t answer right now. Try again in a minute.', 503);
 }
 
 export function logAiCall(db, row, { now, config }) {
@@ -147,7 +148,9 @@ export async function liveRewrite({ db, ai, envAi, section, kind, participant, s
       source: answered?.source ?? null,
       provider: last.provider,
       model: last.model,
-      fallback_steps: result.ok ? result.steps : result.failures.length,
+      // how many times the request moved on to the next step: the failed steps before the answer or, when nothing
+      // answered, the steps tried after the first (a 404 on the only step tried is 0)
+      fallback_steps: result.ok ? result.steps : result.failures.length - 1,
       fallback_reasons: reasons,
       from_cache: answered?.fromCache ? 1 : 0,
       saved_shared: savedShared ? 1 : 0,

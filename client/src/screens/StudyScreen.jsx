@@ -112,8 +112,9 @@ export default function StudyScreen({ deck }) {
         countAnswer();
         take(next);
       } catch (err) {
-        // the card was already answered elsewhere (another tab) and isn't due any more: just move on to the next one
-        if (err.code === 'not_due') await load();
+        // the card was already answered elsewhere (another tab) and isn't due any more, or that tab used up the day's new
+        // cards: just reload the deck, which no longer offers it
+        if (err.code === 'not_due' || err.code === 'new_limit') await load();
         else setError(err.message);
       } finally {
         setBusy(false);

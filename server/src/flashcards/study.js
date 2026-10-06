@@ -82,15 +82,24 @@ const saveProgress = (db, participantId, cardId, fields) =>
 // rule in buildQueue). Before then, an answer would be an early review, which the app never offers.
 export const isEarlyReview = (card, { now, config }) => card.state === REVIEW && card.due_at !== null && Date.parse(card.due_at) >= studyDay(now, config).end.getTime();
 
-// Applies one answer to this participant's schedule and writes their review-log row in one transaction. An answer to a
-// review card that isn't due yet (sent outside the study screen, or from a second tab after the first answered it)
-// is refused with 409 not_due, so it can't move the schedule or count in the planning metric.
+// A new card is only offered while the day's new-card budget (one for all lessons) has room; an answer to one beyond it
+// would be a card the study screen never showed. doneToday counts a new card once, at its first answer.
+export const isOverNewLimit = (card, { done, config }) => card.state === NEW && done.newCards >= config.newPerDay;
+
+// Applies one answer to this participant's schedule and writes their review-log row in one transaction. Two answers are
+// refused, so a request sent outside the study screen (or from a second tab after the first used up the day) can't do what
+// the screen would never offer: a review card that isn't due yet (409 not_due: it would move the schedule and count in
+// the planning metric) and a new card beyond the day's new-card limit (409 new_limit: it would break the daily limit).
+// Nothing is saved when refused. Undo gives the budget back, so an undone new card can be answered again.
 // -> { review_id, card }
 export function recordAnswer(db, { participantId, cardId, rating, timeMs = 0, now, config }) {
   return db.transaction(() => {
     const card = db.prepare(`SELECT ${CARD_COLUMNS} FROM ${CARD_FROM} WHERE f.id = @cardId`).get({ cardId, participantId });
     if (!card) throw new HttpError(404, 'Flashcard not found.');
     if (isEarlyReview(card, { now, config })) throw new HttpError(409, 'This card isn’t due yet.', { code: 'not_due', due_at: card.due_at });
+    if (isOverNewLimit(card, { done: doneToday(db, studyDay(now, config).start, participantId), config })) {
+      throw new HttpError(409, 'You’ve done today’s new flashcards.', { code: 'new_limit', new_per_day: config.newPerDay });
+    }
     const result = answer(card, rating, { now, config });
     const next = result.card;
     saveProgress(db, participantId, card.id, next);

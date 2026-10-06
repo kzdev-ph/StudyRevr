@@ -32,22 +32,37 @@ export function describeStudentKey(row) {
 
 export function saveStudentKey(db, participantId, { provider, model, apiKey }, now) {
   const at = now.toISOString();
+  const replacing = db.prepare('SELECT 1 FROM participant_ai_keys WHERE participant_id = ?').get(participantId) !== undefined;
+  if (replacing) db.pragma('secure_delete = ON'); // the old key is overwritten, not left in the page
   db.prepare(
     `INSERT INTO participant_ai_keys (participant_id, provider, model, api_key, key_last4, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (participant_id) DO UPDATE SET provider = excluded.provider, model = excluded.model, api_key = excluded.api_key,
        key_last4 = excluded.key_last4, updated_at = excluded.updated_at`,
   ).run(participantId, provider, model, apiKey, apiKey.slice(-4), at, at);
+  if (replacing) wipeDeletedKeys(db); // a replaced key is a deleted key too
+}
+
+// After a key is deleted: overwrite the freed space (secure_delete) and empty the write-ahead log. In WAL mode the old page
+// holding the key stays readable in the -wal file until a checkpoint copies the new page over it, so a plain DELETE is not
+// enough. TRUNCATE also shrinks the -wal file to nothing. (It waits for no one: if a reader holds the log open it can't
+// finish, and the next checkpoint does it.) Used by every way a key is deleted, and by participant:delete.
+export function wipeDeletedKeys(db) {
+  db.pragma('wal_checkpoint(TRUNCATE)');
 }
 
 export function deleteStudentKey(db, participantId) {
   db.pragma('secure_delete = ON'); // the key is overwritten in the file, not just unlinked
-  return db.prepare('DELETE FROM participant_ai_keys WHERE participant_id = ?').run(participantId).changes > 0;
+  const deleted = db.prepare('DELETE FROM participant_ai_keys WHERE participant_id = ?').run(participantId).changes > 0;
+  if (deleted) wipeDeletedKeys(db);
+  return deleted;
 }
 
 // For after the study: removes every saved student key (admin). -> how many were deleted
 export function deleteAllStudentKeys(db) {
   db.pragma('secure_delete = ON'); // the keys are overwritten in the file, not just unlinked
-  return db.prepare('DELETE FROM participant_ai_keys').run().changes;
+  const deleted = db.prepare('DELETE FROM participant_ai_keys').run().changes;
+  if (deleted) wipeDeletedKeys(db);
+  return deleted;
 }
 
 // The AI client config for a student's key: the preset's fixed base URL (a student can't point the server elsewhere).

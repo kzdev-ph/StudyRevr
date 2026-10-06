@@ -12,6 +12,7 @@ function DefaultAi() {
   const [models, setModels] = useState(null); // null while loading; [] when the provider lists none
   const [busy, setBusy] = useState(null); // 'test' | 'save'
   const [result, setResult] = useState(null); // { ok, text }
+  const [problems, setProblems] = useState([]); // the Default's recent failures that settings can fix (students only see "try again")
 
   const load = useCallback(async (signal) => {
     try {
@@ -40,6 +41,16 @@ function DefaultAi() {
       .catch((err) => err.name !== 'AbortError' && setModels([]));
     return () => controller.abort();
   }, [provider, settings]);
+
+  // re-read after every save: a fixed Default stops adding to the 24-hour count, but the list says what happened
+  useEffect(() => {
+    const controller = new AbortController();
+    api
+      .aiProblems(controller.signal)
+      .then((data) => setProblems(data.problems))
+      .catch(() => {});
+    return () => controller.abort();
+  }, [settings]);
 
   if (!settings) return result ? <Notice>{result.text}</Notice> : <p className="muted">Loading the AI settings…</p>;
   const current = settings.providers.find((p) => p.id === provider);
@@ -84,6 +95,17 @@ function DefaultAi() {
     <form className="stack stack--tight" onSubmit={save}>
       <h3 className="admin-sub">Default AI</h3>
       <p className="muted">Used to prepare every lesson and for Explain simpler and Filipino/Taglish. Lesson processing never falls back to another model.</p>
+      {problems.length > 0 && (
+        <div className="stack stack--tight" role="group" aria-label="Recent problems with the Default AI">
+          {problems.map((p) => (
+            <Notice key={p.code} tone="warn">
+              {p.message} In the last 24 hours this happened {p.count} time{p.count === 1 ? '' : 's'}
+              {p.answered_by_backup ? `; the backup AI answered ${p.answered_by_backup}` : ''}
+              {p.failed ? `; ${p.failed} request${p.failed === 1 ? '' : 's'} got “try again”` : ''}.
+            </Notice>
+          ))}
+        </div>
+      )}
       <label className="field">
         <span className="field__label">Provider</span>
         <select className="field__input" value={provider} onChange={(e) => choose(e.target.value)}>

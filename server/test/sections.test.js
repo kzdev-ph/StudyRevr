@@ -126,8 +126,8 @@ describe('section rewrites and review progress', () => {
     it('surfaces an AI failure as a clear error and caches nothing', async () => {
       await start(() => ({ nonsense: true }));
       const bad = await send('POST', `/api/sections/${sectionIds[0]}/simplify`);
-      assert.equal(bad.status, 502);
-      assert.match(bad.body.error.message, /usable JSON/);
+      assert.equal(bad.status, 503);
+      assert.equal(bad.body.error.message, 'The AI couldn’t answer right now. Try again in a minute.');
       assert.equal(db.prepare('SELECT simple_version FROM sections WHERE id = ?').get(sectionIds[0]).simple_version, null);
     });
 
@@ -172,7 +172,7 @@ describe('section rewrites and review progress', () => {
     it('rejects a translation that drops a quick-check question', async () => {
       await start(() => ({ ...translateReply(), check_questions: [{ question: 'Ano?', answer: 'Isa lang.' }] }));
       const res = await send('POST', `/api/sections/${sectionIds[0]}/translate`);
-      assert.equal(res.status, 502);
+      assert.equal(res.status, 503);
       assert.equal(db.prepare('SELECT filipino_version FROM sections WHERE id = ?').get(sectionIds[0]).filipino_version, null);
     });
   });

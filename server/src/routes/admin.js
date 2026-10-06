@@ -6,6 +6,7 @@ import { loadSchedulerConfig } from '../flashcards/config.js';
 import { HttpError } from '../middleware/errors.js';
 import { lastBackup, logAdminEvent, makeBackup, removeTemp } from '../services/backup.js';
 import { addParticipants, findParticipant, parseCodeList, UNKNOWN_CODE } from '../participants/codes.js';
+import { defaultAiProblems } from '../services/ai-problems.js';
 import { deleteAllStudentKeys } from '../services/student-ai.js';
 import { participantStats, summaryTable } from '../stats/participant.js';
 
@@ -80,6 +81,9 @@ export function adminRouter({ db, clock = () => new Date(), requireAdmin }) {
     logAdminEvent(db, 'student_keys_deleted', String(deleted), clock());
     res.json({ deleted });
   });
+
+  // Why the Default AI failed for students in the last 24 hours (students only see "try again"): { problems: [...] }
+  router.get('/ai-problems', (_req, res) => res.json({ problems: defaultAiProblems(db, clock()) }));
 
   // When the last backup was downloaded: { last: { file, created_at } | null }
   router.get('/backup/last', (_req, res) => res.json({ last: lastBackup(db) }));

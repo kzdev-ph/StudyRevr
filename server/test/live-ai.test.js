@@ -50,12 +50,12 @@ describe('runChain and the fallback note', () => {
     assert.equal(stop.ok, false, 'anything else stops the chain');
   });
 
-  it('the Default also falls back to Gemma on an unusable reply, but not on a bad request or key', async () => {
-    for (const code of ['invalid_json', 'bad_response']) {
+  it('the Default also falls back to Gemma on an unusable reply or an unknown model, but not on a bad request or key', async () => {
+    for (const code of ['invalid_json', 'bad_response', 'not_found']) {
       const r = await runChain([step('default', code, DEFAULT_FALLBACK), step('gemma', { v: 1 })]);
       assert.deepEqual([r.ok, r.step.source], [true, 'gemma'], code);
     }
-    for (const code of ['bad_request', 'auth', 'no_credit', 'not_found']) {
+    for (const code of ['bad_request', 'auth', 'no_credit']) {
       assert.equal((await runChain([step('default', code, DEFAULT_FALLBACK), step('gemma', { v: 1 })])).ok, false, code);
     }
   });
@@ -252,16 +252,87 @@ describe('live rewrites through the fallback chain', () => {
     assert.equal(res.body.error.message, 'The AI is busy, try again in a minute.');
     assert.equal(calls.length, 2);
     const [row] = aiCalls();
-    assert.deepEqual([row.outcome, row.source, row.error_code, row.fallback_steps], ['failed', null, 'rate_limit', 2]);
+    assert.deepEqual([row.outcome, row.source, row.error_code, row.fallback_steps], ['failed', null, 'rate_limit', 1], 'Default failed, then one fallback (Gemma) was tried');
   });
 
-  it('a bad request does not fall back', async () => {
+  it('a bad request does not fall back, and the student gets plain copy that does not mention Settings', async () => {
     respond = () => failure(400, { error: { message: 'Invalid argument' } });
     const res = await simplify();
-    assert.equal(res.status, 502);
+    assert.deepEqual([res.status, res.body.error.code, res.body.error.message], [503, 'ai_unavailable', 'The AI couldn’t answer right now. Try again in a minute.']);
     // (the client resends once without response_format, as for any 400; Gemma is never asked)
     assert.ok(calls.every((c) => c.model === PRESETS.google.model));
-    assert.equal(aiCalls()[0].error_code, 'bad_request');
+    const [row] = aiCalls();
+    assert.deepEqual([row.error_code, row.fallback_steps, row.fallback_reasons], ['bad_request', 0, 'default:bad_request'], 'no fallback was tried');
+  });
+
+  it('a retired Default model (404) falls back to Gemma; the student is not told anything about Settings', async () => {
+    respond = (model) => (model === GEMMA_MODEL ? completion(simpleJson('From gemma.')) : failure(404, { error: { message: 'model not found' } }));
+    const res = await simplify();
+    assert.deepEqual([res.status, res.body.answered_by.source, res.body.version.text], [200, 'gemma', 'From gemma.']);
+    assert.equal(res.body.fallback.note, 'The main AI was busy, so a backup AI answered.');
+    const [row] = aiCalls();
+    assert.deepEqual([row.fallback_steps, row.fallback_reasons], [1, 'default:not_found']);
+  });
+
+  it('when the backup fails too, every failure gives the same plain message and never mentions Settings', async () => {
+    const cases = [
+      [404, 'not_found'], [401, 'auth'], [402, 'no_credit'], [400, 'bad_request'], [500, 'provider_error'],
+    ];
+    for (const [status, code] of cases) {
+      t.db.prepare('DELETE FROM ai_calls').run();
+      respond = () => failure(status, { error: { message: 'x' } });
+      const res = await simplify();
+      assert.equal(res.status, 503, code);
+      assert.equal(res.body.error.message, 'The AI couldn’t answer right now. Try again in a minute.', code);
+      assert.doesNotMatch(JSON.stringify(res.body), /Settings|API key|model/i, code);
+      assert.equal(aiCalls()[0].error_code, code, code);
+    }
+    // no API key at all (not_configured): the same message, not "enter the key in Settings"; nothing falls back
+    t.db.prepare('DELETE FROM ai_calls').run();
+    t.db.prepare("INSERT INTO settings (key, value) VALUES ('ai_provider', 'deepseek') ON CONFLICT (key) DO UPDATE SET value = excluded.value").run();
+    const unset = await simplify();
+    assert.deepEqual([unset.status, unset.body.error.message], [503, 'The AI couldn’t answer right now. Try again in a minute.']);
+    assert.deepEqual([aiCalls()[0].error_code, aiCalls()[0].fallback_steps], ['not_configured', 0]);
+  });
+
+  it('an unknown model on both Default and Gemma: the last failure is recorded as not_found with one fallback tried', async () => {
+    respond = () => failure(404, {});
+    const res = await simplify();
+    assert.equal(res.status, 503);
+    const [row] = aiCalls();
+    assert.deepEqual([row.error_code, row.fallback_steps, row.fallback_reasons], ['not_found', 1, 'default:not_found;gemma:not_found']);
+  });
+
+  describe('admin sees the real reason', () => {
+    it('GET /api/admin/ai-problems lists the Default’s model and key problems from the last 24 hours', async () => {
+      respond = (model) => (model === GEMMA_MODEL ? completion(simpleJson('From gemma.')) : failure(404, {}));
+      await simplify('P01');
+      t.db.prepare('UPDATE sections SET simple_version = NULL WHERE id = ?').run(sectionId);
+      respond = () => failure(404, {});
+      await simplify('P02');
+      const res = await t.call('GET', '/api/admin/ai-problems', { as: null, pin: TEST_PIN });
+      assert.equal(res.status, 200);
+      assert.equal(res.body.problems.length, 1);
+      const [p] = res.body.problems;
+      assert.deepEqual([p.code, p.count, p.answered_by_backup, p.failed], ['not_found', 2, 1, 1]);
+      assert.match(p.message, /doesn’t know the Default model/);
+      assert.equal((await t.call('GET', '/api/admin/ai-problems', { as: null })).status, 401, 'needs the PIN');
+    });
+
+    it('an outage (busy, timeout, 5xx) is not a settings problem; old rows do not count', async () => {
+      respond = (model) => (model === GEMMA_MODEL ? completion(simpleJson()) : failure(429, {}));
+      await simplify();
+      t.db.prepare("INSERT INTO ai_calls (kind, outcome, fallback_steps, fallback_reasons, created_at, study_date) VALUES ('simplify', 'failed', 0, 'default:not_found', '2026-10-01T00:00:00.000Z', '2026-10-01')").run();
+      const res = await t.call('GET', '/api/admin/ai-problems', { as: null, pin: TEST_PIN });
+      assert.deepEqual(res.body.problems, []);
+    });
+  });
+
+  it('the codebook lists every reason that can appear', async () => {
+    const { CODEBOOK } = await import('../src/export/codebook.js');
+    const text = CODEBOOK({ now: new Date(), includeP00: false, lessons: [] });
+    const reasons = new Set([...STUDENT_FALLBACK, ...DEFAULT_FALLBACK, 'not_configured', 'error']);
+    for (const code of reasons) assert.match(text, new RegExp(`^ {25}${code} `, 'm'), code);
   });
 
   it("a student's own key answers first; its answer is theirs only and not cached", async () => {
