@@ -8,8 +8,10 @@
 // OPENROUTER_API_KEY), and optionally AI_MODEL, AI_CONCURRENCY, AI_CHUNK_TOKENS, AI_EXTRA_BODY. The key is never printed.
 import fs from 'node:fs';
 import path from 'node:path';
+import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { createAiClient, describeAttempt } from '../src/ai/client.js';
 import { chunkLesson } from '../src/ai/chunk.js';
+import { installNetLog } from '../src/ai/netlog.js';
 import { loadConfig, ROOT_DIR } from '../src/config.js';
 import { openDb, runMigrations } from '../src/db/index.js';
 import { assertSignature, fileExtension } from '../src/middleware/upload.js';
@@ -79,10 +81,26 @@ queueJob(db, lessonId);
 
 const started = Date.now();
 const secondsSince = (t) => ((Date.now() - t) / 1000).toFixed(1);
+const stamp = (line) => console.error(`  [+${secondsSince(started)}s] ${line}`);
+
+// Every HTTP request the process makes, from any code, not only the AI client's (installed before the client is made,
+// since the client keeps the fetch it was created with). The totals are compared with the client's own count below.
+const net = installNetLog({ log: stamp });
+
+// Work that blocks the event loop (a slow regex, a huge loop) delays everything without any request. Report stalls.
+const loopDelay = monitorEventLoopDelay({ resolution: 20 });
+loopDelay.enable();
+let lastTick = Date.now();
+setInterval(() => {
+  const late = Date.now() - lastTick - 1000;
+  if (late > 2000) stamp(`[loop] the event loop was blocked for ${(late / 1000).toFixed(1)}s`);
+  lastTick = Date.now();
+}, 1000).unref();
+
 const client = createAiClient({
   getConfig: () => resolveAiConfig(db, config.ai),
   // every HTTP attempt, as it happens: a hung request shows as a "start" with no end until its timeout
-  onAttempt: (e) => console.error(`  [+${secondsSince(started)}s] ${describeAttempt(e)}`),
+  onAttempt: (e) => stamp(describeAttempt(e)),
 });
 const callTimes = [];
 const timed = {
@@ -105,7 +123,9 @@ const timed = {
 
 console.error('Running pipeline...');
 const onStage = ({ stage, event }) => console.error(`[${event === 'start' ? 'start' : 'end  '} +${secondsSince(started)}s] ${stage}`);
-await runPipeline({ db, ai: timed, lessonId, chunkTokens, concurrency, keyTermsMax: provider.keyTermsMax, onStage });
+const log = { info: stamp, warn: stamp, error: (...args) => console.error(...args) };
+await runPipeline({ db, ai: timed, lessonId, chunkTokens, concurrency, keyTermsMax: provider.keyTermsMax, onStage, log });
+loopDelay.disable();
 const seconds = secondsSince(started);
 
 const { lesson, job } = getJobStatus(db, lessonId);
@@ -141,4 +161,8 @@ console.log(`\nDone in ${seconds}s: ${calls} AI call(s) (avg ${avg}s each), ${pr
 console.log(`HTTP attempts: ${attempts}; failed: ${byReason(failedAttempts)}; retried: ${byReason(retries)} (${httpRetries} in all).`);
 console.log(`Retries: ${jsonRetries} invalid-JSON, ${httpRetries} timeout/rate-limit/server/network, ${truncated} cut-off replies.`);
 console.log(`Waited ${(throttledMs / 1000).toFixed(1)}s in all for the client-side request limit.`);
+const hosts = Object.entries(net.stats.byHost).map(([host, n]) => `${n} to ${host}`).join(', ') || 'none';
+console.log(`HTTP requests made by this process (any code): ${net.stats.requests} (${hosts}), ${net.stats.failed} without a reply.`);
+if (net.stats.requests !== attempts) console.log(`  MISMATCH: the AI client counted ${attempts} attempt(s); some requests bypassed it.`);
+console.log(`Event loop: longest stall ${(loopDelay.max / 1e9).toFixed(2)}s.`);
 console.log(`Structured output (response_format json_schema): sent on ${schemaSent} request(s), rejected by the provider on ${schemaRejected}.`);

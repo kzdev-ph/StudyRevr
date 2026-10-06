@@ -105,6 +105,13 @@ export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUN
           .all(lessonId)
           .map((s) => ({ ...s, sources: s.sources ? JSON.parse(s.sources) : null }));
         const onDrop = ({ front, reason }) => log.info?.(`[pipeline] lesson ${lessonId}: dropped flashcard "${front}" (${reason})`);
+        // Where the stage's time goes: the AI calls, the checks and de-duplication after them, and saving.
+        const started = Date.now();
+        let aiDone = started;
+        const onProgress = (p) => {
+          if (p.done === p.total) aiDone = Date.now();
+          progress(p);
+        };
         const cards = await generateFlashcards({
           ai,
           chunks,
@@ -114,12 +121,16 @@ export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUN
           wordCount: lesson.word_count,
           maxCards: flashcardsMax(db),
           concurrency,
-          onProgress: progress,
+          onProgress,
           onDrop,
         });
+        const checked = Date.now();
         const insert = db.prepare('INSERT INTO flashcards (lesson_id, kind, front, back, evidence, position) VALUES (?, ?, ?, ?, ?, ?)');
         db.transaction(() => cards.forEach((c, i) => insert.run(lessonId, c.kind, c.front, c.back, c.evidence, i + 1)))();
-        log.info?.(`[pipeline] lesson ${lessonId}: saved ${cards.length} flashcards`);
+        const secs = (ms) => `${(ms / 1000).toFixed(1)}s`;
+        log.info?.(
+          `[pipeline] lesson ${lessonId}: saved ${cards.length} flashcards (AI calls ${secs(aiDone - started)}, checks and de-duplication ${secs(checked - aiDone)}, saving ${secs(Date.now() - checked)})`,
+        );
       },
     },
   };

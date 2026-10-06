@@ -122,6 +122,8 @@ describe('pipeline', () => {
     const dropped = infos.filter((m) => m.includes('dropped key term'));
     assert.equal(dropped.length, 1);
     assert.match(dropped[0], /dropped key term "Chlorophyll" \(evidence not found in the lesson text\)/);
+    const saved = infos.find((m) => m.includes('flashcards ('));
+    assert.match(saved, /saved \d+ flashcards \(AI calls \d+\.\ds, checks and de-duplication \d+\.\ds, saving \d+\.\ds\)/, 'where the flashcards stage spent its time');
   });
 
   it('prompts use only-the-lesson-text and the Notes: rule, and send the lesson text', async () => {
