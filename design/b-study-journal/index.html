@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Direction B: Study journal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..800&family=Literata:opsz,wght@7..72,400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../shared/board.css">
+<link rel="stylesheet" href="b.css">
+</head>
+<body class="board">
+<!--SPRITE--><svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M3 5.5c3-1.3 6-1.3 9 .5 3-1.8 6-1.8 9-.5V19c-3-1.3-6-1.3-9 .5-3-1.8-6-1.8-9-.5z"/><path d="M12 6v13.5"/></symbol>
+    <symbol id="i-cards" viewBox="0 0 24 24"><rect x="3" y="7" width="13" height="13" rx="1.5"/><path d="M7 7V5.5A1.5 1.5 0 0 1 8.5 4h11A1.5 1.5 0 0 1 21 5.5v11a1.5 1.5 0 0 1-1.5 1.5H16"/></symbol>
+    <symbol id="i-quiz" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="1.5"/><path d="M9.6 9.3a2.5 2.5 0 1 1 3.4 2.3c-.7.3-1 .8-1 1.5v.4"/><path d="M12 16.6v.1"/></symbol>
+    <symbol id="i-stats" viewBox="0 0 24 24"><path d="M5 20v-6M10 20V8M15 20v-9M20 20V4"/><path d="M3 20.5h18"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M14.5 5.5 8 12l6.5 6.5"/></symbol>
+    <symbol id="i-next" viewBox="0 0 24 24"><path d="M9.5 5.5 16 12l-6.5 6.5"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5 10 17.5 19.5 7"/></symbol>
+    <symbol id="i-simpler" viewBox="0 0 24 24"><path d="M4 7h16M4 12h11M4 17h7"/></symbol>
+    <symbol id="i-lang" viewBox="0 0 24 24"><path d="M4 6h9M8.5 4v2M6 6c.6 3.4 2.8 6 6 7.5M11 6c-.6 3.3-2.8 6.3-6.5 8"/><path d="m12.5 20 4-9.5 4 9.5M14 17h5"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 3.5H7A1.5 1.5 0 0 0 5.5 5v14A1.5 1.5 0 0 0 7 20.5h10a1.5 1.5 0 0 0 1.5-1.5V8z"/><path d="M14 3.5V8h4.5M9 12.5h6M9 16h6"/></symbol>
+    <symbol id="logo-a" viewBox="0 0 24 24"><rect x="4" y="2.75" width="16.5" height="18.5" rx="1.25" fill="var(--sheet)" stroke="var(--ink)" stroke-width="1.6"/><path d="M8.25 3v18" stroke="var(--margin)" stroke-width="1.3"/><path d="M10.5 8.5h7.5M10.5 15.5h7.5" stroke="var(--rule-strong)" stroke-width="1.3"/><path d="M10 12.2c2.6-.5 5.4-.6 8.6-.3" stroke="var(--hi)" stroke-width="3.6" stroke-linecap="round"/><path d="M10.5 12h7.5" stroke="var(--ink)" stroke-width="1.4"/></symbol>
+  <symbol id="logo-b" viewBox="0 0 24 24"><rect x="3.25" y="2.75" width="17.5" height="18.5" rx="1.25" fill="var(--sheet)" stroke="var(--ink)" stroke-width="1.5"/><path d="M7.25 3v18" stroke="var(--margin)" stroke-width="1.4"/><path d="M10 17.2c2.8-.4 5.6-.4 8.4 0" stroke="var(--hi)" stroke-width="3.4" stroke-linecap="round"/><path d="M16.6 7.4c-.8-1-2-1.5-3.3-1.4-1.6.1-2.7 1.1-2.6 2.4.1 1.4 1.4 1.9 2.9 2.4 1.6.5 3 1.1 3 2.8 0 1.5-1.4 2.6-3.2 2.6-1.4 0-2.7-.6-3.5-1.7" fill="none" stroke="var(--ink)" stroke-width="1.7" stroke-linecap="round"/></symbol></defs>
+</svg>
+<!--/SPRITE-->
+
+<header class="board__head">
+  <h1>Direction B: Study journal with marginalia</h1>
+  <p>A clean page with a wide margin column, the way a student annotates a notebook. The number that matters is written large in the margin next to what it describes: cards due beside each deck, the answer keys beside quiz options, the section number beside the reading, the week's figures beside Stats. Rules sit only under list rows; the reading column stays plain. Ink is fountain-pen blue-black; the highlighter is a marker stroke under the words. Dark is the same journal at night: warm charcoal paper, pale ink, an amber marker.</p>
+  <nav><a href="desktop.html">Desktop view (Stats) →</a><a href="../a-ruled-notebook/index.html">← Direction A</a><a href="../README.md">Change lists (README)</a></nav>
+  <div class="board__tools"><button type="button" data-replay>Replay the marker</button><span>The marker draws in once. With reduced motion turned on it is already there.</span></div>
+</header>
+
+<!-- ============ Flashcards ============ -->
+<template data-screen="flashcards" data-title="Flashcards list" data-note="Each deck is a small stack of index cards (the edges behind it). The due count is written in the margin beside the deck, so a glance down the margin tells you where the work is. Learning is pencil amber, not red.">
+  <header class="hd">
+    <span class="hd__logo"><svg class="ico" style="width:26px;height:26px" aria-hidden="true"><use href="#logo-b"/></svg></span>
+    <span class="hd__word">StudyRevr</span>
+    <span class="hd__end"><a class="pcode" aria-label="Studying as P07. Switch participant"><span>P07</span></a><button class="iconbtn" aria-label="Settings"><svg class="ico"><use href="#i-gear"/></svg></button></span>
+  </header>
+  <main class="pg">
+    <div class="r"><span></span><h1 class="h1">Flashcards</h1></div>
+    <div class="r" style="margin-top:4px"><span></span><p class="muted">About 6 min for today's cards. The day starts at 4:00 AM.</p></div>
+    <div class="sp"></div>
+    <div class="r deck-row">
+      <span class="mn"><span class="mn--big mn--due">12</span><span class="mn--label">due</span></span>
+      <article class="deck">
+        <h2 class="deck__title">All lessons</h2>
+        <p class="counts" style="margin-top:2px"><span class="c-new"><b>20</b> new</span><span class="c-learn"><b>3</b> learning</span><span class="c-due"><b>12</b> due</span></p>
+        <button class="btn btn--ink btn--block" style="margin-top:12px">Study all</button>
+      </article>
+    </div>
+    <div class="sp"></div>
+    <div class="r"><span></span><h2 class="h2">Lesson decks</h2></div>
+    <div class="sp" style="height:12px"></div>
+    <div class="r deck-row">
+      <span class="mn"><span class="mn--big">0</span><span class="mn--label">due</span></span>
+      <article class="deck">
+        <h3 class="deck__title">Pag-unlad ng Wika</h3>
+        <div class="deck__foot"><p class="counts"><span class="c-new"><b>20</b> new</span><span class="c-learn"><b>3</b> learning</span><span class="muted">30 cards</span></p><button class="btn btn--ink">Start</button></div>
+      </article>
+    </div>
+    <div class="r deck-row">
+      <span class="mn"><span class="mn--big mn--due">12</span><span class="mn--label">due</span></span>
+      <article class="deck">
+        <h3 class="deck__title">Cell Structure</h3>
+        <div class="deck__foot"><p class="counts"><span class="c-new"><b>0</b> new</span><span class="c-learn"><b>0</b> learning</span><span class="muted">24 cards</span></p><button class="btn btn--ink">Start</button></div>
+      </article>
+    </div>
+    <div class="r deck-row">
+      <span class="mn"><svg class="ico" style="color:var(--ok)" aria-label="Nothing due"><use href="#i-check"/></svg></span>
+      <article class="deck">
+        <h3 class="deck__title">Research Design</h3>
+        <p class="muted small" style="margin-top:4px"><span class="mk">All caught up.</span> Next card due tomorrow.</p>
+      </article>
+    </div>
+    <div class="r"><span></span><p class="muted small">Up to 20 new cards and 200 reviews a day, across all lessons.</p></div>
+  </main>
+  <nav class="tabbar" aria-label="Main">
+    <a class="tab"><svg class="ico"><use href="#i-book"/></svg>Review</a>
+    <a class="tab" aria-current="page"><svg class="ico"><use href="#i-cards"/></svg><span class="mk">Flashcard</span></a>
+    <a class="tab"><svg class="ico"><use href="#i-quiz"/></svg>Mock Quiz</a>
+    <a class="tab"><svg class="ico"><use href="#i-stats"/></svg>Stats</a>
+  </nav>
+</template>
+
+<!-- ============ Quiz question ============ -->
+<template data-screen="quiz" data-title="Mock Quiz question (answered)" data-note="The answer keys are written in the margin like a numbered list in a notebook; each option is a ruled row. After answering, the right answer's number turns into a check and the words get the marker. The evidence is quoted under it, with the source slide. The progress is a thin ink line (transform, not width).">
+  <header class="hd">
+    <span class="hd__logo"><svg class="ico" style="width:26px;height:26px" aria-hidden="true"><use href="#logo-b"/></svg></span>
+    <span class="hd__word">StudyRevr</span>
+    <span class="hd__end"><a class="pcode"><span>P07</span></a><button class="iconbtn" aria-label="Settings"><svg class="ico"><use href="#i-gear"/></svg></button></span>
+  </header>
+  <main class="pg">
+    <div class="top"><button class="iconbtn" aria-label="Back to quizzes"><svg class="ico"><use href="#i-back"/></svg></button><div><p class="top__title">Pag-unlad ng Wika</p><p class="muted small">Question 3 of 10</p></div></div>
+    <div class="r"><span></span><div class="track" aria-hidden="true" style="--p:.3"><i></i></div></div>
+    <div class="sp"></div>
+    <div class="r"><span class="mn mn--big" style="color:var(--margin)">3</span><h2 class="question">Ano ang naging epekto ng Panahon ng Kolonyalismo sa ating wika?</h2></div>
+    <div class="r" style="margin-top:6px"><span></span><p class="muted small">Choose the best answer.</p></div>
+    <div class="sp" style="height:10px"></div>
+    <ol class="opts" style="border-top:1px solid var(--rule)">
+      <li><button class="opt"><span class="num">1</span><span>Nawala ang ating sariling kultura at napalitan ng kultura ng Espanyol.</span></button></li>
+      <li><button class="opt opt--right"><span class="num"><svg class="ico" style="stroke-width:2.4"><use href="#i-check"/></svg></span><span><span class="mk">Nagkaroon tayo ng mga salitang galing sa Espanyol at Ingles.</span></span></button></li>
+      <li><button class="opt"><span class="num">3</span><span>Nagkaroon tayo ng mga katutubong salita na walang kaugnayan sa Espanyol.</span></button></li>
+      <li><button class="opt"><span class="num">4</span><span>Nagkaroon tayo ng mga bagong batas mula sa Espanyol at Ingles.</span></button></li>
+    </ol>
+    <div class="sp" style="height:14px"></div>
+    <div class="r"><span></span><p class="verdict">Correct.</p></div>
+    <div class="r" style="margin-top:6px"><span class="mn small" style="font-size:12px;font-weight:700;line-height:1.2">Slide<br>6</span><blockquote class="quote"><span class="muted small" style="font-family:'Hanken Grotesk',sans-serif;display:block">From the lesson:</span>“Dahil sa mga Espanyol at Amerikano, maraming salitang hiram ang pumasok sa ating wika.”</blockquote></div>
+  </main>
+  <div class="actionbar"><button class="btn btn--ink btn--block">Next question<svg class="ico ico--sm"><use href="#i-next"/></svg></button></div>
+  <nav class="tabbar" aria-label="Main">
+    <a class="tab"><svg class="ico"><use href="#i-book"/></svg>Review</a>
+    <a class="tab"><svg class="ico"><use href="#i-cards"/></svg>Flashcard</a>
+    <a class="tab" aria-current="page"><svg class="ico"><use href="#i-quiz"/></svg><span class="mk">Mock Quiz</span></a>
+    <a class="tab"><svg class="ico"><use href="#i-stats"/></svg>Stats</a>
+  </nav>
+</template>
+
+<!-- ============ Stats ============ -->
+<template data-screen="stats" data-title="Stats as a journal entry" data-note="The week reads as one sentence, then each day is a ruled line with its day in the margin and a bar you can read without a legend lookup (the minutes are written at the end). The flashcard figures are written large in the margin with what they mean beside them. No cards, no tiles.">
+  <header class="hd">
+    <span class="hd__logo"><svg class="ico" style="width:26px;height:26px" aria-hidden="true"><use href="#logo-b"/></svg></span>
+    <span class="hd__word">StudyRevr</span>
+    <span class="hd__end"><a class="pcode"><span>P07</span></a><button class="iconbtn" aria-label="Settings"><svg class="ico"><use href="#i-gear"/></svg></button></span>
+  </header>
+  <main class="pg">
+    <div class="r"><span></span><h1 class="h1">Your stats</h1></div>
+    <div class="sp" style="height:14px"></div>
+    <div class="r"><span class="mn small" style="font-size:12px;font-weight:700;line-height:1.25">Oct<br>5–11</span><p style="font-family:Literata,serif;font-size:17px;line-height:1.5">You studied <span class="mk"><b>2 h 10 min</b></span> this week, most of it on Tuesday.</p></div>
+    <div class="r" style="margin-top:10px"><span></span><p class="legend"><span class="s-read"><i></i>Reading 43 min</span><span class="s-card"><i></i>Flashcards 1 h 10 min</span><span class="s-quiz"><i></i>Quiz 17 min</span></p></div>
+    <div class="sp" style="height:12px"></div>
+    <ul class="days" style="border-top:1px solid var(--rule)" aria-label="Minutes studied each day">
+      <li><span class="d">Mon</span><span class="bar"><i class="s-read" style="width:22.9%"></i><i class="s-card" style="width:34.3%"></i></span><span class="v">20 min</span></li>
+      <li class="peak"><span class="d">Tue</span><span class="bar"><i class="s-read" style="width:42.9%"></i><i class="s-card" style="width:37.1%"></i><i class="s-quiz" style="width:20%"></i></span><span class="v"><b>35 min</b></span></li>
+      <li><span class="d">Wed</span><span class="bar"><i class="s-card" style="width:42.9%"></i><i class="s-quiz" style="width:20%"></i></span><span class="v">22 min</span></li>
+      <li><span class="d">Thu</span><span class="bar"><i class="s-read" style="width:42.9%"></i><i class="s-card" style="width:42.9%"></i></span><span class="v">30 min</span></li>
+      <li><span class="d">Fri</span><span class="bar"><i class="s-card" style="width:42.9%"></i><i class="s-quiz" style="width:8.6%"></i></span><span class="v">18 min</span></li>
+      <li><span class="d">Sat</span><span class="bar"></span><span class="v muted">—</span></li>
+      <li><span class="d">Sun</span><span class="bar"><i class="s-read" style="width:14.3%"></i></span><span class="v">5 min</span></li>
+    </ul>
+    <div class="r" style="margin-top:6px"><span></span><p><button class="btn btn--text" style="min-height:44px">Show as a table</button></p></div>
+    <div class="sp"></div>
+    <div class="r"><span></span><h2 class="h2">Flashcards</h2></div>
+    <div class="sp" style="height:8px"></div>
+    <div class="r r--ruled r--top"><span class="mn mn--big">86</span><p>cards reviewed this week</p></div>
+    <div class="r r--ruled"><span class="mn mn--big"><span class="mk">78%</span></span><p>answered Good or Easy</p></div>
+    <div class="r r--ruled"><span class="mn mn--big">14</span><p>due tomorrow</p></div>
+    <div class="r" style="margin-top:8px"><span></span><p class="muted small">All time: 212 cards, 74% Good or Easy.</p></div>
+    <div class="sp"></div>
+    <div class="r"><span></span><h2 class="h2">Quiz scores</h2></div>
+    <div class="sp" style="height:8px"></div>
+    <div class="r r--ruled r--top"><span class="mn mn--big">9</span><div><p style="font-family:Literata,serif;font-weight:650">Pag-unlad ng Wika</p>
+      <div class="score"><span>Best</span><span class="track" style="--p:.9"><i style="background:var(--accent)"></i></span><b>9/10</b></div>
+      <div class="score"><span class="muted">First try</span><span class="track" style="--p:.6"><i style="background:var(--ink-2)"></i></span><b>6/10</b></div></div></div>
+    <div class="r r--ruled"><span class="mn mn--big">7</span><div><p style="font-family:Literata,serif;font-weight:650">Cell Structure</p>
+      <div class="score"><span>Score</span><span class="track" style="--p:.7"><i style="background:var(--accent)"></i></span><b>7/10</b></div></div></div>
+    <div class="r r--ruled"><span class="mn">–</span><div><p style="font-family:Literata,serif;font-weight:650">Research Design</p><p class="muted small">No quiz yet. <button class="btn btn--text" style="min-height:0;font-size:14px">Take the mock quiz</button></p></div></div>
+  </main>
+  <nav class="tabbar" aria-label="Main">
+    <a class="tab"><svg class="ico"><use href="#i-book"/></svg>Review</a>
+    <a class="tab"><svg class="ico"><use href="#i-cards"/></svg>Flashcard</a>
+    <a class="tab"><svg class="ico"><use href="#i-quiz"/></svg>Mock Quiz</a>
+    <a class="tab" aria-current="page"><svg class="ico"><use href="#i-stats"/></svg><span class="mk">Stats</span></a>
+  </nav>
+</template>
+
+<!-- ============ Reader ============ -->
+<template data-screen="reader" data-title="Lesson reader (a section)" data-note="On a phone the reader keeps only a slim margin line, so the text runs 338px wide instead of 300px; the section number moves onto the progress line (Section 3 of 8). From 40rem the full margin with the big section number comes back. No rules behind the text: Literata 17px, 1.65 line height. Where the section came from (slides 3–4) is a line under the title, next to View original. The key term gets the marker.">
+  <header class="hd">
+    <span class="hd__logo"><svg class="ico" style="width:26px;height:26px" aria-hidden="true"><use href="#logo-b"/></svg></span>
+    <span class="hd__word">StudyRevr</span>
+    <span class="hd__end"><a class="pcode"><span>P07</span></a><button class="iconbtn" aria-label="Settings"><svg class="ico"><use href="#i-gear"/></svg></button></span>
+  </header>
+  <main class="pg pg--reader">
+    <div class="top"><button class="iconbtn" aria-label="Back to lessons"><svg class="ico"><use href="#i-back"/></svg></button><div><p class="top__title">Pag-unlad ng Wika</p><p class="muted small">8 sections, about 5 min to read</p></div></div>
+    <div class="r"><span></span><nav class="vtabs" aria-label="Lesson views"><a aria-current="page"><span class="mk">Sections</span></a><a>Key points</a><a>Key terms</a></nav></div>
+    <div class="r"><span></span><div class="prog"><span class="muted small" style="white-space:nowrap">Section 3 of 8</span><div class="track" style="--p:.375" aria-hidden="true"><i></i></div></div></div>
+    <div class="sp"></div>
+    <div class="r"><span class="mn mn--big" style="font-size:30px;color:var(--margin)">3</span><h2 class="sec-title">Konsepto at Kahulugan ng Pag-unlad</h2></div>
+    <div class="r" style="margin-top:4px"><span></span><p class="muted small">From slides 3–4 · <button class="btn btn--text" style="min-height:0;font-size:14px">View original</button></p></div>
+    <div class="r" style="margin-top:12px"><span></span><div class="actions"><button class="btn btn--line"><svg class="ico ico--sm"><use href="#i-simpler"/></svg>Explain simpler</button><button class="btn btn--line"><svg class="ico ico--sm"><use href="#i-lang"/></svg>Filipino/Taglish</button></div></div>
+    <div class="r" style="margin-top:16px"><span></span><div class="prose">
+      <p>Ang pag-unlad ng Wikang Filipino ay tumutukoy sa pagbabago, paglago, at pag-angkop ng wika sa pangangailangan ng mga tao sa bawat panahon. Ang wika ay tinatawag na <span class="mk">dinamiko</span> dahil hindi ito nananatiling pareho.</p>
+      <p>Habang nagbabago ang ating pamumuhay, teknolohiya, at kultura, nagbabago rin ang paraan natin ng pagsasalita at pagsusulat.</p>
+      <p>Noon ay ginagamit natin ang salitang sulat para magpadala ng mensahe, ngunit dahil sa teknolohiya, gumagamit na tayo ngayon ng mga salitang chat, message, at email.</p>
+    </div></div>
+    <div class="sp sp--l"></div>
+    <div class="r r--top" style="padding-top:14px"><span class="mn mn--big" style="color:var(--margin)">?</span><div><h3 class="h2">Quick check</h3><p style="font-family:Literata,serif;font-weight:600;margin-top:6px">Bakit tinatawag na dinamiko ang wika?</p><button class="btn btn--line" style="margin-top:10px">Show answer</button></div></div>
+  </main>
+  <div class="lessonnav"><button class="btn btn--text" style="color:var(--ink-2)"><svg class="ico ico--sm"><use href="#i-back"/></svg>Previous</button><button class="btn btn--ink">Next section<svg class="ico ico--sm"><use href="#i-next"/></svg></button></div>
+  <nav class="tabbar" aria-label="Main">
+    <a class="tab" aria-current="page"><svg class="ico"><use href="#i-book"/></svg><span class="mk">Review</span></a>
+    <a class="tab"><svg class="ico"><use href="#i-cards"/></svg>Flashcard</a>
+    <a class="tab"><svg class="ico"><use href="#i-quiz"/></svg>Mock Quiz</a>
+    <a class="tab"><svg class="ico"><use href="#i-stats"/></svg>Stats</a>
+  </nav>
+</template>
+
+<section class="notes">
+  <h2>Contrast, computed from the tokens above</h2>
+  <table data-contrast data-pairs="--ink --paper 4.5 Body text; --ink-2 --paper 4.5 Secondary text; --ink-2 --sheet 4.5 Secondary text on a card; --accent --paper 4.5 Links and text buttons; --on-ink-btn --ink-btn 4.5 Ink button label; --ink-btn --paper 3 Ink button edge against paper; --mk-ink --hi-mark-flat 4.5 Text on the marker; --learn --sheet 4.5 Learning count on a card; --ok --paper 4.5 Due number in the margin; --margin --paper 3 Margin line and margin marks (UI mark); --accent --paper 3 Focus ring; --rule-strong --paper 1.4 Outline of line buttons (the label carries them)">
+    <thead><tr><th>Theme</th><th>Pair</th><th>Colours</th><th>Ratio</th><th>AA</th></tr></thead><tbody></tbody>
+  </table>
+  <p>Tap targets: every button, option row (≥56px), tab and icon button is ≥44px; inline text buttons inside a sentence ("View original", "Take the mock quiz") get a 44px hit area with padding plus a negative margin in the build. Focus: a 3px ink ring that follows each element's corners.</p>
+</section>
+
+<section class="notes">
+  <h2>What Direction B changes (modules you can mix)</h2>
+  <p>Each module stands alone unless it says it needs another. Token values are light / dark.</p>
+  <table>
+    <thead><tr><th>Module</th><th>Tokens, colours, fonts, radii</th><th>CSS and markup</th></tr></thead>
+    <tbody>
+      <tr><td><b>a. Light palette</b></td><td><code>--paper</code> #f4f5fa → #f6f5f0 · <code>--sheet</code> #fff (same) · <code>--ink</code> #161a3c → #1c1d22 (blue-black ink) · <code>--ink-2</code> #4f5578 → #55575f · <code>--line</code> #dbdfef → <code>--rule</code> #d9d7cf · <code>--line-strong</code> #bfc5df → #b9b6ab · <code>--accent</code> #3040d8 → #233a8c (fountain-pen blue) · <code>--accent-hover</code> → #1a2c6c · <code>--hi</code> #ffe55c → #ffe45c · <code>--hi-soft</code> removed · <code>--margin</code> #ec5b78 → #cf4057 · new <code>--learn</code> #8a5300, <code>--card-edge</code> #e6e4dc · ok/warn/danger unchanged</td><td>tokens.css only</td></tr>
+      <tr><td><b>b. Dark palette</b></td><td><code>--paper</code> #0e1126 → #1b1a18 (warm charcoal) · <code>--sheet</code> #171b38 → #24231f · <code>--ink</code> #eceeff → #e9e6de · <code>--ink-2</code> #a3a9d3 → #aeaaa0 · <code>--rule</code> #36342f · <code>--line-strong</code> → #4d4a42 · <code>--accent</code> (text) #8f9cff → #a9bcff · new <code>--ink-btn</code> = the ink colour #e9e6de, with <code>--on-ink-btn</code> #1b1a18 (no pastel fill) · <code>--hi</code> #f2d94a → #e6b94e (amber marker) · <code>--margin</code> #d9657d → #c75b6b · <code>--learn</code> #d7a35a · ok → #79cfa3 · <code>--card-edge</code> #2e2d29</td><td>tokens.css only</td></tr>
+      <tr><td><b>c. Paper and rules</b></td><td><code>--rule</code>, <code>--rule-strong</code></td><td>no page-wide rules: a 1px rule under each list row (lessons, options, days, figures) and a stronger rule above a list. Running text keeps its own line height.</td></tr>
+      <tr><td><b>d. Margin column</b></td><td>new layout token <code>--mw</code> 52px (phone), 10rem (desktop)</td><td>a two-column row (<code>[margin][body]</code>) used by every list and heading; one 1.5px red line at the margin's edge on the app frame. The margin holds the deck's due count, the option keys, the section number, the "?" of the quick check, the week's figures and the source slide. This is B's signature; it needs the markup change (a margin cell per row).</td></tr>
+      <tr><td><b>e. Marker</b></td><td>uses <code>--hi</code>, <code>--on-hi</code></td><td>new <code>.mk</code>: a marker stroke on the lower 40% of the words (wraps across lines); replaces the tab pill, the count underline, <code>--hi-soft</code> washes and the side stripes. Draws in once (background-size); off under reduced motion, and the Motion <code>layoutId</code> slide is turned off with <code>useReducedMotion</code>.</td></tr>
+      <tr><td><b>f. Ink buttons</b></td><td><code>--ink-btn</code>, <code>--ink-btn-press</code>, <code>--on-ink-btn</code>; button radius 10px → 3px</td><td>primary = solid ink (navy in light, pale ink in dark); secondary = a ruled outline (<code>--rule-strong</code>) that darkens to ink on hover; links underlined.</td></tr>
+      <tr><td><b>g. Index card stacks</b></td><td><code>--card-edge</code>, <code>--card-shadow</code>; card radius 18px → 2px</td><td>decks, the flashcard itself and the results score are plain index cards; a deck shows two card edges behind it. Inside a card there are no rules.</td></tr>
+      <tr><td><b>h. Navigation</b></td><td>—</td><td>phone: divider tabs, where the active tab is a paper tab that drops below the bar with the marker under its label. Desktop: the same tabs stand along the left edge of the page (see desktop.html), so the rail reads as notebook dividers instead of a floating list. Needs <b>e</b>.</td></tr>
+      <tr><td><b>i. Stats page</b></td><td>series unchanged (reading = <code>--accent</code>, flashcards = <code>--margin</code>, quiz = <code>--learn</code>, replacing <code>--warn</code>)</td><td><code>StatsView.jsx</code>: the week as a sentence plus a legend sentence; the bar chart becomes one ruled line per day (day in the margin, minutes written at the end), so Recharts goes for that chart and the table stays; flashcard figures large in the margin; quiz scores as thin tracks. Needs <b>d</b>.</td></tr>
+      <tr><td><b>j. Reader</b></td><td>reading text stays 17px / 1.65</td><td>no rules behind prose; the section number in the margin; "From slides 3–4" (from <code>sections.sources</code>, already in the data) under the title beside View original. Needs <b>d</b>.</td></tr>
+      <tr><td><b>k. Desktop layout</b></td><td><code>--rail-w</code> retired; new <code>--page-max</code> 72rem</td><td>a centred page with a 10rem margin column, the divider tabs on its left edge and a second column for related figures. See desktop.html.</td></tr>
+      <tr><td><b>l. Logo</b></td><td>—</td><td>new <code>LogoMark</code>: a small page with the red margin line and an "S" written in Literata over a marker stroke (as an SVG path in the build).</td></tr>
+      <tr><td><b>m. Empty states</b></td><td>—</td><td>a dash in the margin and one written line ("No quiz yet.", "All caught up.") with its action, instead of an empty box.</td></tr>
+      <tr><td><b>n. Radii and shadow</b></td><td><code>--r-sm</code> 8 → 3px, <code>--r-md</code> 12 → 3px, <code>--r-lg</code> 18 → 2px; hardcoded radii in quiz.css and flashcards.css map to these; new <code>--card-shadow</code></td><td>closes the "hardcoded radii and shadow" carry-over.</td></tr>
+      <tr><td><b>Fixes in every direction</b></td><td>—</td><td>Learning count → <code>--learn</code>; the Appearance fieldset gets <code>border: 0; min-inline-size: 0</code>; Researcher admin moves to the foot of the code screen; the resume notice moves from warn to a neutral note; focus rings keep each element's radius; <code>.quiz-progress</code> animates <code>transform</code>.</td></tr>
+      <tr><td><b>Fonts</b></td><td>no new faces. Literata for headings, reading and the margin numbers (lining, tabular); Hanken Grotesk for UI. H1 30px, H2 20px, UI 15px, small 14px, margin labels 11.5–12px bold (labels under a large number, never alone).</td><td>self-hosted fontsource packages unchanged</td></tr>
+    </tbody>
+  </table>
+  <h3>Honest risks</h3>
+  <ul>
+    <li>The margin column is real markup work: every row needs a margin cell, which touches more JSX than A (still presentational, no logic).</li>
+    <li>The margin takes 52px at 380px wide: body text gets 300px. That's fine for UI rows; the reader keeps the margin narrow and the text plain to compensate.</li>
+    <li>Fewer rules means the notebook reads more quietly than in A; the margin and the marker carry the identity.</li>
+    <li>Dark mode's primary button is pale ink on charcoal: strong and not periwinkle, but it's the brightest thing on the screen, so use one per screen.</li>
+  </ul>
+  <p>Mockup content: "Pag-unlad ng Wika" and its question are from the real lesson; the evidence sentence, its slide number, "Cell Structure", "Research Design" and every number are synthetic.</p>
+</section>
+
+<script src="../shared/mock.js"></script>
+</body>
+</html>

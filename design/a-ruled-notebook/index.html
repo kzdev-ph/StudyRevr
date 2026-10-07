@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Direction A: Ruled notebook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..800&family=Literata:opsz,wght@7..72,400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../shared/board.css">
+<link rel="stylesheet" href="a.css">
+</head>
+<body class="board">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M3 5.5c3-1.3 6-1.3 9 .5 3-1.8 6-1.8 9-.5V19c-3-1.3-6-1.3-9 .5-3-1.8-6-1.8-9-.5z"/><path d="M12 6v13.5"/></symbol>
+    <symbol id="i-cards" viewBox="0 0 24 24"><rect x="3" y="7" width="13" height="13" rx="1.5"/><path d="M7 7V5.5A1.5 1.5 0 0 1 8.5 4h11A1.5 1.5 0 0 1 21 5.5v11a1.5 1.5 0 0 1-1.5 1.5H16"/></symbol>
+    <symbol id="i-quiz" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="1.5"/><path d="M9.6 9.3a2.5 2.5 0 1 1 3.4 2.3c-.7.3-1 .8-1 1.5v.4"/><path d="M12 16.6v.1"/></symbol>
+    <symbol id="i-stats" viewBox="0 0 24 24"><path d="M5 20v-6M10 20V8M15 20v-9M20 20V4"/><path d="M3 20.5h18"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M14.5 5.5 8 12l6.5 6.5"/></symbol>
+    <symbol id="i-next" viewBox="0 0 24 24"><path d="M9.5 5.5 16 12l-6.5 6.5"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5 10 17.5 19.5 7"/></symbol>
+    <symbol id="i-simpler" viewBox="0 0 24 24"><path d="M4 7h16M4 12h11M4 17h7"/></symbol>
+    <symbol id="i-lang" viewBox="0 0 24 24"><path d="M4 6h9M8.5 4v2M6 6c.6 3.4 2.8 6 6 7.5M11 6c-.6 3.3-2.8 6.3-6.5 8"/><path d="m12.5 20 4-9.5 4 9.5M14 17h5"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 3.5H7A1.5 1.5 0 0 0 5.5 5v14A1.5 1.5 0 0 0 7 20.5h10a1.5 1.5 0 0 0 1.5-1.5V8z"/><path d="M14 3.5V8h4.5M9 12.5h6M9 16h6"/></symbol>
+    <symbol id="logo-a" viewBox="0 0 24 24"><rect x="4" y="2.75" width="16.5" height="18.5" rx="1.25" fill="var(--sheet)" stroke="var(--ink)" stroke-width="1.6"/><path d="M8.25 3v18" stroke="var(--margin)" stroke-width="1.3"/><path d="M10.5 8.5h7.5M10.5 15.5h7.5" stroke="var(--rule-strong)" stroke-width="1.3"/><path d="M10 12.2c2.6-.5 5.4-.6 8.6-.3" stroke="var(--hi)" stroke-width="3.6" stroke-linecap="round"/><path d="M10.5 12h7.5" stroke="var(--ink)" stroke-width="1.4"/></symbol>
+  </defs>
+</svg>
+
+<header class="board__head">
+  <h1>Direction A: Ruled notebook</h1>
+  <p>A literal school notebook. Every screen is a ruled page: blue rules every 28px set the line height of all running text, and a red double margin line runs from the header to the tab bar. Lessons and decks are index cards laid on the page. Buttons are ballpoint ink, and the highlighter swipes behind what matters: the active tab, key numbers and key terms. Dark mode is the same notebook at night: graphite-blue paper, faint rules, warm off-white ink.</p>
+  <nav><a href="desktop.html">Desktop view (Stats) →</a><a href="../b-study-journal/index.html">Direction B →</a><a href="../README.md">Change lists (README)</a></nav>
+  <div class="board__tools"><button type="button" data-replay>Replay the highlighter</button><span>The swipe draws in once. With reduced motion turned on it is already there.</span></div>
+</header>
+
+<!-- ============ Flashcards ============ -->
+<template data-screen="flashcards" data-title="Flashcards list" data-note="Decks are index cards: the heading line has the red rule, counts and the button sit on the card's blue lines. Learning uses a pencil amber instead of red. The key number on each card (what you'd actually study) gets the highlighter.">
+  <header class="hd">
+    <span class="hd__logo"><svg class="ico" style="width:24px;height:24px" aria-hidden="true"><use href="#logo-a"/></svg></span>
+    <span class="hd__word">StudyRevr</span>
+    <span class="hd__end"><a class="pcode" aria-label="Studying as P07. Switch participant"><span>P07</span></a><button class="iconbtn" aria-label="Settings"><svg class="ico"><use href="#i-gear"/></svg></button></span>
+  </header>
+  <main class="pg">
+    <h1 class="h1">Flashcards</h1>
+    <article class="card">
+      <h2 class="card__title">All lessons</h2>
+      <p class="line muted small">About 6 min for today's cards.</p>
+      <p class="line counts"><span class="c-new"><b>20</b> new</span><span class="c-learn"><b>3</b> learning</span><span class="c-due"><span class="hl"><b>12</b> due</span></span></p>
+      <div class="row56" style="padding-top:6px;align-items:flex-start"><button class="btn btn--ink btn--block">Study all</button></div>
+    </article>
+    <h2 class="h2 line">Lesson decks</h2>
+    <article class="card card__grid">
+      <h3 class="card__title">Pag-unlad ng Wika</h3>
+      <p class="line counts" style="grid-row:2"><span class="c-new"><b>20</b> new</span><span class="c-learn"><b>3</b> learning</span><span class="c-due"><b>0</b> due</span></p>
+      <p class="line muted small" style="grid-row:3">30 cards</p>
+      <div class="card__btn"><button class="btn btn--ink">Start</button></div>
+    </article>
+    <article class="card card__grid">
+      <h3 class="card__title">Cell Structure</h3>
+      <p class="line counts" style="grid-row:2"><span class="c-new"><b>0</b> new</span><span class="c-learn"><b>0</b> learning</span><span class="c-due"><span class="hl"><b>12</b> due</span></span></p>
+      <p class="line muted small" style="grid-row:3">24 cards</p>
+      <div class="card__btn"><button class="btn btn--ink">Start</button></div>
+    </article>
+    <article class="card">
+      <h3 class="card__title">Research Design</h3>
+      <p class="line muted small">All caught up. Next card due tomorrow.</p>
+    </article>
+    <p class="muted small">Up to 20 new cards and 200 reviews a day, across all lessons. The day starts at 4:00 AM.</p>
+  </main>
+  <nav class="tabbar" aria-label="Main">
+    <a class="tab"><svg class="ico"><use href="#i-book"/></svg>Review</a>
+    <a class="tab" aria-current="page"><svg class="ico"><use href="#i-cards"/></svg><span class="hl">Flashcard</span></a>
+    <a class="tab"><svg class="ico"><use href="#i-quiz"/></svg>Mock Quiz</a>
+    <a class="tab"><svg class="ico"><use href="#i-stats"/></svg>Stats</a>
+  </nav>
+</template>
+
+<!-- ============ Quiz question ============ -->
+<template data-screen="quiz" data-title="Mock Quiz question (answered)" data-note="Options are lines on the page; the 1-4 keys sit in the margin. After answering, the right answer gets the highlighter and a filled key, and the evidence quote hangs a red quote mark in the margin. The progress bar is a highlighter stroke along a rule (transform, not width).">
+  <header class="hd">
+    <span class="hd__logo"><svg class="ico" style="width:24px;height:24px" aria-hidden="true"><use href="#logo-a"/></svg></span>
+    <span class="hd__word">StudyRevr</span>
+    <span class="hd__end"><a class="pcode"><span>P07</span></a><button class="iconbtn" aria-label="Settings"><svg class="ico"><use href="#i-gear"/></svg></button></span>
+  </header>
+  <main class="pg">
+    <div class="top"><button class="iconbtn" aria-label="Back to quizzes"><svg class="ico"><use href="#i-back"/></svg></button><div><p class="top__title">Pag-unlad ng Wika</p><p class="muted small">Question 3 of 10</p></div></div>
+    <div class="qprog" aria-hidden="true"><span class="qprog__fill"></span></div>
+    <div class="gap"></div>
+    <h2 class="question">Ano ang naging epekto ng Panahon ng Kolonyalismo sa ating wika?</h2>
+    <p class="line muted small">Choose the best answer.</p>
+    <ol class="opts">
+      <li><button class="opt"><span class="key"><span>1</span></span>Nawala ang ating sariling kultura at napalitan ng kultura ng Espanyol.</button></li>
+      <li><button class="opt opt--right"><span class="key"><span><svg class="ico ico--sm" style="stroke-width:2.6"><use href="#i-check"/></svg></span></span><span class="hl-lines">Nagkaroon tayo ng mga salitang galing sa Espanyol at Ingles.</span></button></li>
+      <li><button class="opt"><span class="key"><span>3</span></span>Nagkaroon tayo ng mga katutubong salita na walang kaugnayan sa Espanyol.</button></li>
+      <li><button class="opt"><span class="key"><span>4</span></span>Nagkaroon tayo ng mga bagong batas mula sa Espanyol at Ingles.</button></li>
+    </ol>
+    <p class="verdict line"><svg class="ico"><use href="#i-check"/></svg>Correct.</p>
+    <p class="line muted small">From the lesson:</p>
+    <p class="quote"><span class="in-margin" aria-hidden="true">“</span>Dahil sa mga Espanyol at Amerikano, maraming salitang hiram ang pumasok sa ating wika.</p>
+  </main>
+  <div class="actionbar"><button class="btn btn--ink btn--block">Next question<svg class="ico ico--sm"><use href="#i-next"/></svg></button></div>
+  <nav class="tabbar" aria-label="Main">
+    <a class="tab"><svg class="ico"><use href="#i-book"/></svg>Review</a>
+    <a class="tab"><svg class="ico"><use href="#i-cards"/></svg>Flashcard</a>
+    <a class="tab" aria-current="page"><svg class="ico"><use href="#i-quiz"/></svg><span class="hl">Mock Quiz</span></a>
+    <a class="tab"><svg class="ico"><use href="#i-stats"/></svg>Stats</a>
+  </nav>
+</template>
+
+<!-- ============ Stats ============ -->
+<template data-screen="stats" data-title="Stats as a notes page" data-note="No tiles and no cards: the week is written on the lines. One sentence carries the total, a dotted ledger lists the parts (swatches sit in the margin), and the chart sits on six rules. Quiz scores are pen strokes on a line. An empty lesson gets a line waiting to be filled, not an empty box.">
+  <header class="hd">
+    <span class="hd__logo"><svg class="ico" style="width:24px;height:24px" aria-hidden="true"><use href="#logo-a"/></svg></span>
+    <span class="hd__word">StudyRevr</span>
+    <span class="hd__end"><a class="pcode"><span>P07</span></a><button class="iconbtn" aria-label="Settings"><svg class="ico"><use href="#i-gear"/></svg></button></span>
+  </header>
+  <main class="pg">
+    <h1 class="h1">Your stats</h1>
+    <h2 class="h2 line">This week <small>Oct 5 – 11</small></h2>
+    <p class="line">You studied <span class="hl"><b>2 h 10 min</b></span> this week.</p>
+    <ul class="ledger">
+      <li class="line"><span class="sw" style="--c:var(--accent)"><i></i></span>Reading<span class="lead"></span><span class="val">43 min</span></li>
+      <li class="line"><span class="sw" style="--c:var(--margin)"><i></i></span>Flashcards<span class="lead"></span><span class="val">1 h 10 min</span></li>
+      <li class="line"><span class="sw" style="--c:var(--learn)"><i></i></span>Mock quiz<span class="lead"></span><span class="val">17 min</span></li>
+    </ul>
+    <svg class="chart" viewBox="0 0 316 168" role="img" aria-label="Minutes studied each day this week">
+      <!-- 5 rules of 28px hold the bars; the 6th line holds the day labels. 1 rule = 10 min -->
+      <g><rect class="s-read" x="10" y="117.6" width="26" height="20.9" rx="2"/><rect class="s-card" x="10" y="84.0" width="26" height="32.1" rx="2"/><rect class="s-read" x="55" y="98.0" width="26" height="40.5" rx="2"/><rect class="s-card" x="55" y="61.6" width="26" height="34.9" rx="2"/><rect class="s-quiz" x="55" y="42.0" width="26" height="18.1" rx="2"/><rect class="s-card" x="100" y="98.0" width="26" height="40.5" rx="2"/><rect class="s-quiz" x="100" y="78.4" width="26" height="18.1" rx="2"/><rect class="s-read" x="145" y="98.0" width="26" height="40.5" rx="2"/><rect class="s-card" x="145" y="56.0" width="26" height="40.5" rx="2"/><rect class="s-card" x="190" y="98.0" width="26" height="40.5" rx="2"/><rect class="s-quiz" x="190" y="89.6" width="26" height="6.9" rx="2"/><rect class="s-read" x="280" y="126.0" width="26" height="12.5" rx="2"/></g>
+      <g class="ax" text-anchor="middle"><text x="23" y="160">M</text><text x="68" y="160">T</text><text x="113" y="160">W</text><text x="158" y="160">T</text><text x="203" y="160">F</text><text x="248" y="160">S</text><text x="293" y="160">S</text></g>
+      <g class="ax" text-anchor="middle"><text x="68" y="36">35m</text></g>
+    </svg>
+    <p class="line">Most active day: Tuesday (35 min).</p>
+    <p class="line"><button class="btn btn--text" style="min-height:28px">Show as a table</button></p>
+    <div class="gap"></div>
+    <h2 class="h2 line">Flashcards</h2>
+    <ul class="ledger">
+      <li class="line">Reviewed this week<span class="lead"></span><span class="val">86</span></li>
+      <li class="line">Good or Easy<span class="lead"></span><span class="val"><span class="hl">78%</span></span></li>
+      <li class="line">Due tomorrow<span class="lead"></span><span class="val">14</span></li>
+    </ul>
+    <p class="line muted small">All time: 212 cards, 74% Good or Easy.</p>
+    <div class="gap"></div>
+    <h2 class="h2 line">Quiz scores</h2>
+    <p class="line lesson-name">Pag-unlad ng Wika</p>
+    <div class="qs"><span>Best</span><span class="qs__track"><span class="qs__bar" style="--c:var(--accent);display:block;width:90%"></span></span><b>9/10</b></div>
+    <div class="qs"><span class="muted">First try</span><span class="qs__track"><span class="qs__bar" style="--c:var(--ink-2);display:block;width:60%"></span></span><b>6/10</b></div>
+    <p class="line lesson-name">Cell Structure</p>
+    <div class="qs"><span>Score</span><span class="qs__track"><span class="qs__bar" style="--c:var(--accent);display:block;width:70%"></span></span><b>7/10</b></div>
+    <p class="line lesson-name">Research Design</p>
+    <p class="line muted">No quiz yet. <button class="btn btn--text" style="min-height:28px;font-size:15px">Take the mock quiz</button></p>
+  </main>
+  <nav class="tabbar" aria-label="Main">
+    <a class="tab"><svg class="ico"><use href="#i-book"/></svg>Review</a>
+    <a class="tab"><svg class="ico"><use href="#i-cards"/></svg>Flashcard</a>
+    <a class="tab"><svg class="ico"><use href="#i-quiz"/></svg>Mock Quiz</a>
+    <a class="tab" aria-current="page"><svg class="ico"><use href="#i-stats"/></svg><span class="hl">Stats</span></a>
+  </nav>
+</template>
+
+<!-- ============ Reader ============ -->
+<template data-screen="reader" data-title="Lesson reader (a section)" data-note="Body text is set exactly on the rules: Literata 16.5px with a 28px line height, so each line sits on a rule. In the reader the rules are lighter (--rule-read) so descenders crossing them don't hurt reading. Paragraphs indent instead of skipping a line, so the rhythm holds. The progress is a tally of strokes; the key term is highlighted where it appears.">
+  <header class="hd">
+    <span class="hd__logo"><svg class="ico" style="width:24px;height:24px" aria-hidden="true"><use href="#logo-a"/></svg></span>
+    <span class="hd__word">StudyRevr</span>
+    <span class="hd__end"><a class="pcode"><span>P07</span></a><button class="iconbtn" aria-label="Settings"><svg class="ico"><use href="#i-gear"/></svg></button></span>
+  </header>
+  <main class="pg pg--read">
+    <div class="top"><button class="iconbtn" aria-label="Back to lessons"><svg class="ico"><use href="#i-back"/></svg></button><div><p class="top__title">Pag-unlad ng Wika</p><p class="muted small">8 sections, about 5 min to read</p></div></div>
+    <nav class="vtabs" aria-label="Lesson views"><a aria-current="page"><span class="hl">Sections</span></a><a>Key points</a><a>Key terms</a></nav>
+    <div class="tally" role="img" aria-label="3 of 8 sections"><i class="done"></i><i class="done"></i><i class="now"></i><i></i><i></i><i></i><i></i><i></i><span class="muted small" style="margin-left:6px">3/8</span></div>
+    <div class="gap"></div>
+    <h2 class="sec-title">Konsepto at Kahulugan ng Pag-unlad</h2>
+    <div class="row56 row56--pair"><button class="btn btn--pen"><svg class="ico ico--sm"><use href="#i-simpler"/></svg>Explain simpler</button><button class="btn btn--pen"><svg class="ico ico--sm"><use href="#i-lang"/></svg>Filipino/Taglish</button></div>
+    <div class="prose">
+      <p>Ang pag-unlad ng Wikang Filipino ay tumutukoy sa pagbabago, paglago, at pag-angkop ng wika sa pangangailangan ng mga tao sa bawat panahon. Ang wika ay tinatawag na <span class="hl">dinamiko</span> dahil hindi ito nananatiling pareho.</p>
+      <p>Habang nagbabago ang ating pamumuhay, teknolohiya, at kultura, nagbabago rin ang paraan natin ng pagsasalita at pagsusulat.</p>
+      <p>Noon ay ginagamit natin ang salitang sulat para magpadala ng mensahe, ngunit dahil sa teknolohiya, gumagamit na tayo ngayon ng mga salitang chat, message, at email.</p>
+    </div>
+    <p class="line"><button class="btn btn--text" style="min-height:28px"><svg class="ico ico--sm" style="margin-right:2px"><use href="#i-doc"/></svg>View original text (Slides 3–4)</button></p>
+    <div class="gap"></div>
+    <h3 class="h2 line" style="position:relative"><span class="in-margin qmark" style="left:calc(0px - var(--col))" aria-hidden="true">?</span>Quick check</h3>
+    <p class="line" style="font-family:Literata,serif;font-weight:600">Bakit tinatawag na dinamiko ang wika?</p>
+    <div class="row56"><button class="btn btn--pen">Show answer</button></div>
+  </main>
+  <div class="lessonnav"><button class="btn btn--text" style="color:var(--ink-2)"><svg class="ico ico--sm"><use href="#i-back"/></svg>Previous</button><button class="btn btn--ink">Next section<svg class="ico ico--sm"><use href="#i-next"/></svg></button></div>
+  <nav class="tabbar" aria-label="Main">
+    <a class="tab" aria-current="page"><svg class="ico"><use href="#i-book"/></svg><span class="hl">Review</span></a>
+    <a class="tab"><svg class="ico"><use href="#i-cards"/></svg>Flashcard</a>
+    <a class="tab"><svg class="ico"><use href="#i-quiz"/></svg>Mock Quiz</a>
+    <a class="tab"><svg class="ico"><use href="#i-stats"/></svg>Stats</a>
+  </nav>
+</template>
+
+<section class="notes">
+  <h2>Contrast, computed from the tokens above</h2>
+  <table data-contrast data-pairs="--ink --paper 4.5 Body text; --ink-2 --paper 4.5 Secondary text; --ink-2 --sheet 4.5 Secondary text on a card; --accent --paper 4.5 Links and text buttons; --on-ink-btn --ink-btn 4.5 Ink button label; --ink-btn --paper 3 Ink button edge against paper; --on-hi --hi 4.5 Text on the highlighter; --learn --sheet 4.5 Learning count on a card; --ok --sheet 4.5 Due count on a card; --margin --paper 3 Margin line and quote mark (UI mark); --accent --paper 3 Focus ring; --rule --paper 1.2 Rules (decoration, kept faint)">
+    <thead><tr><th>Theme</th><th>Pair</th><th>Colours</th><th>Ratio</th><th>AA</th></tr></thead><tbody></tbody>
+  </table>
+  <p>Tap targets: buttons, tabs, options and icon buttons are ≥44px; the text buttons that sit on one 28px line ("Show as a table", "View original text") get a 44px hit area in the build via padding plus a negative margin, so the rhythm holds. Focus: a 3px ink-blue ring that follows each element's own corners (no forced 4px radius).</p>
+</section>
+
+<section class="notes">
+  <h2>What Direction A changes (modules you can mix)</h2>
+  <p>Each module stands alone unless it says it needs another. Token values are light / dark.</p>
+  <table>
+    <thead><tr><th>Module</th><th>Tokens, colours, fonts, radii</th><th>CSS and markup</th></tr></thead>
+    <tbody>
+      <tr><td><b>a. Light palette</b></td><td><code>--paper</code> #f4f5fa → #fcfcf9 · <code>--sheet</code> #fff (same) · <code>--ink</code> #161a3c → #1b2340 · <code>--ink-2</code> #4f5578 → #4b5272 · <code>--line</code> #dbdfef → becomes <code>--rule</code> #c9d6ee · <code>--line-strong</code> #bfc5df → #9fb4dc · <code>--accent</code> #3040d8 → #2a45c2 · <code>--accent-hover</code> → #1f3597 · <code>--hi</code> #ffe55c → #fff176 · <code>--hi-soft</code> removed (the swipe replaces it) · <code>--margin</code> #ec5b78 → #d9475f · new <code>--learn</code> #8a5300 · ok/warn/danger unchanged</td><td>tokens.css only</td></tr>
+      <tr><td><b>b. Dark palette</b></td><td><code>--paper</code> #0e1126 → #15171e · <code>--sheet</code> #171b38 → #1d2029 · <code>--ink</code> #eceeff → #ebe9e1 · <code>--ink-2</code> #a3a9d3 → #a8acba · <code>--rule</code> #272d3c · <code>--line-strong</code> #3d4577 → #3a4459 · <code>--accent</code> (text) #8f9cff → #9db3ff · new <code>--ink-btn</code> #4361e6 (fill; was the pastel accent) · <code>--on-accent</code> #0e1126 → new <code>--on-ink-btn</code> #fff · <code>--hi</code> #f2d94a → #e9d35a · <code>--margin</code> #d9657d → #c4596b · <code>--learn</code> #e3ae58 · ok #6fd3a2 → #72cfa0 · <code>--accent-wash</code>, <code>--hi-soft</code> dark values retired</td><td>tokens.css only; needs nothing else</td></tr>
+      <tr><td><b>c. Paper and rules</b></td><td>new <code>--rule</code>, <code>--rule-read</code> (#dbe4f4 / #20252f), <code>--g</code> 28px (the rule gap = running line height)</td><td><code>.main</code> gets the repeating-gradient rules; running text uses <code>line-height: var(--g)</code>; headings take 2 rules. Lists move to 28/56px rows. A CSS gradient, no image.</td></tr>
+      <tr><td><b>d. Margin line</b></td><td>uses <code>--margin</code>; new layout tokens <code>--m</code> 32px (line x) and <code>--col</code> 48px (text start)</td><td>one pseudo-element on the app frame (double line: 1px plus a 1px shadow). Keys, swatches, quote marks and the logo sit in the margin. Retires the per-card 2px rules on the code card and quiz card.</td></tr>
+      <tr><td><b>e. Highlighter swipe</b></td><td>uses <code>--hi</code>, <code>--on-hi</code></td><td>new <code>.hl</code> (one-line swipe, uneven radii, skew) and <code>.hl-lines</code> (multi-line marker); replaces <code>.tab__mark</code>'s pill, the <code>.count--current</code> underline and the <code>.example</code> / <code>.check__answer</code> side stripes. Draws in with a clip-path once; off under reduced motion, and the Motion <code>layoutId</code> slide is turned off with <code>useReducedMotion</code>.</td></tr>
+      <tr><td><b>f. Ink buttons</b></td><td>new <code>--ink-btn</code>, <code>--ink-btn-press</code>, <code>--on-ink-btn</code>; button radius 10px → 5px</td><td><code>.btn--primary</code> = ink fill with an inset 2px darker bottom edge; <code>.btn--quiet</code> = pen outline (1.5px inset ink); <code>.link-btn</code> = ink underline. <code>.segmented</code> pills become pen-outline boxes with the swipe on the chosen one.</td></tr>
+      <tr><td><b>g. Index cards</b></td><td>new <code>--card-shadow</code> (two soft offset shadows); card radius <code>--r-lg</code> 18px → 3px</td><td>decks, the All lessons deck, the flashcard itself, the quiz results score, the code-screen card: white sheet, red line under the heading line, blue rules below. Needs <b>c</b> for the rule rhythm inside.</td></tr>
+      <tr><td><b>h. Navigation</b></td><td>tab bar top border 1px → 2px <code>--rule-strong</code></td><td>phone: the swipe sits behind the active label, not the icon. Desktop: tabs move into the header bar (see desktop.html), so the left rail goes. Needs <b>e</b>.</td></tr>
+      <tr><td><b>i. Stats page</b></td><td>chart series unchanged (reading = <code>--accent</code>, flashcards = <code>--margin</code>, quiz = <code>--learn</code>, which replaces <code>--warn</code>)</td><td><code>StatsView.jsx</code>: tiles become a sentence plus a dotted ledger (<code>dl</code> kept for screen readers), cards removed, chart height = 6 rules, quiz bars as pen strokes, empty lessons as a waiting line. Same data and the same table view.</td></tr>
+      <tr><td><b>j. Reader on the rules</b></td><td>reading text 17px → 16.5px so a 28px line height is 1.7; <code>--rule-read</code></td><td>prose on the rules, paragraphs indented instead of gaps, the progress bar becomes a tally of strokes (same <code>aria</code> text). Needs <b>c</b>.</td></tr>
+      <tr><td><b>k. Desktop layout</b></td><td><code>--rail-w</code> retired; new <code>--spread-max</code> 76rem</td><td>a centred two-page spread (two ruled pages with a spine shadow) from 64rem; one page below that. See desktop.html.</td></tr>
+      <tr><td><b>l. Logo</b></td><td>—</td><td>new <code>LogoMark</code>: a ruled page with the margin line and a highlighter stroke, placed in the header's margin column.</td></tr>
+      <tr><td><b>m. Empty states</b></td><td>—</td><td>empty lists show blank rules with one written line ("No quiz yet." plus the action) instead of an empty rounded box.</td></tr>
+      <tr><td><b>n. Radii and shadow</b></td><td><code>--r-sm</code> 8 → 4px, <code>--r-md</code> 12 → 5px, <code>--r-lg</code> 18 → 3px (cards); hardcoded 10px/14px in quiz.css and flashcards.css map to these; new <code>--card-shadow</code></td><td>closes the "hardcoded radii and shadow" carry-over.</td></tr>
+      <tr><td><b>Fixes in every direction</b></td><td>—</td><td>Learning count → <code>--learn</code>; the Appearance fieldset gets <code>border: 0; min-inline-size: 0</code>; Researcher admin moves to the foot of the code screen; the resume notice moves from the warn style to a neutral info note; focus rings keep each element's radius; <code>.quiz-progress</code> animates <code>transform</code>.</td></tr>
+      <tr><td><b>Fonts</b></td><td>no new faces. Literata stays for headings and reading, Hanken Grotesk for UI. Sizes: H1 28px on 56px, H2 20px, UI 15px, small 14px, all on the 28px line.</td><td>self-hosted fontsource packages unchanged</td></tr>
+    </tbody>
+  </table>
+  <h3>Honest risks</h3>
+  <ul>
+    <li>The 28px rhythm is fragile: any stray 1px border or odd padding knocks text off the rules. The build needs a rule-gap discipline (rows sized in rules; borders become inset shadows).</li>
+    <li>Ruled text costs some reading comfort, because descenders cross the rules. The reader uses fainter rules; if that's still too busy, keep rules only in lists and leave the reading column plain (that's Direction B's choice).</li>
+    <li>The margin takes 32px of a 380px screen (316px for text, about the same as the current reader's 2px rule plus padding).</li>
+  </ul>
+  <p>Mockup content: "Pag-unlad ng Wika" and its question are from the real lesson; the evidence sentence, "Cell Structure", "Research Design" and every number are synthetic.</p>
+</section>
+
+<script src="../shared/mock.js"></script>
+</body>
+</html>
