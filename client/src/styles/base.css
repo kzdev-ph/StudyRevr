@@ -165,7 +165,7 @@ button {
   background: var(--ink-btn-press);
 }
 .btn--quiet {
-  border-color: var(--line-strong);
+  border-color: var(--control-border);
   background: transparent;
   color: var(--ink);
 }
@@ -235,7 +235,7 @@ p .link-btn {
   align-items: center;
   min-height: 44px;
   padding: 0 16px;
-  border: 1.5px solid var(--line-strong);
+  border: 1.5px solid var(--control-border);
   border-radius: var(--r-sm);
   font-weight: 600;
   cursor: pointer;
@@ -270,7 +270,7 @@ p .link-btn {
   align-items: flex-start;
   gap: 10px;
   padding: 12px 14px;
-  border-radius: var(--r-md);
+  border-radius: var(--r-sm);
   border: 1px solid;
   font-size: 0.9375rem;
 }
@@ -292,7 +292,7 @@ p .link-btn {
 }
 .notice--info {
   background: var(--sheet);
-  border-color: var(--line-strong);
+  border-color: var(--control-border);
   color: var(--ink);
 }
 .notice--info .notice__icon {

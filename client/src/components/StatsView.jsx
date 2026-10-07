@@ -2,8 +2,8 @@ import { prettyTitle } from '../lib/format.js';
 import { paths } from '../lib/router.js';
 import { ACTIVITIES, cardsLine, mostActiveDay, pct, studyTime, weekRows } from '../lib/stats.js';
 
-function Swatch({ color }) {
-  return <span className="swatch" style={{ '--swatch': color }} aria-hidden="true" />;
+function Swatch({ color, activity }) {
+  return <span className={activity ? `swatch swatch--${activity}` : 'swatch'} style={{ '--swatch': color }} aria-hidden="true" />;
 }
 
 // A percentage written in the margin. A screen reader hears "no answers yet" instead of "dash".
@@ -52,7 +52,7 @@ function Week({ week, own }) {
             {ACTIVITIES.map((a) => (
               <div key={a.key} className="legend__item">
                 <dt>
-                  <Swatch color={a.color} /> {a.label}
+                  <Swatch color={a.color} activity={a.key} /> {a.label}
                 </dt>
                 <dd>{studyTime(totals[`${a.key}_ms`])}</dd>
               </div>
@@ -63,7 +63,7 @@ function Week({ week, own }) {
               <li key={r.date} className={`days__row${r.total > 0 && r.total === most ? ' days__row--peak' : ''}`}>
                 <span className="days__day">{r.day}</span>
                 <span className="days__bar" aria-hidden="true">
-                  {ACTIVITIES.map((a) => (r[a.key] > 0 ? <i key={a.key} style={{ width: `${(r[a.key] / scale) * 100}%`, background: a.color }} /> : null))}
+                  {ACTIVITIES.map((a) => (r[a.key] > 0 ? <i key={a.key} data-activity={a.key} style={{ width: `${(r[a.key] / scale) * 100}%`, backgroundColor: a.color }} /> : null))}
                 </span>
                 <span className="days__time">{r.total > 0 ? studyTime(r.total * 60_000) : <span className="muted">–<span className="visually-hidden">none</span></span>}</span>
               </li>

@@ -21,7 +21,7 @@ Everything is grounded in the lesson the teacher gave: key terms and flashcards 
 - Bottom tab bar: Review, Flashcard, Mock Quiz, Stats; Settings behind a gear; Admin for the researcher only.
 
 ## Capabilities and Constraints
-- React + Vite client, plain CSS with tokens in `client/src/styles/tokens.css`; Recharts on Stats; Motion for animation.
+- React + Vite client, plain CSS with tokens in `client/src/styles/tokens.css`; Stats drawn in CSS; Motion for animation.
 - Fonts are self-hosted (`@fontsource-variable` Literata + Hanken Grotesk) because students may be on local Wi-Fi only. No new font faces.
 - Must stay light on budget phones: no heavy textures, large SVG backgrounds or expensive shadows.
 - Visual work must not change logic, API, data or behaviour; all tests must keep passing.

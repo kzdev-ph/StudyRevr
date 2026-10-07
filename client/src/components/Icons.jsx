@@ -126,7 +126,7 @@ export const SourceIcon = (p) => (
   </Svg>
 );
 
-// A journal page: the red margin line, and an S written in ink over a highlighter stroke.
+// A journal page: its margin rule, and an S written in ink over a highlighter stroke.
 export const LogoMark = ({ size = 28 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
     <rect x="3.25" y="2.75" width="17.5" height="18.5" rx="1.25" fill="var(--sheet)" stroke="var(--ink)" strokeWidth="1.5" />

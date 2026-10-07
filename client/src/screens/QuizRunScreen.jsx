@@ -198,7 +198,7 @@ export default function QuizRunScreen({ lessonId }) {
       )}
 
       {notice && phase !== 'results' && (
-        <Notice tone="info" onDismiss={() => setNotice(null)}>
+        <Notice tone={quiz?.resumed ? 'info' : 'warn'} onDismiss={() => setNotice(null)}>
           {notice}
         </Notice>
       )}

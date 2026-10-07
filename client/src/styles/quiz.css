@@ -189,7 +189,7 @@
 .quiz-opts--tf .quiz-opt {
   align-items: center;
   padding: 10px 14px;
-  border: 1.5px solid var(--line-strong);
+  border: 1.5px solid var(--control-border);
   border-radius: var(--r-sm);
 }
 .quiz-opts--tf .quiz-opt__key {
@@ -240,10 +240,6 @@
   font-size: 2.5rem;
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
-}
-.quiz-score__line {
-  font-size: 1.125rem;
-  color: var(--ink-2);
 }
 .quiz-missed__head {
   margin-bottom: 0;

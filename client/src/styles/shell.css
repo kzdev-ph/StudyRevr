@@ -13,8 +13,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: var(--header-h);
-  padding: 0 calc(var(--gutter) - 8px) 0 0;
+  height: calc(var(--header-h) + var(--safe-top));
+  padding: var(--safe-top) calc(var(--gutter) - 8px + var(--safe-right)) 0 var(--safe-left);
   background: var(--paper);
   border-bottom: 1px solid var(--line);
 }
@@ -40,7 +40,7 @@
   position: relative;
   width: 100%;
   min-height: calc(100dvh - var(--header-h));
-  padding: 20px var(--gutter) calc(var(--tabbar-h) + var(--safe-bottom) + 28px) calc(var(--mw) + var(--mgap));
+  padding: 20px calc(var(--gutter) + var(--safe-right)) calc(var(--tabbar-h) + var(--safe-bottom) + 28px) calc(var(--mw) + var(--mgap) + var(--safe-left));
 }
 /* The margin's edge: a 1px neutral hairline, drawn only where the margin holds numbers (deck counts, list numbers,
    answer keys, the week's figures). An empty margin gets no line, and neither does the reader. */
@@ -83,7 +83,7 @@
   grid-template-columns: repeat(4, 1fr);
   gap: 4px;
   height: calc(var(--tabbar-h) + var(--safe-bottom));
-  padding: 0 6px var(--safe-bottom); /* the home indicator / gesture bar sits below the tabs, not over them */
+  padding: 0 calc(6px + var(--safe-right)) var(--safe-bottom) calc(6px + var(--safe-left)); /* the home indicator / gesture bar sits below the tabs, not over them */
   background: var(--paper);
   border-top: 1px solid var(--line-strong);
 }
@@ -97,7 +97,7 @@
   gap: 2px;
   min-height: 44px;
   color: var(--ink-2);
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   font-weight: 650;
 }
 .tab:hover {

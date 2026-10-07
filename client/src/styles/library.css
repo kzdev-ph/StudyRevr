@@ -6,7 +6,7 @@
   gap: 14px 16px;
   flex-wrap: wrap;
   padding: 18px;
-  border: 1.5px dashed var(--line-strong);
+  border: 1.5px dashed var(--control-border);
   border-radius: var(--r-sm);
   background: var(--sheet);
   transition: border-color 0.12s, background-color 0.12s;

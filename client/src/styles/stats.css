@@ -1,11 +1,7 @@
 /* Stats tab (and admin's view of one participant's stats), written as a page of notes: a sentence, ruled lines and
-   figures in the margin. No cards or tiles. Activity colours are existing tokens: reading = accent,
-   flashcards = margin, quiz = learn. */
+   figures in the margin. No cards or tiles. Activity colours are the --series-* tokens; the quiz is also striped. */
 
 .stats {
-  --series-reading: var(--accent);
-  --series-flashcards: var(--margin);
-  --series-quiz: var(--learn);
   display: flex;
   flex-direction: column;
   gap: 36px;
@@ -42,7 +38,12 @@
   width: 10px;
   height: 10px;
   border-radius: 1px;
-  background: var(--swatch);
+  background-color: var(--swatch);
+}
+/* the quiz is striped as well as coloured, so it never depends on colour alone */
+.swatch--quiz,
+.days__bar i[data-activity='quiz'] {
+  background-image: repeating-linear-gradient(135deg, transparent 0 2px, var(--paper) 2px 4px);
 }
 
 /* Reading 43 min · Flashcards 1 h 10 min · Quiz 17 min */

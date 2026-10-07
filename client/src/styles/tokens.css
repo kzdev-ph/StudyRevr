@@ -1,5 +1,5 @@
 /* StudyRevr design tokens: a study journal.
-   A plain page with a margin column (the red margin line at its edge) where the numbers that matter are written,
+   A plain page with a margin column (a thin neutral hairline at its edge) where the numbers that matter are written,
    fountain-pen blue-black ink, rules only under list rows, and a highlighter marker under the words that matter.
    Dark is the same journal at night. Light and dark follow the device; Settings can force one through [data-theme]. */
 
@@ -10,9 +10,10 @@
   --ink: #1c1d22;
   --ink-2: #55575f;
   --line: #d9d7cf; /* the rule under a list row */
-  --line-strong: #b9b6ab;
+  --line-strong: #b9b6ab; /* heavier decorative rules */
+  --control-border: #7d7a71; /* the edge of a button, option or chip: 3:1 against the page and the sheet */
 
-  --accent: #233a8c; /* fountain-pen blue: links, focus, the reading series */
+  --accent: #233a8c; /* fountain-pen blue: links, focus */
   --accent-hover: #1a2c6c;
   --on-accent: #ffffff;
   --accent-wash: #eceef5;
@@ -39,6 +40,12 @@
   --danger-wash: #fbe7ea;
 
   --card-edge: #e6e4dc; /* the cards behind a deck */
+
+  /* Stats: study time by activity. Far apart in lightness (navy, teal, orange) and in hue; the quiz is also striped, so
+     the three never depend on colour alone. */
+  --series-reading: #18276b;
+  --series-flashcards: #d9660f;
+  --series-quiz: #0b7a76;
   --card-shadow: 0 1px 2px rgb(28 29 34 / 0.1), 0 6px 14px -8px rgb(28 29 34 / 0.25);
 
   --font-ui: 'Hanken Grotesk Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -52,10 +59,12 @@
   --lessonnav-h: 3.875rem; /* the sticky Previous / Next bar in a lesson */
   --lessonnav-gap: 10px; /* its distance above the tab bar (or the bottom edge on a wide screen) */
   --book-max: 84rem; /* the dividers plus the page on a wide screen */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
 
   --r-sm: 3px;
-  --r-md: 3px;
   --r-lg: 2px; /* index cards */
 
   color-scheme: light;
@@ -70,6 +79,7 @@
     --ink-2: #aeaaa0;
     --line: #36342f;
     --line-strong: #4d4a42;
+    --control-border: #837f76;
 
     --accent: #a9bcff;
     --accent-hover: #c3d0ff;
@@ -95,6 +105,9 @@
     --danger-wash: #43242a;
 
     --card-edge: #2e2d29;
+    --series-reading: #e4e9ff;
+    --series-flashcards: #e39a2e;
+    --series-quiz: #2a8f8a;
     --card-shadow: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 10px 18px -10px rgb(0 0 0 / 0.75);
 
     color-scheme: dark;
@@ -109,6 +122,7 @@
   --ink-2: #aeaaa0;
   --line: #36342f;
   --line-strong: #4d4a42;
+  --control-border: #837f76;
 
   --accent: #a9bcff;
   --accent-hover: #c3d0ff;
@@ -134,6 +148,9 @@
   --danger-wash: #43242a;
 
   --card-edge: #2e2d29;
+  --series-reading: #e4e9ff;
+  --series-flashcards: #e39a2e;
+  --series-quiz: #2a8f8a;
   --card-shadow: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 10px 18px -10px rgb(0 0 0 / 0.75);
 
   color-scheme: dark;

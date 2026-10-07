@@ -25,7 +25,7 @@ export default function QuizResults({ results, onRetake, busy, headingRef }) {
           <span className="quiz-score__n" aria-hidden="true">
             {attempt.score}/{attempt.total}
           </span>
-          <span className="quiz-score__line">{scoreLine(attempt.score, attempt.total)}</span>
+          <span className="visually-hidden">{scoreLine(attempt.score, attempt.total)}</span>
         </h2>
         <p className="done__text">
           {attempt.percent}%{attempt.duration_ms !== null ? ` in ${formatDuration(attempt.duration_ms)}` : ''}. {bestLine(attempt.percent, results.previous_best_percent)}
