@@ -165,6 +165,7 @@
     position: relative;
     z-index: 1;
     grid-row: 2;
+    grid-column: 2; /* beside the tab column; without an explicit column it would fall into the 8.5rem one */
     max-width: none;
     min-height: calc(100dvh - var(--header-h) - 48px);
     margin: 0 0 40px;
@@ -174,5 +175,9 @@
     box-shadow: 0 0 0 1px var(--line-strong), 0 30px 60px -30px rgb(0 0 0 / 0.4);
     --mw: 4.5rem;
     --mgap: 28px;
+  }
+  /* a screen with no tab column (the admin PIN screen before a code is entered): the page takes the full width */
+  .app:not(:has(.tabbar)) .main {
+    grid-column: 1 / -1;
   }
 }

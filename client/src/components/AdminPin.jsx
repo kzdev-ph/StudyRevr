@@ -24,7 +24,7 @@ export default function AdminPin() {
   };
 
   return (
-    <form className="stack stack--tight" onSubmit={submit}>
+    <form className="stack stack--tight admin-pin" onSubmit={submit}>
       <label className="field">
         <span className="field__label">Admin PIN</span>
         <input

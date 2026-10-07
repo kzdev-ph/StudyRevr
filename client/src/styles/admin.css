@@ -46,8 +46,8 @@
 .data-table a {
   display: inline-block;
   /* a taller tap target than the text, without changing the row height */
-  margin: -10px -6px;
-  padding: 10px 6px;
+  margin: -12px -8px;
+  padding: 12px 8px;
   color: var(--accent);
   font-weight: 700;
 }
@@ -59,4 +59,9 @@
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+/* the PIN form stays a short column on a wide page */
+.admin-pin {
+  max-width: 26rem;
 }
