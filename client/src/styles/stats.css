@@ -1,122 +1,194 @@
-/* Stats tab (and admin's view of one participant's stats). Chart colours are existing tokens:
-   reading = accent, flashcards = margin, quiz = warn. */
+/* Stats tab (and admin's view of one participant's stats), written as a page of notes: a sentence, ruled lines and
+   figures in the margin. No cards or tiles. Activity colours are the --series-* tokens; the quiz is also striped. */
 
 .stats {
-  --series-reading: var(--accent);
-  --series-flashcards: var(--margin);
-  --series-quiz: var(--warn);
-}
-
-.stat-tiles {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-@media (min-width: 40rem) {
-  .stat-tiles {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-}
-.stat-tile {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--paper);
+  gap: 36px;
 }
-/* the week's total leads its three parts */
-.stat-tile--total {
-  grid-column: 1 / -1;
-}
-.stat-tile--total dd {
-  font-size: 2rem;
-}
-.stat-tile dt {
+.stats__side {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--ink-2);
-  font-size: 0.875rem;
-  font-weight: 600;
+  flex-direction: column;
+  gap: 36px;
+  min-width: 0;
 }
-.stat-tile dd {
+
+.stats-part {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.stats-part__title {
   font-family: var(--font-read);
-  font-size: 1.5rem;
+  font-size: 1.3125rem;
   font-weight: 650;
-  line-height: 1.2;
-  font-variant-numeric: tabular-nums;
 }
-.stat-tile dd.stat-tile__note {
-  color: var(--ink-2);
-  font-family: var(--font-ui);
-  font-size: 0.875rem;
-  font-weight: 500;
+.stats-lede {
+  font-family: var(--font-read);
+  font-size: 1.1875rem;
+  line-height: 1.5;
+}
+.stats-lede strong {
+  font-weight: 700;
 }
 
 .swatch {
   flex: none;
   width: 10px;
   height: 10px;
-  border-radius: 3px;
-  background: var(--swatch);
+  border-radius: 1px;
+  background-color: var(--swatch);
+}
+/* the quiz is striped as well as coloured, so it never depends on colour alone */
+.swatch--quiz,
+.days__bar i[data-activity='quiz'] {
+  background-image: repeating-linear-gradient(135deg, transparent 0 2px, var(--paper) 2px 4px);
 }
 
-.stats-card {
+/* Reading 43 min · Flashcards 1 h 10 min · Quiz 17 min */
+.legend {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--sheet);
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  font-size: 0.9375rem;
 }
-.stats-card__title {
-  font-family: var(--font-read);
-  font-size: 1.1875rem;
-  font-weight: 650;
-}
-.stats-chart {
-  width: 100%;
-  height: 220px;
-}
-.stats-chart--small {
-  height: 92px;
-}
-
-.chart-tip {
-  padding: 8px 10px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-sm);
-  background: var(--sheet);
-  color: var(--ink);
-  font-size: 0.875rem;
-}
-.chart-tip__title {
-  margin-bottom: 4px;
-  font-weight: 700;
-}
-.chart-tip__row {
+.legend__item {
   display: flex;
   align-items: center;
   gap: 6px;
 }
+.legend dt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-2);
+}
+.legend dd {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
 
-.quiz-scores {
+/* one ruled line per day, the day written in the margin */
+.days {
+  margin-left: calc(-1 * (var(--mw) + var(--mgap)));
+  border-top: 1px solid var(--line-strong);
+}
+.days__row {
+  display: grid;
+  grid-template-columns: var(--mw) minmax(0, 1fr) 5.5rem;
+  column-gap: var(--mgap);
+  align-items: center;
+  min-height: 36px;
+  border-bottom: 1px solid var(--line);
+}
+.days__day {
+  color: var(--ink-2);
+  font-size: 0.875rem;
+  font-weight: 700;
+  text-align: center;
+}
+.days__bar {
+  display: flex;
+  gap: 2px;
+  height: 12px;
+}
+.days__bar i {
+  display: block;
+  height: 100%;
+  border-radius: 1px;
+}
+.days__time {
+  font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.days__row--peak .days__day,
+.days__row--peak .days__time {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* figures written large in the margin, what they mean beside them */
+.figures {
+  margin-left: calc(-1 * (var(--mw) + var(--mgap)));
+  border-top: 1px solid var(--line-strong);
+}
+.figure {
+  display: grid;
+  grid-template-columns: var(--mw) minmax(0, 1fr);
+  column-gap: var(--mgap);
+  align-items: baseline;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.figure--empty {
+  margin-left: calc(-1 * (var(--mw) + var(--mgap)));
+  border-top: 1px solid var(--line-strong);
+}
+.figure__n {
+  justify-self: center;
+  color: var(--ink);
+  font-family: var(--font-read);
+  font-size: 1.375rem;
+  font-weight: 650;
+  line-height: 1.1;
+  font-variant-numeric: lining-nums tabular-nums;
+  text-align: center;
+}
+.figure__n--pct,
+.figure__n .mk {
+  font-size: 1.0625rem;
+}
+.figure--quiz {
+  align-items: start;
+}
+.figure--quiz .figure__n {
+  padding-top: 2px;
+}
+
+.quiz-score-lines {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 4px;
+  min-width: 0;
 }
 .quiz-scores__title {
+  font-size: 1rem;
+  font-family: var(--font-read);
   font-weight: 650;
+  overflow-wrap: anywhere;
+}
+.score-line {
+  display: grid;
+  grid-template-columns: 4.75rem minmax(0, 1fr) 3rem;
+  align-items: center;
+  column-gap: 10px;
+  min-height: 28px;
+  font-size: 0.9375rem;
+}
+.score-line b {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.score-line__track {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--line);
+  overflow: hidden;
+}
+.score-line__track i {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  transform-origin: left center;
 }
 
 .table-wrap {
   overflow-x: auto;
   border: 1px solid var(--line);
-  border-radius: var(--r-md);
+  border-radius: var(--r-sm);
+  background: var(--sheet);
 }
 .data-table {
   width: 100%;
@@ -150,23 +222,26 @@ details.table-view summary {
   align-items: center;
   color: var(--accent);
   font-weight: 650;
+  text-decoration: underline;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 4px;
   cursor: pointer;
 }
 
-/* the flashcard done card's recap of the sitting */
+/* the flashcard done card's recap of the sitting: three figures on ruled lines */
 .recap {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   width: 100%;
+  border-top: 1px solid var(--line-strong);
+  border-bottom: 1px solid var(--line);
+  padding: 10px 0;
 }
 .recap__item {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 10px 12px;
-  border-radius: var(--r-md);
-  background: var(--paper);
 }
 .recap dt {
   color: var(--ink-2);
@@ -174,19 +249,47 @@ details.table-view summary {
   font-weight: 600;
 }
 .recap dd {
-  font-size: 1.125rem;
-  font-weight: 700;
+  font-family: var(--font-read);
+  font-size: 1.25rem;
+  font-weight: 650;
   font-variant-numeric: tabular-nums;
 }
 
-/* the sitting's peak: the share answered Good or Easy */
-.recap__item--peak {
-  background: var(--accent-wash);
+/* the sitting's peak: the share answered Good or Easy, highlighted */
+.recap__item--peak dd {
+  align-self: flex-start;
+  padding: 0 2px;
+  margin-left: -2px;
+  border-radius: 2px;
+  color: var(--mk-ink);
+  background: linear-gradient(to bottom, transparent var(--mk-top), var(--hi) var(--mk-top) 94%, transparent 94%);
 }
 /* a labelled group around the recap's dl */
 .recap-group {
   width: 100%;
 }
-.stats-chart--one {
-  height: 52px;
+
+/* a wide page: the week on the left; flashcards and quiz scores beside it, with their own margin (and hairline) */
+@media (min-width: 64rem) {
+  .stats {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+    column-gap: 40px;
+    align-items: start;
+  }
+  .stats__side {
+    position: relative;
+    --mw: 3.75rem;
+    --mgap: 20px;
+    padding-left: calc(var(--mw) + var(--mgap));
+  }
+  .stats__side::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: var(--mw);
+    width: 1px;
+    background: var(--line);
+  }
 }

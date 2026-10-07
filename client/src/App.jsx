@@ -13,7 +13,7 @@ import QuizScreen from './screens/QuizScreen.jsx';
 import SettingsScreen from './screens/SettingsScreen.jsx';
 import StudyScreen from './screens/StudyScreen.jsx';
 
-// The charts (Recharts) load only when Stats is opened, so the study screens stay light on a phone.
+// Stats and the admin participant view load only when opened, so the study screens stay light on a phone.
 const StatsScreen = lazy(() => import('./screens/StatsScreen.jsx'));
 const AdminParticipantScreen = lazy(() => import('./screens/AdminParticipantScreen.jsx'));
 const loading = <p className="muted" aria-live="polite">Loading…</p>;

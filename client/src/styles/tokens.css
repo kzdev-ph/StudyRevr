@@ -1,104 +1,157 @@
-/* StudyRevr design tokens.
-   Ink on paper: a navy ink for text and actions, a highlighter yellow for "you are here", and the red margin rule of
-   a school notebook. Light and dark follow the device; Settings can force one through [data-theme]. */
+/* StudyRevr design tokens: a study journal.
+   A plain page with a margin column (a thin neutral hairline at its edge) where the numbers that matter are written,
+   fountain-pen blue-black ink, rules only under list rows, and a highlighter marker under the words that matter.
+   Dark is the same journal at night. Light and dark follow the device; Settings can force one through [data-theme]. */
 
 :root {
-  --paper: #f4f5fa;
+  --paper: #f6f5f0;
   --sheet: #ffffff;
-  --ink: #161a3c;
-  --ink-2: #4f5578;
-  --line: #dbdfef;
-  --line-strong: #bfc5df;
+  --desk: #e5e3dc; /* around the page on a wide screen */
+  --ink: #1c1d22;
+  --ink-2: #55575f;
+  --line: #d9d7cf; /* the rule under a list row */
+  --line-strong: #b9b6ab; /* heavier decorative rules */
+  --control-border: #7d7a71; /* the edge of a button, option or chip: 3:1 against the page and the sheet */
 
-  --accent: #3040d8;
-  --accent-hover: #2432b8;
+  --accent: #233a8c; /* fountain-pen blue: links, focus */
+  --accent-hover: #1a2c6c;
   --on-accent: #ffffff;
-  --accent-wash: #e9ebff;
+  --accent-wash: #eceef5;
 
-  --hi: #ffe55c;
-  --hi-soft: #fff4b3;
-  --on-hi: #161a3c;
-  --margin: #ec5b78;
+  /* primary buttons are written in ink */
+  --ink-btn: #233a8c;
+  --ink-btn-press: #1a2c6c;
+  --on-ink-btn: #ffffff;
 
+  /* the highlighter. In light it is a marker stroke under the words (the ink stays ink); at night it covers the
+     word and the text on it turns dark, because pale ink on a bright marker would vanish. */
+  --hi: #ffe45c;
+  --on-hi: #1c1d22;
+  --mk-top: 54%;
+  --mk-ink: currentColor;
+  --margin: #cf4057;
+
+  --learn: #8a5300; /* learning cards: pencil amber, not the error red */
   --ok: #17794f;
-  --ok-wash: #e1f3e9;
+  --ok-wash: #e4f2ea;
   --warn: #7d4a00;
-  --warn-wash: #fff0d1;
+  --warn-wash: #fbefd6;
   --danger: #b3263e;
-  --danger-wash: #fde6ea;
+  --danger-wash: #fbe7ea;
+
+  --card-edge: #e6e4dc; /* the cards behind a deck */
+
+  /* Stats: study time by activity. Far apart in lightness (navy, teal, orange) and in hue; the quiz is also striped, so
+     the three never depend on colour alone. */
+  --series-reading: #18276b;
+  --series-flashcards: #d9660f;
+  --series-quiz: #0b7a76;
+  --card-shadow: 0 1px 2px rgb(28 29 34 / 0.1), 0 6px 14px -8px rgb(28 29 34 / 0.25);
 
   --font-ui: 'Hanken Grotesk Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-read: 'Literata Variable', Georgia, 'Times New Roman', serif;
 
   --gutter: 16px;
+  --mw: 52px; /* the margin column; a thin neutral hairline marks its edge where it holds numbers */
+  --mgap: 20px; /* from the margin's edge to the text */
   --header-h: 56px;
   --tabbar-h: 64px;
   --lessonnav-h: 3.875rem; /* the sticky Previous / Next bar in a lesson */
   --lessonnav-gap: 10px; /* its distance above the tab bar (or the bottom edge on a wide screen) */
-  --rail-w: 224px;
+  --book-max: 84rem; /* the dividers plus the page on a wide screen */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
 
-  --r-sm: 8px;
-  --r-md: 12px;
-  --r-lg: 18px;
+  --r-sm: 3px;
+  --r-lg: 2px; /* index cards */
 
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --paper: #0e1126;
-    --sheet: #171b38;
-    --ink: #eceeff;
-    --ink-2: #a3a9d3;
-    --line: #2a3058;
-    --line-strong: #3d4577;
+    --paper: #1b1a18;
+    --sheet: #24231f;
+    --desk: #121110;
+    --ink: #e9e6de;
+    --ink-2: #aeaaa0;
+    --line: #36342f;
+    --line-strong: #4d4a42;
+    --control-border: #837f76;
 
-    --accent: #8f9cff;
-    --accent-hover: #aab4ff;
-    --on-accent: #0e1126;
-    --accent-wash: #232a5c;
+    --accent: #a9bcff;
+    --accent-hover: #c3d0ff;
+    --on-accent: #1b1a18;
+    --accent-wash: #2a2c36;
 
-    --hi: #f2d94a;
-    --hi-soft: #4a4420;
-    --on-hi: #161a3c;
-    --margin: #d9657d;
+    --ink-btn: #e9e6de;
+    --ink-btn-press: #cfcbc1;
+    --on-ink-btn: #1b1a18;
 
-    --ok: #6fd3a2;
-    --ok-wash: #173a2c;
+    --hi: #f4d548;
+    --on-hi: #1b1a18;
+    --mk-top: 10%;
+    --mk-ink: #1b1a18;
+    --margin: #c75b6b;
+
+    --learn: #d7a35a;
+    --ok: #79cfa3;
+    --ok-wash: #1d3328;
     --warn: #f2c46d;
-    --warn-wash: #3d2f10;
-    --danger: #ff8fa1;
-    --danger-wash: #4a1d27;
+    --warn-wash: #3a3020;
+    --danger: #ff8f9f;
+    --danger-wash: #43242a;
+
+    --card-edge: #2e2d29;
+    --series-reading: #e4e9ff;
+    --series-flashcards: #e39a2e;
+    --series-quiz: #2a8f8a;
+    --card-shadow: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 10px 18px -10px rgb(0 0 0 / 0.75);
 
     color-scheme: dark;
   }
 }
 
 :root[data-theme='dark'] {
-  --paper: #0e1126;
-  --sheet: #171b38;
-  --ink: #eceeff;
-  --ink-2: #a3a9d3;
-  --line: #2a3058;
-  --line-strong: #3d4577;
+  --paper: #1b1a18;
+  --sheet: #24231f;
+  --desk: #121110;
+  --ink: #e9e6de;
+  --ink-2: #aeaaa0;
+  --line: #36342f;
+  --line-strong: #4d4a42;
+  --control-border: #837f76;
 
-  --accent: #8f9cff;
-  --accent-hover: #aab4ff;
-  --on-accent: #0e1126;
-  --accent-wash: #232a5c;
+  --accent: #a9bcff;
+  --accent-hover: #c3d0ff;
+  --on-accent: #1b1a18;
+  --accent-wash: #2a2c36;
 
-  --hi: #f2d94a;
-  --hi-soft: #4a4420;
-  --on-hi: #161a3c;
-  --margin: #d9657d;
+  --ink-btn: #e9e6de;
+  --ink-btn-press: #cfcbc1;
+  --on-ink-btn: #1b1a18;
 
-  --ok: #6fd3a2;
-  --ok-wash: #173a2c;
+  --hi: #f4d548;
+  --on-hi: #1b1a18;
+  --mk-top: 10%;
+  --mk-ink: #1b1a18;
+  --margin: #c75b6b;
+
+  --learn: #d7a35a;
+  --ok: #79cfa3;
+  --ok-wash: #1d3328;
   --warn: #f2c46d;
-  --warn-wash: #3d2f10;
-  --danger: #ff8fa1;
-  --danger-wash: #4a1d27;
+  --warn-wash: #3a3020;
+  --danger: #ff8f9f;
+  --danger-wash: #43242a;
+
+  --card-edge: #2e2d29;
+  --series-reading: #e4e9ff;
+  --series-flashcards: #e39a2e;
+  --series-quiz: #2a8f8a;
+  --card-shadow: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 10px 18px -10px rgb(0 0 0 / 0.75);
 
   color-scheme: dark;
 }

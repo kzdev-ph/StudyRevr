@@ -53,7 +53,9 @@ export default function QuizQuestion({ question: q, feedback, onAnswer, busy }) 
               aria-keyshortcuts={String(i + 1)}
             >
               <kbd className="quiz-opt__key" aria-hidden="true">{i + 1}</kbd>
-              <span className="quiz-opt__text">{yesNo(q, choice)}</span>
+              <span className="quiz-opt__text">
+                <span>{yesNo(q, choice)}</span>
+              </span>
               {/* a fixed slot, so marking the answer never changes the option's height */}
               <span className="quiz-opt__mark" aria-hidden="true">
                 {state === 'right' && <CheckIcon size={18} />}

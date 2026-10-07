@@ -40,57 +40,63 @@ export default function SectionPage({ lesson, section, variant, busy, failure, n
 
   return (
     <div className="page">
-      <h2 className="page__title" ref={title} tabIndex={-1}>
-        {heading}
-      </h2>
+      <div className="page__main">
+        <h2 className="page__title" ref={title} tabIndex={-1}>
+          {heading}
+        </h2>
 
-      <div className="tools" role="group" aria-label="Ways to read this section">
-        <button type="button" className="chip-btn" aria-pressed={variant === 'simple'} onClick={() => onVariant('simple')}>
-          <SimplerIcon size={18} /> Explain simpler
-        </button>
-        <button type="button" className="chip-btn" aria-pressed={variant === 'filipino'} onClick={() => onVariant('filipino')}>
-          <TranslateIcon size={18} /> Filipino/Taglish
-        </button>
-        <button type="button" className="chip-btn" aria-pressed={showSource} onClick={onToggleSource}>
-          <SourceIcon size={18} /> Original text
-        </button>
+        <div className="tools" role="group" aria-label="Ways to read this section">
+          <button type="button" className="chip-btn" aria-pressed={variant === 'simple'} onClick={() => onVariant('simple')}>
+            <SimplerIcon size={18} /> Explain simpler
+          </button>
+          <button type="button" className="chip-btn" aria-pressed={variant === 'filipino'} onClick={() => onVariant('filipino')}>
+            <TranslateIcon size={18} /> Filipino/Taglish
+          </button>
+          <button type="button" className="chip-btn" aria-pressed={showSource} onClick={onToggleSource}>
+            <SourceIcon size={18} /> Original text
+          </button>
+        </div>
+
+        {variant === 'summary' && <Prose text={section.content} />}
+
+        {variant !== 'summary' && busy && <Skeleton label={WORKING[variant]} />}
+
+        {variant !== 'summary' && !busy && failure && (
+          <Notice
+            action={
+              <button type="button" className="btn btn--quiet btn--small" onClick={onRetry}>
+                Try again
+              </button>
+            }
+          >
+            {failure}
+          </Notice>
+        )}
+
+        {variant === 'simple' && !busy && simple && (
+          <>
+            <Prose text={simple.text} />
+            {simple.example && (
+              <aside className="example">
+                <p className="example__label">
+                  <span className="mk">An everyday way to picture it</span>
+                </p>
+                <Prose text={simple.example} />
+              </aside>
+            )}
+          </>
+        )}
+
+        {variant === 'filipino' && !busy && filipino && <Prose text={filipino.content} />}
+
+        {variant !== 'summary' && !busy && note && showing && <p className="muted fallback-note">{note}</p>}
       </div>
 
-      {variant === 'summary' && <Prose text={section.content} />}
-
-      {variant !== 'summary' && busy && <Skeleton label={WORKING[variant]} />}
-
-      {variant !== 'summary' && !busy && failure && (
-        <Notice
-          action={
-            <button type="button" className="btn btn--quiet btn--small" onClick={onRetry}>
-              Try again
-            </button>
-          }
-        >
-          {failure}
-        </Notice>
-      )}
-
-      {variant === 'simple' && !busy && simple && (
-        <>
-          <Prose text={simple.text} />
-          {simple.example && (
-            <aside className="example">
-              <p className="example__label">An everyday way to picture it</p>
-              <Prose text={simple.example} />
-            </aside>
-          )}
-        </>
-      )}
-
-      {variant === 'filipino' && !busy && filipino && <Prose text={filipino.content} />}
-
-      {variant !== 'summary' && !busy && note && showing && <p className="muted fallback-note">{note}</p>}
-
-      {showSource && <SourcePanel section={section} lesson={lesson} />}
-
-      {showing && !busy && <QuickCheck key={section.id} questions={questions} />}
+      {/* beside the reading column on a wide screen, under it on a phone */}
+      <div className="page__aside">
+        {showSource && <SourcePanel section={section} lesson={lesson} />}
+        {showing && !busy && <QuickCheck key={section.id} questions={questions} />}
+      </div>
     </div>
   );
 }

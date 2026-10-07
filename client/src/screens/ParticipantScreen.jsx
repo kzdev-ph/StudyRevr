@@ -38,43 +38,46 @@ export default function ParticipantScreen() {
 
   return (
     <main className="gate" id="main">
-      <div className="gate__card stack">
-        <span className="wordmark" aria-hidden="true">
-          <LogoMark />
-          <span>StudyRevr</span>
-        </span>
-        <h1 className="screen-title">Who’s studying?</h1>
-        <form className="stack stack--tight" onSubmit={submit} noValidate>
-          <label className="field">
-            <span className="field__label">Your participant code</span>
-            <input
-              className="field__input gate__input"
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              autoComplete="off"
-              autoCapitalize="characters"
-              spellCheck={false}
-              inputMode="text"
-              placeholder="P01"
-              aria-describedby={problem ? 'gate-problem' : 'gate-hint'}
-              aria-invalid={problem ? true : undefined}
-              ref={input}
-              autoFocus={!TOUCH}
-            />
-          </label>
-          {problem ? (
-            <div id="gate-problem">
-              <Notice>{problem}</Notice>
-            </div>
-          ) : (
-            <p id="gate-hint" className="muted">
-              Your teacher gave you a code like P01. No password needed.
-            </p>
-          )}
-          <button type="submit" className="btn btn--primary" disabled={checking}>
-            {checking ? 'Checking…' : 'Start studying'}
-          </button>
-        </form>
+      <div className="gate__inner">
+        <div className="gate__card stack">
+          <span className="wordmark">
+            <LogoMark />
+            <span>StudyRevr</span>
+          </span>
+          <h1 className="screen-title">Who’s studying?</h1>
+          <form className="stack stack--tight" onSubmit={submit} noValidate>
+            <label className="field">
+              <span className="field__label">Your participant code</span>
+              <input
+                className="field__input gate__input"
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                autoComplete="off"
+                autoCapitalize="characters"
+                spellCheck={false}
+                inputMode="text"
+                placeholder="P01"
+                aria-describedby={problem ? 'gate-problem' : 'gate-hint'}
+                aria-invalid={problem ? true : undefined}
+                ref={input}
+                autoFocus={!TOUCH}
+              />
+            </label>
+            {problem ? (
+              <div id="gate-problem">
+                <Notice>{problem}</Notice>
+              </div>
+            ) : (
+              <p id="gate-hint" className="muted">
+                Your teacher gave you a code like P01. No password needed.
+              </p>
+            )}
+            <button type="submit" className="btn btn--primary" disabled={checking}>
+              {checking ? 'Checking…' : 'Start studying'}
+            </button>
+          </form>
+        </div>
+        {/* the researcher's way in: below the page, quiet (students don't need it) */}
         <a className="link-btn gate__admin" href={paths.admin()}>
           Researcher admin
         </a>

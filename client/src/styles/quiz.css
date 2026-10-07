@@ -1,6 +1,7 @@
-/* Mock Quiz tab: the shuffle, a question with its options and feedback, and the results. Only existing tokens:
-   right answers use ok / ok-wash, wrong ones danger / danger-wash, always with an icon and a word (the word is read
-   out on the option and shown in the feedback below, so the option itself never changes size when it is marked). */
+/* Mock Quiz tab: the shuffle, a question with its options and feedback, and the results. The question is written on
+   the page; its options are ruled lines with their keys (1-4) in the margin. Right answers use ok and the
+   highlighter, wrong ones danger, always with an icon and a word (the word is read out on the option and shown in the
+   feedback below, so the option itself never changes size when it is marked). */
 
 .quiz-counter {
   color: var(--ink-2);
@@ -12,8 +13,7 @@
   margin-top: -6px;
 }
 .quiz-progress .progress__fill {
-  background: var(--accent); /* the shared yellow fill is about 1.2:1 against the track in light mode */
-  transition: width 0.25s ease-out;
+  transition: transform 0.25s ease-out;
 }
 
 .quiz-loading {
@@ -46,20 +46,9 @@
   inset: 0;
   display: grid;
   place-items: center;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-md);
+  border-radius: var(--r-lg);
   background: var(--sheet);
-  box-shadow: 0 6px 18px rgb(14 17 38 / 0.08);
-}
-.shuffle__card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 18px;
-  width: 2px;
-  background: var(--margin);
-  opacity: 0.6;
+  box-shadow: var(--card-shadow);
 }
 .shuffle__mark {
   font-family: var(--font-read);
@@ -72,33 +61,13 @@
   font-weight: 600;
 }
 
-/* ---- a question: a notebook sheet like a flashcard ---- */
-/* the question type is a sentence here, not a short label, so it is not set in capitals */
-.quiz-q .flashcard__kicker {
-  text-transform: none;
-  letter-spacing: 0;
-}
+/* ---- a question: written on the page ---- */
+/* the question type is a sentence here, not a short label */
 .quiz-q {
-  position: relative;
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 22px 18px 24px 40px;
-  border: 1px solid var(--line);
-  border-radius: 4px var(--r-lg) var(--r-lg) 4px;
-  background: var(--sheet);
-  box-shadow: 0 6px 18px rgb(14 17 38 / 0.08);
   overflow-wrap: anywhere;
-}
-.quiz-q::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 26px;
-  width: 2px;
-  background: var(--margin);
-  opacity: 0.6;
 }
 .quiz-q__question,
 .quiz-q__ask {
@@ -114,12 +83,14 @@
   gap: 10px;
 }
 .quiz-q__term {
-  padding: 0 6px;
-  margin-left: -6px;
-  border-radius: 3px;
-  background: var(--hi);
-  color: var(--on-hi);
+  padding: 0 3px;
+  margin-left: -3px;
+  border-radius: 2px;
+  background: linear-gradient(to bottom, transparent var(--mk-top), var(--hi) var(--mk-top) 94%, transparent 94%);
+  color: var(--mk-ink);
   font-weight: 700;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
 }
 .quiz-q__statement {
   display: block;
@@ -129,54 +100,57 @@
 .quiz-opts {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-}
-.quiz-opts--tf {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-top: 1px solid var(--line-strong);
 }
 .quiz-opt {
+  position: relative;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
-  min-height: 52px;
-  padding: 10px 14px;
-  border: 1.5px solid var(--line-strong);
-  border-radius: 10px;
-  background: var(--sheet);
+  min-height: 56px;
+  padding: 14px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
   color: var(--ink);
   font-size: 1rem;
-  line-height: 1.4;
+  line-height: 1.45;
   text-align: left;
-  transition: background-color 0.12s, border-color 0.12s;
+  transition: background-color 0.12s;
 }
 /* only where a pointer can hover: on a touch screen :hover sticks to the tapped option */
 @media (hover: hover) {
   .quiz-opt:not(:disabled):hover {
-    border-color: var(--accent);
     background: var(--accent-wash);
   }
 }
 .quiz-opt:disabled {
   cursor: default;
 }
-/* the option's number: its label on a phone, its key on a keyboard */
+/* the option's number, written in the margin: its label on a phone, its key on a keyboard */
 .quiz-opt__key {
-  flex: none;
-  display: inline-grid;
-  place-items: center;
-  min-width: 1.75rem;
-  height: 1.75rem;
-  border: 1px solid var(--line-strong);
-  border-radius: 4px;
+  position: absolute;
+  top: 12px;
+  left: calc(-1 * (var(--mw) + var(--mgap)));
+  width: var(--mw);
   color: var(--ink-2);
-  font-family: var(--font-ui);
-  font-size: 0.875rem;
-  font-weight: 700;
+  font-family: var(--font-read);
+  font-size: 1.25rem;
+  font-style: italic;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
 }
 .quiz-opt__text {
   flex: 1 1 auto;
   min-width: 0;
+}
+.quiz-opt__text > span {
+  padding: 0 2px;
+  margin: 0 -2px;
+  border-radius: 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
 }
 /* always there, empty until the answer shows */
 .quiz-opt__mark {
@@ -185,42 +159,64 @@
   place-items: center;
   width: 1.125rem;
   height: 1.125rem;
+  margin-top: 3px;
 }
-.quiz-opt--right {
-  border-color: var(--ok);
-  background: var(--ok-wash);
+.quiz-opt--right .quiz-opt__text > span {
+  color: var(--mk-ink);
+  background: linear-gradient(to bottom, transparent var(--mk-top), var(--hi) var(--mk-top) 94%, transparent 94%);
 }
 .quiz-opt--right .quiz-opt__mark,
 .quiz-opt--right .quiz-opt__key {
   color: var(--ok);
-  border-color: var(--ok);
+  font-style: normal;
 }
-.quiz-opt--wrong {
-  border-color: var(--danger);
-  background: var(--danger-wash);
-}
+.quiz-opt--wrong .quiz-opt__text,
 .quiz-opt--wrong .quiz-opt__mark,
 .quiz-opt--wrong .quiz-opt__key {
   color: var(--danger);
-  border-color: var(--danger);
 }
 .quiz-opt--other {
   opacity: 0.6;
+}
+
+/* true / false (shown as Yes / No): two boxes side by side, each with its key inside */
+.quiz-opts--tf {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  border-top: 0;
+}
+.quiz-opts--tf .quiz-opt {
+  align-items: center;
+  padding: 10px 14px;
+  border: 1.5px solid var(--control-border);
+  border-radius: var(--r-sm);
+}
+.quiz-opts--tf .quiz-opt__key {
+  position: static;
+  width: auto;
+  font-size: 1.125rem;
+}
+.quiz-opts--tf .quiz-opt--right {
+  border-color: var(--ok);
+}
+.quiz-opts--tf .quiz-opt--wrong {
+  border-color: var(--danger);
 }
 
 .quiz-feedback {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding-top: 14px;
-  border-top: 1px solid var(--line);
+  padding-top: 4px;
 }
 .quiz-feedback__verdict {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 1.0625rem;
-  font-weight: 700;
+  font-family: var(--font-read);
+  font-size: 1.1875rem;
+  font-weight: 650;
 }
 .quiz-feedback--right .quiz-feedback__verdict {
   color: var(--ok);
@@ -245,29 +241,41 @@
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
 }
-.quiz-score__line {
-  font-size: 1.125rem;
-  color: var(--ink-2);
-}
 .quiz-missed__head {
   margin-bottom: 0;
 }
+/* the missed questions: a ruled list numbered in the margin */
 .quiz-missed {
   display: flex;
   flex-direction: column;
-  gap: 10px;
   padding: 0;
+  border-top: 1px solid var(--line-strong);
   list-style: none;
+  counter-reset: missed;
 }
 .quiz-missed__item {
+  position: relative;
+  counter-increment: missed;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 16px 18px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--sheet);
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
   overflow-wrap: anywhere;
+}
+.quiz-missed__item::before {
+  content: counter(missed);
+  position: absolute;
+  top: 17px;
+  left: calc(-1 * (var(--mw) + var(--mgap)));
+  width: var(--mw);
+  color: var(--ink-2);
+  font-family: var(--font-read);
+  font-size: 1.125rem;
+  font-style: italic;
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: center;
 }
 .quiz-missed__q {
   font-family: var(--font-read);
@@ -294,20 +302,58 @@
 }
 
 @media (min-width: 40rem) {
-  .quiz-q {
-    padding: 28px 28px 28px 48px;
-  }
-  .quiz-q::before {
-    left: 30px;
-  }
   .quiz-q__question,
   .quiz-q__ask {
-    font-size: 1.375rem;
+    font-size: 1.5rem;
+  }
+}
+
+/* a wide page: the question on its measure, the options as two columns of ruled lines with their keys beside them;
+   the results with the missed questions beside the score */
+@media (min-width: 64rem) {
+  .quiz-q__question,
+  .quiz-q__ask {
+    max-width: 48rem;
+    font-size: 1.625rem;
+  }
+  .quiz-opts:not(.quiz-opts--tf) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 32px;
+  }
+  .quiz-opts:not(.quiz-opts--tf) .quiz-opt__key {
+    position: static;
+    width: 1.5rem;
+    flex: none;
+  }
+  .quiz-opts--tf {
+    max-width: 40rem;
+  }
+  .quiz-results {
+    display: grid;
+    grid-template-columns: minmax(18rem, 26rem) minmax(0, 1fr);
+    column-gap: 48px;
+    align-items: start;
+  }
+  .quiz-results .quiz-score {
+    position: sticky;
+    top: calc(var(--header-h) + 24px);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .quiz-progress .progress__fill {
     transition: none;
+  }
+}
+
+/* beside the score there is no page margin to write in: the missed questions keep their numbers inside the column */
+@media (min-width: 64rem) {
+  .quiz-results .quiz-missed__item {
+    padding-left: 2.25rem;
+  }
+  .quiz-results .quiz-missed__item::before {
+    left: 0;
+    width: 1.5rem;
   }
 }

@@ -5,14 +5,22 @@
   flex-direction: column;
   gap: 16px;
 }
+/* the back button hangs in the margin column, the title starts on the text line */
 .lesson-head {
-  display: flex;
-  align-items: flex-start;
-  gap: 4px;
-  margin-left: -10px;
+  display: grid;
+  grid-template-columns: var(--mw) minmax(0, 1fr);
+  column-gap: var(--mgap);
+  align-items: start;
+  margin-left: calc(-1 * (var(--mw) + var(--mgap)));
 }
 .lesson-head__back {
-  flex: none;
+  justify-self: center;
+}
+/* the reader has a slim margin (see shell.css): the back button hangs in it, a little left of the text */
+.lesson-view .lesson-head {
+  grid-template-columns: 44px minmax(0, 1fr);
+  column-gap: 2px;
+  margin-left: calc(16px - var(--mw) - var(--mgap));
 }
 .lesson-head__text {
   min-width: 0;
@@ -56,20 +64,6 @@
 .subnav a[aria-current='page'] {
   color: var(--ink);
 }
-.subnav a[aria-current='page']::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -1px;
-  height: 5px;
-  border-radius: 3px;
-  background: var(--hi);
-}
-.subnav a:first-child[aria-current='page']::after {
-  left: 0;
-  right: 14px;
-}
 .subnav a:focus-visible {
   outline-offset: -3px;
 }
@@ -80,50 +74,54 @@
   flex-direction: column;
   gap: 16px;
 }
+/* "3/8 sections" and a thin ink line on one row */
 .progress {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  align-items: center;
+  gap: 12px;
 }
 .progress__label {
+  flex: none;
   color: var(--ink-2);
   font-size: 0.875rem;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
 }
 .progress__track {
-  height: 10px;
-  border-radius: 5px;
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
   background: var(--line);
   overflow: hidden;
 }
 .progress__fill {
   display: block;
+  width: 100%;
   height: 100%;
-  border-radius: 5px;
-  background: var(--hi);
+  border-radius: 3px;
+  background: var(--ink);
+  transform-origin: left center;
 }
 
-/* The section page: a sheet of paper with the notebook's red margin rule. It runs edge to edge on a phone. */
+/* The section: written straight on the page ("3/8 sections" above says which one). From 72rem the quick check and
+   the original text stand beside the reading column instead of under it. */
 .page {
-  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.page__main,
+.page__aside {
   display: flex;
   flex-direction: column;
   gap: 18px;
-  margin-inline: calc(var(--gutter) * -1);
-  padding: 22px var(--gutter) 24px 40px;
-  background: var(--sheet);
-  border-block: 1px solid var(--line);
+  min-width: 0;
 }
-.page::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 26px;
-  width: 2px;
-  background: var(--margin);
-  opacity: 0.6;
+.page__main {
+  position: relative;
+}
+.page__aside:empty {
+  display: none;
 }
 .page__title {
   font-family: var(--font-read);
@@ -143,22 +141,23 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 40px;
-  padding: 0 14px 0 11px;
-  border: 1.5px solid var(--line-strong);
-  border-radius: 999px;
-  background: var(--sheet);
+  min-height: 44px;
+  padding: 0 12px 0 10px;
+  border: 1.5px solid var(--control-border);
+  border-radius: var(--r-sm);
+  background: transparent;
   font-weight: 600;
   font-size: 0.875rem;
-  transition: background-color 0.12s, border-color 0.12s;
+  transition: border-color 0.12s;
 }
 .chip-btn:hover {
-  border-color: var(--accent);
+  border-color: var(--ink);
 }
 .chip-btn[aria-pressed='true'] {
-  background: var(--hi);
-  border-color: var(--hi);
-  color: var(--on-hi);
+  border-color: var(--ink);
+  color: var(--mk-ink);
+  font-weight: 700;
+  background: linear-gradient(to bottom, transparent var(--mk-top), var(--hi) var(--mk-top) 92%, transparent 92%);
 }
 
 /* reading text */
@@ -183,19 +182,20 @@
 .prose li::before {
   content: '';
   position: absolute;
-  left: 0;
-  top: 0.78em;
-  width: 0.7em;
-  height: 0.38em;
-  border-radius: 2px;
-  background: var(--hi);
+  left: 0.1em;
+  top: 0.82em;
+  width: 0.6em;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--ink-2);
 }
 
+/* the everyday example: a small index card tucked into the page */
 .example {
   padding: 14px 16px;
-  border-left: 4px solid var(--hi);
-  border-radius: 2px var(--r-md) var(--r-md) 2px;
-  background: var(--hi-soft);
+  border-radius: var(--r-lg);
+  background: var(--sheet);
+  box-shadow: var(--card-shadow);
 }
 .example__label {
   margin-bottom: 6px;
@@ -221,7 +221,7 @@
   display: block;
   height: 14px;
   border-radius: 7px;
-  background: linear-gradient(90deg, var(--line) 25%, var(--hi-soft) 50%, var(--line) 75%);
+  background: linear-gradient(90deg, var(--line) 25%, var(--accent-wash) 50%, var(--line) 75%);
   background-size: 300% 100%;
   animation: shimmer 1.6s ease-in-out infinite;
 }
@@ -243,9 +243,9 @@
   flex-direction: column;
   gap: 10px;
   padding: 16px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-md);
-  background: var(--paper);
+  border-radius: var(--r-lg);
+  background: var(--sheet);
+  box-shadow: var(--card-shadow);
 }
 .source__title {
   font-size: 1rem;
@@ -287,11 +287,12 @@
 
 /* quick check */
 .quickcheck {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 14px;
   padding-top: 18px;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--line-strong);
 }
 .quickcheck__title {
   font-family: var(--font-read);
@@ -323,9 +324,9 @@
   width: 100%;
   min-height: 72px;
   padding: 10px 12px;
-  border: 1.5px solid var(--line-strong);
+  border: 1.5px solid var(--ink-2);
   border-radius: var(--r-sm);
-  background: var(--paper);
+  background: var(--sheet);
   font-size: 1rem;
   line-height: 1.5;
   resize: vertical;
@@ -339,9 +340,9 @@
 }
 .check__answer {
   padding: 12px 14px;
-  border-left: 4px solid var(--accent);
-  border-radius: 2px var(--r-md) var(--r-md) 2px;
-  background: var(--accent-wash);
+  border-radius: var(--r-lg);
+  background: var(--sheet);
+  box-shadow: var(--card-shadow);
   font-family: var(--font-read);
   line-height: 1.6;
 }
@@ -393,11 +394,9 @@
   display: flex;
   justify-content: space-between;
   gap: 10px;
-  padding: 8px;
-  border: 1px solid var(--line-strong);
-  border-radius: 14px;
-  background: var(--sheet);
-  box-shadow: 0 6px 18px rgb(14 17 38 / 0.1);
+  padding: 8px 0;
+  border-top: 1px solid var(--line-strong);
+  background: var(--paper);
 }
 .lesson-nav .btn {
   flex: 0 1 auto;
@@ -407,33 +406,49 @@
 }
 
 /* key points */
+/* key points: a ruled list numbered in the margin */
 .points {
   display: flex;
   flex-direction: column;
+  border-top: 1px solid var(--line-strong);
+  counter-reset: point;
 }
 .points__item {
   position: relative;
-  padding: 16px 0 16px 34px;
+  counter-increment: point;
+  padding: 16px 0;
   border-bottom: 1px solid var(--line);
   font-family: var(--font-read);
   font-size: 1.0625rem;
   line-height: 1.6;
 }
 .points__item::before {
-  content: '';
+  content: counter(point);
   position: absolute;
+  left: calc(-1 * (var(--mw) + var(--mgap)));
+  top: 18px;
+  width: var(--mw);
+  color: var(--ink-2);
+  font-style: italic;
+  font-weight: 600;
+  font-size: 1.125rem;
+  line-height: 1.4;
+  text-align: center;
+}
+/* the reader's margin is slim: the number stands inline */
+.lesson-view .points__item {
+  padding-left: 30px;
+}
+.lesson-view .points__item::before {
   left: 0;
-  top: 1.62em;
-  width: 22px;
-  height: 10px;
-  border-radius: 3px;
-  background: var(--hi);
+  width: auto;
 }
 
 /* key terms */
 .terms {
   display: flex;
   flex-direction: column;
+  border-top: 1px solid var(--line-strong);
 }
 .term {
   display: flex;
@@ -444,11 +459,11 @@
 }
 .term__name {
   align-self: flex-start;
-  padding: 0 6px;
-  margin-left: -6px;
-  border-radius: 3px;
-  background: var(--hi);
-  color: var(--on-hi);
+  padding: 0 3px;
+  margin-left: -3px;
+  border-radius: 2px;
+  background: linear-gradient(to bottom, transparent var(--mk-top), var(--hi) var(--mk-top) 94%, transparent 94%);
+  color: var(--mk-ink);
   font-family: var(--font-read);
   font-size: 1.125rem;
   font-weight: 700;
@@ -472,26 +487,15 @@
   font-weight: 650;
 }
 
-/* what's next */
+/* what's next: an index card at the end of the lesson */
 .endcard {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding: 24px var(--gutter) 24px 40px;
-  margin-inline: calc(var(--gutter) * -1);
-  position: relative;
+  padding: 22px 18px 24px;
+  border-radius: var(--r-lg);
   background: var(--sheet);
-  border-block: 1px solid var(--line);
-}
-.endcard::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 26px;
-  width: 2px;
-  background: var(--margin);
-  opacity: 0.6;
+  box-shadow: var(--card-shadow);
 }
 .endcard__title {
   font-family: var(--font-read);
@@ -512,12 +516,11 @@
   gap: 14px;
   min-height: 64px;
   padding: 12px 16px;
-  border: 1.5px solid var(--line-strong);
-  border-radius: var(--r-md);
-  background: var(--paper);
+  border: 1.5px solid var(--control-border);
+  border-radius: var(--r-sm);
 }
 .endcard__action:hover {
-  border-color: var(--accent);
+  border-color: var(--ink);
 }
 .endcard__action svg {
   flex: none;
@@ -538,12 +541,8 @@
 }
 
 @media (min-width: 40rem) {
-  .page,
   .endcard {
-    margin-inline: 0;
-    padding-right: 28px;
-    border: 1px solid var(--line);
-    border-radius: 4px var(--r-lg) var(--r-lg) 4px;
+    padding: 28px;
   }
   .endcard__actions {
     flex-direction: row;
@@ -556,6 +555,30 @@
 @media (min-width: 56rem) {
   .lesson-nav {
     bottom: 16px;
+  }
+  .prose {
+    font-size: 1.125rem;
+  }
+}
+/* a wide page: the reading column and, beside it, the quick check and the original text */
+@media (min-width: 72rem) {
+  .page:has(.page__aside:not(:empty)) {
+    display: grid;
+    grid-template-columns: minmax(0, 42rem) minmax(16rem, 1fr);
+    column-gap: 48px;
+    align-items: start;
+  }
+  .page__aside {
+    position: sticky;
+    top: calc(var(--header-h) + 24px);
+    gap: 24px;
+  }
+  .page__aside .quickcheck {
+    padding-top: 0;
+    border-top: 0;
+  }
+  .endcard {
+    max-width: 52rem;
   }
 }
 

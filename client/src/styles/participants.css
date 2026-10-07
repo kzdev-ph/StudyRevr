@@ -1,30 +1,28 @@
 /* Participant code screen, the participant chip in the header, and form fields shared with admin. */
 
+/* the code screen: a journal's first page on the desk, with the researcher's way in written quietly below it */
 .gate {
   display: grid;
   place-items: center;
   min-height: 100dvh;
   padding: 24px var(--gutter);
-  background: var(--paper);
+  background: var(--desk);
+}
+.gate__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  max-width: 26rem;
 }
 .gate__card {
   position: relative;
   width: 100%;
-  max-width: 26rem;
-  padding: 28px 20px 28px 36px;
-  border: 1px solid var(--line);
+  padding: 28px 24px;
   border-radius: var(--r-lg);
-  background: var(--sheet);
-}
-/* the red margin rule of a school notebook page */
-.gate__card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 20px;
-  width: 2px;
-  background: var(--margin);
+  background: var(--paper);
+  box-shadow: 0 0 0 1px var(--line-strong), var(--card-shadow);
 }
 .gate__input {
   font-size: 1.375rem;
@@ -33,8 +31,9 @@
   text-transform: uppercase;
 }
 .gate__admin {
-  align-self: flex-start;
   color: var(--ink-2);
+  font-size: 0.875rem;
+  font-weight: 600;
 }
 
 .field {
@@ -54,14 +53,17 @@
   width: 100%;
   min-height: 48px;
   padding: 8px 12px;
-  border: 1.5px solid var(--ink-2); /* 3:1 against the card, so the field's edge is visible */
+  border: 1.5px solid var(--ink-2); /* 3:1 against the page, so the field's edge is visible */
   border-radius: var(--r-sm);
-  background: var(--paper);
+  background: var(--sheet);
   color: var(--ink);
   font-size: 1rem;
 }
 .field__input:focus-visible {
   border-color: var(--accent);
+}
+.field__input::placeholder {
+  color: var(--ink-2);
 }
 .field__input[aria-invalid='true'] {
   border-color: var(--danger);
@@ -78,17 +80,18 @@
   min-height: 44px;
   padding: 0 4px;
 }
+/* the code, written and underlined like a name on a notebook's cover */
 .participant-chip span {
-  padding: 3px 10px;
-  border: 1.5px solid var(--line-strong);
-  border-radius: 999px;
-  background: var(--sheet);
-  font-size: 0.875rem;
+  padding: 0 1px;
+  border-bottom: 1.5px solid currentColor;
+  color: var(--ink-2);
+  font-size: 0.9375rem;
   font-weight: 700;
   letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
 }
 .participant-chip:hover span {
-  border-color: var(--accent);
+  color: var(--ink);
 }
 
 /* a labelled row with an action (Settings) */
@@ -96,16 +99,16 @@
   font-size: 1rem;
   font-weight: 650;
 }
+/* a ruled line on the page with its action at the end */
 .setting-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 16px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--sheet);
+  padding: 14px 0;
+  border-top: 1px solid var(--line-strong);
+  border-bottom: 1px solid var(--line);
 }
 .setting-row__text {
   display: flex;

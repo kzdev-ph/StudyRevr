@@ -1,4 +1,6 @@
-/* App frame: header on top, a bottom tab bar on phones that becomes a left rail from 56rem. */
+/* App frame. On a phone: a header, the page with its margin column (a thin hairline at its edge, only on pages
+   whose margin holds numbers) and a plain bar of four tabs at the bottom, the open one highlighted. From 56rem the
+   page is a sheet centred on the desk with the same four links in a quiet column on its left. */
 
 .app {
   min-height: 100dvh;
@@ -11,8 +13,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: var(--header-h);
-  padding: 0 calc(var(--gutter) - 8px) 0 var(--gutter);
+  height: calc(var(--header-h) + var(--safe-top));
+  padding: var(--safe-top) calc(var(--gutter) - 8px + var(--safe-right)) 0 var(--safe-left);
   background: var(--paper);
   border-bottom: 1px solid var(--line);
 }
@@ -27,15 +29,50 @@
   font-weight: 700;
   letter-spacing: -0.01em;
 }
-
-.main {
-  width: 100%;
-  max-width: 46rem;
-  margin: 0 auto;
-  padding: 20px var(--gutter) calc(var(--tabbar-h) + var(--safe-bottom) + 28px);
+/* in the header the logo sits in the margin column and the name starts where the text does */
+.header .wordmark {
+  gap: calc((var(--mw) - 28px) / 2 + var(--mgap));
+  padding-left: calc((var(--mw) - 28px) / 2);
 }
 
-/* ---- tab bar ---- */
+/* the page: text starts right of the margin column */
+.main {
+  position: relative;
+  width: 100%;
+  min-height: calc(100dvh - var(--header-h));
+  padding: 20px calc(var(--gutter) + var(--safe-right)) calc(var(--tabbar-h) + var(--safe-bottom) + 28px) calc(var(--mw) + var(--mgap) + var(--safe-left));
+}
+/* The margin's edge: a 1px neutral hairline, drawn only where the margin holds numbers (deck counts, list numbers,
+   answer keys, the week's figures). An empty margin gets no line, and neither does the reader. */
+.main::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--mw);
+  width: 1px;
+  background: var(--line);
+  pointer-events: none;
+  display: none;
+}
+.main:not(:has(.lesson-view)):has(.mnote, .lesson, .days, .figures)::before {
+  display: block;
+}
+/* answer keys and missed-question numbers stand in the margin only until 64rem, where they move into the columns */
+@media (max-width: 63.99rem) {
+  .main:not(:has(.lesson-view)):has(.quiz-opt__key, .quiz-missed__item)::before {
+    display: block;
+  }
+}
+
+/* reading: a slim margin at every width, so the text and the quick check get the page (the section number is on the
+   "3/8 sections" line) */
+.main:has(.lesson-view) {
+  --mw: 14px;
+  --mgap: 14px;
+}
+
+/* ---- the four main screens ---- */
 .tabbar {
   position: fixed;
   left: 0;
@@ -44,10 +81,11 @@
   z-index: 30;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
   height: calc(var(--tabbar-h) + var(--safe-bottom));
-  padding-bottom: var(--safe-bottom);
-  background: var(--sheet);
-  border-top: 1px solid var(--line);
+  padding: 0 calc(6px + var(--safe-right)) var(--safe-bottom) calc(6px + var(--safe-left)); /* the home indicator / gesture bar sits below the tabs, not over them */
+  background: var(--paper);
+  border-top: 1px solid var(--line-strong);
 }
 
 .tab {
@@ -57,56 +95,62 @@
   align-items: center;
   justify-content: center;
   gap: 2px;
+  min-height: 44px;
   color: var(--ink-2);
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-size: 0.875rem;
+  font-weight: 650;
 }
 .tab:hover {
   color: var(--ink);
 }
+/* the open one: the highlighter under its label, nothing else */
 .tab[aria-current='page'] {
   color: var(--ink);
 }
-.tab__icon,
-.tab__label {
-  position: relative;
-  z-index: 1;
-}
-/* the highlighter swipe: a short stroke behind the active tab's icon */
-.tab__mark {
-  position: absolute;
-  top: 8px;
-  left: 50%;
-  width: 52px;
-  height: 28px;
-  margin-left: -26px;
-  border-radius: 14px;
-  background: var(--hi);
-}
-.tab[aria-current='page'] .tab__icon {
-  color: var(--on-hi);
+
+@media (min-width: 40rem) {
+  .main {
+    max-width: 50rem;
+    margin: 0 auto;
+    --mw: 64px;
+    --mgap: 28px;
+  }
 }
 
+/* A wide screen: the page is a sheet on the desk, and the four links stand quietly in a column on its left. */
 @media (min-width: 56rem) {
+  body {
+    background: var(--desk);
+  }
   .app {
     display: grid;
-    grid-template-columns: var(--rail-w) minmax(0, 1fr);
+    grid-template-columns: 8.5rem minmax(0, 1fr);
     grid-template-rows: auto 1fr;
+    column-gap: 16px;
+    width: min(var(--book-max), calc(100% - 48px));
+    margin: 0 auto;
   }
   .header {
     grid-column: 1 / -1;
-    padding: 0 20px;
+    padding: 0;
+    background: var(--desk);
+    border-bottom: 0;
+  }
+  .header .wordmark {
+    gap: 10px;
+    padding-left: 0;
   }
   .tabbar {
     position: sticky;
-    top: calc(var(--header-h) + 20px);
+    top: calc(var(--header-h) + 28px);
+    z-index: 2;
     grid-row: 2;
     align-self: start;
     display: flex;
     flex-direction: column;
     gap: 4px;
     height: auto;
-    padding: 0 12px 0 16px;
+    padding: 0;
     background: transparent;
     border-top: 0;
   }
@@ -114,25 +158,26 @@
     flex-direction: row;
     justify-content: flex-start;
     gap: 12px;
-    min-height: 46px;
-    padding: 0 14px;
-    border-radius: 12px;
+    padding: 0 4px;
     font-size: 0.9375rem;
   }
-  .tab__mark {
-    inset: 0;
-    width: auto;
-    height: auto;
-    margin: 0;
-    border-radius: 12px;
-  }
-  .tab[aria-current='page'] .tab__label {
-    color: var(--on-hi);
-  }
   .main {
+    position: relative;
+    z-index: 1;
     grid-row: 2;
-    padding: 28px 32px 64px;
-    margin: 0;
-    max-width: 52rem;
+    grid-column: 2; /* beside the tab column; without an explicit column it would fall into the 8.5rem one */
+    max-width: none;
+    min-height: calc(100dvh - var(--header-h) - 48px);
+    margin: 0 0 40px;
+    padding: 36px 40px 64px calc(var(--mw) + var(--mgap));
+    border-radius: 4px;
+    background: var(--paper);
+    box-shadow: 0 0 0 1px var(--line-strong), 0 30px 60px -30px rgb(0 0 0 / 0.4);
+    --mw: 4.5rem;
+    --mgap: 28px;
+  }
+  /* a screen with no tab column (the admin PIN screen before a code is entered): the page takes the full width */
+  .app:not(:has(.tabbar)) .main {
+    grid-column: 1 / -1;
   }
 }

@@ -91,7 +91,7 @@ export default function SectionsReview({ lesson, sections, progress, keyTermCoun
           {atEnd ? `${count}/${count}` : `${index + 1}/${count}`} sections
         </p>
         <div className="progress__track" role="progressbar" aria-label="Sections read" aria-valuemin={0} aria-valuemax={count} aria-valuenow={atEnd ? count : index + 1}>
-          <motion.span className="progress__fill" initial={false} animate={{ width: `${percent}%` }} transition={{ duration: 0.3, ease: 'easeOut' }} />
+          <motion.span className="progress__fill" initial={false} animate={{ scaleX: percent / 100 }} transition={{ duration: 0.3, ease: 'easeOut' }} />
         </div>
       </div>
 

@@ -1,0 +1,197 @@
+/* ===================== Direction B: Study journal with marginalia =====================
+   A plain page with a wide margin column, the way students annotate a notebook: the numbers that matter are
+   written large in the margin next to what they describe (due cards, section numbers, answer keys, scores).
+   Rules only under list rows; the reading column stays clean. Ink is fountain-pen blue-black; the highlighter is
+   a marker stroke under the words. Dark is the same journal at night: warm charcoal paper, pale ink, amber marker. */
+
+.theme-light {
+  --paper: #f6f5f0;
+  --sheet: #ffffff;
+  --ink: #1c1d22;
+  --ink-2: #55575f;
+  --rule: #d9d7cf;
+  --rule-strong: #b9b6ab;
+  --margin: #cf4057;
+  --accent: #233a8c;
+  --ink-btn: #233a8c;
+  --ink-btn-press: #1a2c6c;
+  --on-ink-btn: #ffffff;
+  --hi: #ffe45c;
+  --hi-mark: #ffe45c;
+  --hi-mark-flat: #ffe45c;
+  --mk-top: 54%;          /* light: a stroke under the words, ink stays ink */
+  --mk-ink: #1c1d22;
+  --on-hi: #1c1d22;
+  --ok: #17794f;
+  --learn: #8a5300;
+  --card-edge: #e6e4dc;
+  --card-shadow: 0 1px 2px rgb(28 29 34 / 0.1), 0 6px 14px -8px rgb(28 29 34 / 0.25);
+  color-scheme: light;
+}
+.theme-dark {
+  --paper: #1b1a18;
+  --sheet: #24231f;
+  --ink: #e9e6de;
+  --ink-2: #aeaaa0;
+  --rule: #36342f;
+  --rule-strong: #4d4a42;
+  --margin: #c75b6b;
+  --accent: #a9bcff;
+  --ink-btn: #e9e6de;
+  --ink-btn-press: #cfcbc1;
+  --on-ink-btn: #1b1a18;
+  --hi: #f4d548;
+  --hi-mark: #f4d548;
+  --hi-mark-flat: #f4d548;
+  --mk-top: 10%;          /* night: a bright marker over the whole word, dark ink on it (pale ink would vanish) */
+  --mk-ink: #1b1a18;
+  --on-hi: #1b1a18;
+  --ok: #79cfa3;
+  --learn: #d7a35a;
+  --card-edge: #2e2d29;
+  --card-shadow: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 10px 18px -10px rgb(0 0 0 / 0.75);
+  color-scheme: dark;
+}
+
+.phone {
+  --mw: 52px;          /* the margin column; the red line is its right edge */
+  background: var(--paper);
+  color: var(--ink);
+  font-family: 'Hanken Grotesk', system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+}
+.phone *, .phone *::before, .phone *::after { box-sizing: border-box; }
+.phone h1, .phone h2, .phone h3, .phone p, .phone ul, .phone ol, .phone figure, .phone blockquote { margin: 0; padding: 0; }
+.phone ul, .phone ol { list-style: none; }
+.phone button { font: inherit; cursor: pointer; }
+.phone button:not([class*='btn--']) { color: inherit; }
+.phone :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.ico { width: 22px; height: 22px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.ico--sm { width: 18px; height: 18px; }
+.muted { color: var(--ink-2); }
+.small { font-size: 14px; }
+
+/* the margin line: one red rule at the edge of the margin column */
+.pg::before { content: ''; position: absolute; top: 0; bottom: 0; left: var(--mw); width: 1.5px; background: var(--margin); z-index: 0; pointer-events: none; }
+
+.hd { position: relative; z-index: 1; display: flex; align-items: center; height: 56px; padding-right: 8px; }
+.hd__logo { width: 52px; display: grid; place-items: center; }
+.hd__word { margin-left: 12px; font-family: 'Literata', serif; font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
+.hd__end { margin-left: auto; display: flex; align-items: center; }
+.pcode { display: inline-flex; align-items: center; min-height: 44px; padding: 0 8px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink-2); }
+.pcode span { border-bottom: 1.5px solid currentColor; line-height: 20px; }
+.iconbtn { display: inline-grid; place-items: center; width: 44px; height: 44px; border: 0; border-radius: 4px; background: transparent; color: var(--ink-2); }
+
+.pg { position: relative; z-index: 1; flex: 1; padding: 12px 16px 28px 0; }
+/* a row = [margin note][body] */
+.r { display: grid; grid-template-columns: var(--mw) minmax(0, 1fr); column-gap: 12px; align-items: baseline; }
+.r > .mn { justify-self: center; text-align: center; }
+.r--ruled { border-bottom: 1px solid var(--rule); padding: 10px 0; }
+.r--top { border-top: 1px solid var(--rule-strong); }
+.mn { font-family: 'Literata', serif; font-variant-numeric: tabular-nums lining-nums; color: var(--ink-2); }
+.mn--big { font-size: 22px; font-weight: 650; line-height: 1; color: var(--ink); }
+.mn--label { display: block; margin-top: 3px; font-family: 'Hanken Grotesk', sans-serif; font-size: 11.5px; font-weight: 700; letter-spacing: 0.02em; color: var(--ink-2); }
+.h1 { font-family: 'Literata', serif; font-size: 30px; line-height: 1.15; font-weight: 650; letter-spacing: -0.02em; }
+.h2 { font-family: 'Literata', serif; font-size: 20px; font-weight: 650; line-height: 1.3; }
+.sp { height: 20px; }
+.sp--l { height: 32px; }
+
+/* marker: a stroke under the bottom of the words, not a box behind them */
+.mk { color: var(--mk-ink); background-image: linear-gradient(to bottom, transparent var(--mk-top), var(--hi-mark) var(--mk-top) 94%, transparent 94%); border-radius: 2px; background-repeat: no-repeat; background-size: 100% 100%; box-decoration-break: clone; -webkit-box-decoration-break: clone; padding: 0 2px; margin: 0 -2px; }
+.mk b { color: inherit; }
+.swipe-in .mk { animation: marker 560ms cubic-bezier(0.22, 0.8, 0.24, 1) both; }
+@keyframes marker { from { background-size: 0% 100%; } to { background-size: 100% 100%; } }
+@media (prefers-reduced-motion: reduce) { .swipe-in .mk, .swipe-in .bar i { animation: none; } }
+
+/* fountain-pen buttons */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 18px; border: 0; border-radius: 3px; background: transparent; font-weight: 650; font-size: 15px; line-height: 1.2; white-space: nowrap; }
+.btn--ink { background: var(--ink-btn); color: var(--on-ink-btn); }
+.btn--ink:active { background: var(--ink-btn-press); }
+.btn--line { color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--rule-strong); padding: 0 12px; gap: 6px; font-size: 14.5px; }
+.btn--line:hover { box-shadow: inset 0 0 0 1.5px var(--ink); }
+.btn--text { padding: 0; color: var(--accent); text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 4px; }
+.btn--block { width: 100%; }
+
+/* counts */
+.counts { display: flex; flex-wrap: wrap; column-gap: 12px; font-variant-numeric: tabular-nums; font-size: 14.5px; }
+.counts b { font-weight: 750; }
+.c-new b { color: var(--accent); }
+.c-learn b { color: var(--learn); }
+.c-due b { color: var(--ok); }
+
+/* a deck is a stack of index cards; the edges behind say there is more than one card */
+.deck { position: relative; margin: 0 0 8px; padding: 12px 14px 14px; border-radius: 2px; background: var(--sheet); box-shadow: var(--card-shadow); }
+.deck::before, .deck::after { content: ''; position: absolute; left: 6px; right: 6px; height: 100%; bottom: -4px; z-index: -1; border-radius: 2px; background: var(--card-edge); box-shadow: 0 1px 2px rgb(0 0 0 / 0.12); }
+.deck::after { left: 12px; right: 12px; bottom: -8px; z-index: -2; }
+.deck__title { font-family: 'Literata', serif; font-size: 17.5px; font-weight: 650; line-height: 1.3; }
+.deck__foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; }
+.deck-row { position: relative; isolation: isolate; margin-bottom: 18px; }
+.deck-row .mn { align-self: start; padding-top: 12px; }
+.mn--due { color: var(--ok); }
+
+/* divider-tab bar */
+.tabbar { position: relative; z-index: 2; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; height: 64px; padding: 0 6px; background: var(--paper); border-top: 1px solid var(--rule-strong); }
+.tab { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--ink-2); font-size: 13px; font-weight: 650; line-height: 20px; }
+.tab[aria-current='page'] { color: var(--ink); background: var(--sheet); margin-top: -7px; border-radius: 0 0 6px 6px; box-shadow: 0 0 0 1px var(--rule-strong), 0 6px 10px -8px rgb(0 0 0 / 0.4); }
+.tab[aria-current='page']::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--sheet); }
+.tab[aria-current='page'] .ico { stroke-width: 2.1; }
+
+/* top of a lesson / quiz */
+.top { display: grid; grid-template-columns: var(--mw) minmax(0, 1fr); column-gap: 12px; align-items: center; }
+.top .iconbtn { justify-self: center; color: var(--ink); }
+.top__title { font-family: 'Literata', serif; font-size: 19px; font-weight: 650; line-height: 1.3; }
+
+/* quiz */
+.track { position: relative; height: 6px; margin: 4px 0; background: var(--rule); border-radius: 3px; overflow: hidden; }
+.track i { position: absolute; inset: 0; background: var(--ink); border-radius: 3px; transform-origin: left; transform: scaleX(var(--p)); }
+.swipe-in .track i { animation: grow 600ms cubic-bezier(0.22, 0.8, 0.24, 1) both; }
+@keyframes grow { from { transform: scaleX(0); } }
+@media (prefers-reduced-motion: reduce) { .swipe-in .track i { animation: none; } }
+.question { font-family: 'Literata', serif; font-size: 21px; font-weight: 650; line-height: 1.3; letter-spacing: -0.01em; }
+.opt { display: grid; grid-template-columns: var(--mw) minmax(0, 1fr); column-gap: 12px; align-items: start; width: 100%; min-height: 56px; padding: 12px 0; border: 0; border-bottom: 1px solid var(--rule); background: none; text-align: left; font-size: 15.5px; line-height: 1.45; color: var(--ink-2); }
+.opt .num { justify-self: center; font-family: 'Literata', serif; font-style: italic; font-size: 19px; font-weight: 600; line-height: 1.15; color: var(--ink-2); }
+.opt--right { color: var(--ink); }
+.opt--right .num { color: var(--ok); font-style: normal; }
+.verdict { font-family: 'Literata', serif; font-size: 19px; font-weight: 650; color: var(--ok); }
+.quote { font-family: 'Literata', serif; font-size: 15.5px; line-height: 1.55; }
+.actionbar { position: relative; z-index: 2; padding: 10px 16px 10px calc(var(--mw) + 12px); background: var(--paper); border-top: 1px solid var(--rule); }
+
+/* reader */
+.vtabs { display: flex; gap: 20px; font-weight: 650; }
+.vtabs a { display: inline-flex; align-items: center; min-height: 44px; color: var(--ink-2); }
+.vtabs a[aria-current] { color: var(--ink); }
+.sec-title { font-family: 'Literata', serif; font-size: 23px; font-weight: 650; line-height: 1.25; letter-spacing: -0.01em; }
+.prose { font-family: 'Literata', serif; font-size: 17px; line-height: 1.65; }
+.prose p + p { margin-top: 0.8em; }
+.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.actions .btn--line { padding: 0 8px; font-size: 14px; }
+.actions .ico--sm { width: 16px; height: 16px; }
+.lessonnav { position: relative; z-index: 2; display: flex; justify-content: space-between; align-items: center; height: 64px; padding: 0 16px 0 calc(var(--mw) + 12px); background: var(--paper); border-top: 1px solid var(--rule); }
+
+/* stats */
+.days li { display: grid; grid-template-columns: var(--mw) minmax(0, 1fr) 56px; column-gap: 12px; align-items: center; min-height: 34px; border-bottom: 1px solid var(--rule); }
+.days .d { justify-self: center; font-size: 13px; font-weight: 700; color: var(--ink-2); }
+.days .v { text-align: right; font-variant-numeric: tabular-nums; font-size: 14px; }
+.days li.peak .d, .days li.peak .v { color: var(--ink); }
+.bar { display: flex; height: 12px; gap: 2px; }
+.bar i { display: block; height: 100%; border-radius: 1px; background: var(--c); transform-origin: left; }
+.swipe-in .bar i { animation: grow 600ms cubic-bezier(0.22, 0.8, 0.24, 1) both; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 14px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 10px; height: 10px; border-radius: 1px; background: var(--c); }
+.s-read { --c: var(--accent); }
+.s-card { --c: var(--margin); }
+.s-quiz { --c: var(--learn); }
+.score { display: grid; grid-template-columns: 70px minmax(0, 1fr) 40px; align-items: center; column-gap: 10px; min-height: 30px; font-size: 14px; }
+.score b { text-align: right; font-variant-numeric: tabular-nums; }
+.score .track { margin: 0; height: 8px; }
+
+/* reader on a phone: a slim margin so the text gets the width; the section number moves onto the progress line.
+   From 40rem the full margin (and the big section number) comes back. */
+.pg--reader { --mw: 14px; }
+.pg--reader .r { column-gap: 14px; }
+.pg--reader .r > .mn { visibility: hidden; width: 0; overflow: hidden; }
+.pg--reader .top { grid-template-columns: 44px minmax(0, 1fr); column-gap: 4px; }
+.prog { display: flex; align-items: center; gap: 10px; }
+.prog .track { flex: 1; }

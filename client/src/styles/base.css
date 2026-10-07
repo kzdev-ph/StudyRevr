@@ -31,6 +31,10 @@ fieldset {
   margin: 0;
   padding: 0;
 }
+fieldset {
+  border: 0;
+  min-inline-size: 0;
+}
 
 ul,
 ol {
@@ -54,10 +58,15 @@ button {
   cursor: pointer;
 }
 
+/* the ring follows each element's own corners */
 :focus-visible {
   outline: 3px solid var(--accent);
   outline-offset: 2px;
-  border-radius: 4px;
+}
+
+::selection {
+  background: var(--hi);
+  color: var(--on-hi);
 }
 
 [tabindex='-1']:focus {
@@ -79,8 +88,8 @@ button {
   top: -64px;
   z-index: 100;
   padding: 10px 14px;
-  background: var(--accent);
-  color: var(--on-accent);
+  background: var(--ink-btn);
+  color: var(--on-ink-btn);
   border-radius: var(--r-sm);
   font-weight: 600;
 }
@@ -101,10 +110,10 @@ button {
 
 .screen-title {
   font-family: var(--font-read);
-  font-size: 1.75rem;
+  font-size: 1.875rem;
   font-weight: 650;
-  line-height: 1.2;
-  letter-spacing: -0.01em;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
 }
 
 .muted {
@@ -127,7 +136,7 @@ button {
   color: var(--ink);
 }
 
-/* buttons */
+/* buttons: primary is written in ink; quiet ones are a ruled outline that darkens to ink */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -136,7 +145,7 @@ button {
   min-height: 44px;
   padding: 0 18px;
   border: 1.5px solid transparent;
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   background: transparent;
   font-weight: 650;
   font-size: 0.9375rem;
@@ -149,19 +158,19 @@ button {
   cursor: not-allowed;
 }
 .btn--primary {
-  background: var(--accent);
-  color: var(--on-accent);
+  background: var(--ink-btn);
+  color: var(--on-ink-btn);
 }
 .btn--primary:not(:disabled):hover {
-  background: var(--accent-hover);
+  background: var(--ink-btn-press);
 }
 .btn--quiet {
-  border-color: var(--line-strong);
-  background: var(--sheet);
+  border-color: var(--control-border);
+  background: transparent;
   color: var(--ink);
 }
 .btn--quiet:not(:disabled):hover {
-  border-color: var(--accent);
+  border-color: var(--ink);
 }
 .btn--danger {
   background: var(--danger);
@@ -173,7 +182,6 @@ button {
   color: var(--ok);
 }
 .btn--small {
-  min-height: 40px;
   padding: 0 14px;
 }
 
@@ -188,7 +196,8 @@ button {
   font-weight: 650;
   font-size: 0.9375rem;
   text-decoration: underline;
-  text-underline-offset: 3px;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 4px;
 }
 p .link-btn {
   display: inline;
@@ -201,7 +210,7 @@ p .link-btn {
   width: 44px;
   height: 44px;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--ink-2);
 }
@@ -226,9 +235,8 @@ p .link-btn {
   align-items: center;
   min-height: 44px;
   padding: 0 16px;
-  border: 1.5px solid var(--line-strong);
-  border-radius: 999px;
-  background: var(--sheet);
+  border: 1.5px solid var(--control-border);
+  border-radius: var(--r-sm);
   font-weight: 600;
   cursor: pointer;
 }
@@ -237,9 +245,10 @@ p .link-btn {
   opacity: 0;
 }
 .segmented__item input:checked + span {
-  background: var(--hi);
-  border-color: var(--hi);
-  color: var(--on-hi);
+  border-color: var(--ink);
+  color: var(--mk-ink);
+  font-weight: 700;
+  background: linear-gradient(to bottom, transparent var(--mk-top), var(--hi) var(--mk-top) 92%, transparent 92%);
 }
 .segmented__item input:focus-visible + span {
   outline: 3px solid var(--accent);
@@ -261,7 +270,7 @@ p .link-btn {
   align-items: flex-start;
   gap: 10px;
   padding: 12px 14px;
-  border-radius: var(--r-md);
+  border-radius: var(--r-sm);
   border: 1px solid;
   font-size: 0.9375rem;
 }
@@ -281,6 +290,14 @@ p .link-btn {
 .notice--warn .notice__icon {
   color: var(--warn);
 }
+.notice--info {
+  background: var(--sheet);
+  border-color: var(--control-border);
+  color: var(--ink);
+}
+.notice--info .notice__icon {
+  color: var(--ink-2);
+}
 .notice__icon {
   flex: none;
   margin-top: 1px;
@@ -292,7 +309,8 @@ p .link-btn {
 }
 .notice__close {
   flex: none;
-  min-height: 32px;
+  min-height: 44px;
+  margin: -12px -4px -12px 0;
   padding: 0 4px;
   border: 0;
   background: none;
@@ -323,7 +341,10 @@ p .link-btn {
   }
 }
 
+/* An empty screen is a page waiting to be written on: the icon sits in the margin, a line says what will appear,
+   and a few blank rules follow. */
 .empty {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -331,17 +352,96 @@ p .link-btn {
   padding-top: 24px;
 }
 .empty__icon {
-  color: var(--accent);
+  position: absolute;
+  top: 26px;
+  left: calc(-1 * (var(--mw) + var(--mgap)));
+  width: var(--mw);
+  color: var(--ink-2);
 }
 .empty__title {
   font-family: var(--font-read);
-  font-size: 1.5rem;
+  font-size: 1.625rem;
   font-weight: 650;
   line-height: 1.25;
 }
 .empty__text {
   max-width: 34rem;
   color: var(--ink-2);
+}
+.empty::after {
+  content: '';
+  align-self: stretch;
+  height: 132px;
+  margin-top: 4px;
+  background: repeating-linear-gradient(to bottom, transparent 0 43px, var(--line) 43px 44px);
+}
+
+/* ---- the journal's own marks ---- */
+
+/* the highlighter: a marker stroke under the words (light), over them with dark ink (dark) */
+.mk {
+  color: var(--mk-ink);
+  background-image: linear-gradient(to bottom, transparent var(--mk-top), var(--hi) var(--mk-top) 94%, transparent 94%);
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  border-radius: 2px;
+  padding: 0 2px;
+  margin: 0 -2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.mk b,
+.mk strong {
+  color: inherit;
+}
+/* drawn in once where it marks a change (the tab you open); never under reduced motion */
+.mk--draw {
+  animation: marker 0.5s cubic-bezier(0.22, 0.8, 0.24, 1) both;
+}
+@keyframes marker {
+  from {
+    background-size: 0% 100%;
+  }
+}
+
+/* a note in the margin column, beside the line it belongs to (its parent is position: relative) */
+.mnote {
+  position: absolute;
+  top: 0;
+  left: calc(-1 * (var(--mw) + var(--mgap)));
+  width: var(--mw);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: var(--ink-2);
+  font-family: var(--font-read);
+  font-variant-numeric: lining-nums tabular-nums;
+  line-height: 1.1;
+  text-align: center;
+}
+.mnote__n {
+  color: var(--ink);
+  font-size: 1.375rem;
+  font-weight: 650;
+}
+.mnote__label {
+  margin-top: 2px;
+  font-family: var(--font-ui);
+  font-size: 0.875rem;
+  font-weight: 650;
+  line-height: 1.2;
+}
+/* a row that hangs into the margin: [margin note][the line] */
+.hang {
+  display: grid;
+  grid-template-columns: var(--mw) minmax(0, 1fr);
+  column-gap: var(--mgap);
+  align-items: baseline;
+  margin-left: calc(-1 * (var(--mw) + var(--mgap)));
+}
+.hang > :first-child {
+  justify-self: center;
+  text-align: center;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -352,6 +452,9 @@ p .link-btn {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+  .mk--draw {
+    animation: none;
   }
   .spinner {
     animation: none;

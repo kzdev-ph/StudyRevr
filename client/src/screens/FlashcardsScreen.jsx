@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { CardsIcon, RetryIcon } from '../components/Icons.jsx';
+import { CardsIcon, CheckIcon, RetryIcon } from '../components/Icons.jsx';
 import Notice from '../components/Notice.jsx';
 import { useAdminPin } from '../lib/admin.js';
 import { api } from '../lib/api.js';
@@ -9,8 +9,8 @@ import { paths } from '../lib/router.js';
 
 const POLL_MS = 2500;
 
-// New / Learning / Due, in Anki's colours (blue, red, green from the existing tokens). Every number carries its name,
-// so colour is never the only cue; screen readers get the whole thing as one sentence instead.
+// New / Learning / Due: blue, pencil amber and green. Every number carries its name, so colour is never the only cue;
+// screen readers get the whole thing as one sentence instead.
 export function Counts({ counts, current }) {
   return (
     <span className="counts">
@@ -22,6 +22,23 @@ export function Counts({ counts, current }) {
           </span>
         ))}
       </span>
+    </span>
+  );
+}
+
+// Written in the margin beside a deck: how many cards are waiting today, or a check when the deck is done for now.
+// The counts in the card say the same in words, so screen readers skip it.
+function MarginCount({ counts, total }) {
+  if (!total) return null;
+  const n = totalDue(counts);
+  return n ? (
+    <span className="mnote mnote--due" aria-hidden="true">
+      <span className="mnote__n">{n}</span>
+      <span className="mnote__label">today</span>
+    </span>
+  ) : (
+    <span className="mnote mnote--done" aria-hidden="true">
+      <CheckIcon size={24} />
     </span>
   );
 }
@@ -147,52 +164,60 @@ export default function FlashcardsScreen() {
         </Notice>
       ))}
 
-      <div className="deck-all">
-        <div className="deck-all__text">
-          <h2 className="deck-all__title">All lessons</h2>
-          <p className="muted">
-            {all.total === 0
-              ? 'Cards from every lesson show up here.'
-              : allDue
-                ? `About ${studyMinutes(all.counts)} min for today’s cards.`
-                : `All done for today. ${all.next_due_at ? `Next card ${describeNextDue(all.next_due_at)}.` : ''}`}
-          </p>
-          {allDue > 0 && <Counts counts={all.counts} />}
-        </div>
-        {all.total > 0 && (
-          <a className={`btn ${allDue ? 'btn--primary' : 'btn--quiet'}`} href={paths.study('all')}>
-            {allDue ? 'Study all' : 'Open'}
-          </a>
-        )}
-      </div>
-
-      <h2 className="decks-head">Lesson decks</h2>
-      <ul className="decks" aria-label="Lessons">
-        {data.decks.map((deck) => (
-          <li key={deck.lesson_id} className="deck">
-            <div className="deck__main">
-              <span className="deck__title">{prettyTitle(deck.title)}</span>
-              {deck.total > 0 ? (
-                <span className="deck__meta">
-                  {totalDue(deck.counts) > 0 && <Counts counts={deck.counts} />}
-                  <span className="deck__total">
-                    {deck.total} {deck.total === 1 ? 'card' : 'cards'}
-                    {!totalDue(deck.counts) && deck.next_due_at ? ` · next card ${describeNextDue(deck.next_due_at)}` : ''}
-                  </span>
-                </span>
-              ) : (
-                <span className="deck__total">{deck.status === 'ready' && !deck.job ? 'No cards yet' : ' '}</span>
-              )}
+      <div className="deck-layout">
+        <div className="deck-layout__side">
+          <div className="deck-all">
+            <MarginCount counts={all.counts} total={all.total} />
+            <div className="deck-all__text">
+              <h2 className="deck-all__title">All lessons</h2>
+              <p className="muted">
+                {all.total === 0
+                  ? 'Cards from every lesson show up here.'
+                  : allDue
+                    ? `About ${studyMinutes(all.counts)} min for today’s cards.`
+                    : `All done for today. ${all.next_due_at ? `Next card ${describeNextDue(all.next_due_at)}.` : ''}`}
+              </p>
+              {allDue > 0 && <Counts counts={all.counts} />}
             </div>
-            <DeckAction deck={deck} onMake={make} making={making === deck.lesson_id} admin={admin} />
-          </li>
-        ))}
-      </ul>
+            {all.total > 0 && (
+              <a className={`btn ${allDue ? 'btn--primary' : 'btn--quiet'}`} href={paths.study('all')}>
+                {allDue ? 'Study all' : 'Open'}
+              </a>
+            )}
+          </div>
 
-      <p className="muted">
-        Up to {limits.new_per_day} new cards and {limits.reviews_per_day} reviews a day, across all lessons. {newLeft} new {newLeft === 1 ? 'card' : 'cards'} left
-        today. The day starts at 4:00 AM.
-      </p>
+          <p className="muted">
+            Up to {limits.new_per_day} new cards and {limits.reviews_per_day} reviews a day, across all lessons. {newLeft} new {newLeft === 1 ? 'card' : 'cards'} left
+            today. The day starts at 4:00 AM.
+          </p>
+        </div>
+
+        <div className="deck-layout__decks">
+          <h2 className="decks-head">Lesson decks</h2>
+          <ul className="decks" aria-label="Lessons">
+            {data.decks.map((deck) => (
+              <li key={deck.lesson_id} className="deck">
+                <MarginCount counts={deck.counts} total={deck.total} />
+                <div className="deck__main">
+                  <span className="deck__title">{prettyTitle(deck.title)}</span>
+                  {deck.total > 0 ? (
+                    <span className="deck__meta">
+                      {totalDue(deck.counts) > 0 && <Counts counts={deck.counts} />}
+                      <span className="deck__total">
+                        {deck.total} {deck.total === 1 ? 'card' : 'cards'}
+                        {!totalDue(deck.counts) && deck.next_due_at ? ` · next card ${describeNextDue(deck.next_due_at)}` : ''}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="deck__total">{deck.status === 'ready' && !deck.job ? 'No cards yet' : ' '}</span>
+                  )}
+                </div>
+                <DeckAction deck={deck} onMake={make} making={making === deck.lesson_id} admin={admin} />
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
     </section>
   );
 }

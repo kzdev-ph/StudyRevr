@@ -92,6 +92,13 @@ export const AlertIcon = (p) => (
   </Svg>
 );
 
+export const InfoIcon = (p) => (
+  <Svg {...p}>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M12 11v5.2M12 7.9h.01" />
+  </Svg>
+);
+
 export const RetryIcon = (p) => (
   <Svg {...p}>
     <path d="M19 12a7 7 0 1 1-2.1-5" />
@@ -119,11 +126,19 @@ export const SourceIcon = (p) => (
   </Svg>
 );
 
+// A journal page: its margin rule, and an S written in ink over a highlighter stroke.
 export const LogoMark = ({ size = 28 }) => (
-  <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" focusable="false">
-    <rect width="32" height="32" rx="7" fill="var(--accent)" />
-    <rect x="6" y="19" width="20" height="6" rx="1.5" fill="var(--hi)" />
-    <path d="M9 8h14M9 13h14" stroke="var(--on-accent)" strokeWidth="2.4" strokeLinecap="round" />
+  <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <rect x="3.25" y="2.75" width="17.5" height="18.5" rx="1.25" fill="var(--sheet)" stroke="var(--ink)" strokeWidth="1.5" />
+    <path d="M7.25 3v18" stroke="var(--margin)" strokeWidth="1.4" />
+    <path d="M10 17.2c2.8-.4 5.6-.4 8.4 0" stroke="var(--hi)" strokeWidth="3.4" strokeLinecap="round" />
+    <path
+      d="M16.6 7.4c-.8-1-2-1.5-3.3-1.4-1.6.1-2.7 1.1-2.6 2.4.1 1.4 1.4 1.9 2.9 2.4 1.6.5 3 1.1 3 2.8 0 1.5-1.4 2.6-3.2 2.6-1.4 0-2.7-.6-3.5-1.7"
+      fill="none"
+      stroke="var(--ink)"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+    />
   </svg>
 );
 

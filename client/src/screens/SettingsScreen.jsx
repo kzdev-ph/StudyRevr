@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import MyAiSettings from '../components/MyAiSettings.jsx';
 import { switchParticipant, useParticipant } from '../lib/participant.js';
-import { paths } from '../lib/router.js';
 import { getThemeChoice, setThemeChoice } from '../lib/theme.js';
 
 const CHOICES = [
@@ -42,9 +41,6 @@ export default function SettingsScreen() {
         </div>
       </fieldset>
       <MyAiSettings />
-      <a className="link-btn" href={paths.admin()}>
-        Researcher admin
-      </a>
     </section>
   );
 }

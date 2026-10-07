@@ -94,20 +94,24 @@ export default function QuizScreen() {
   return (
     <section className="stack">
       <h1 className="screen-title">Mock Quiz</h1>
-      <p className="muted">
-        Up to {data.quiz_length} questions from a lesson’s flashcards: multiple choice and true or false. No timer on screen. We record how long each answer takes for the study. Your flashcard schedule isn’t affected.
-      </p>
-      <ul className="decks" aria-label="Lessons">
-        {data.lessons.map((row) => (
-          <li key={row.lesson_id} className="deck">
-            <div className="deck__main">
-              <span className="deck__title">{prettyTitle(row.title)}</span>
-              <span className="deck__total">{lessonQuizLine(row) || (row.cards === 1 ? 'Only 1 flashcard. A quiz needs 2.' : row.status === 'ready' && !row.cards ? 'No flashcards yet' : ' ')}</span>
-            </div>
-            <QuizAction row={row} />
-          </li>
-        ))}
-      </ul>
+      <div className="deck-layout">
+        <div className="deck-layout__side">
+          <p className="muted">
+            Up to {data.quiz_length} questions from a lesson’s flashcards: multiple choice and true or false. No timer on screen. We record how long each answer takes for the study. Your flashcard schedule isn’t affected.
+          </p>
+        </div>
+        <ul className="decks decks--grid deck-layout__decks" aria-label="Lessons">
+          {data.lessons.map((row) => (
+            <li key={row.lesson_id} className="deck">
+              <div className="deck__main">
+                <span className="deck__title">{prettyTitle(row.title)}</span>
+                <span className="deck__total">{lessonQuizLine(row) || (row.cards === 1 ? 'Only 1 flashcard. A quiz needs 2.' : row.status === 'ready' && !row.cards ? 'No flashcards yet' : ' ')}</span>
+              </div>
+              <QuizAction row={row} />
+            </li>
+          ))}
+        </ul>
+      </div>
     </section>
   );
 }

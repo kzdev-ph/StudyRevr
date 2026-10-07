@@ -1,5 +1,5 @@
-/* Flashcard tab: decks and the study screen. Only existing tokens: New / Learning / Due use accent / danger / ok,
-   the way Anki colours them blue / red / green. */
+/* Flashcard tab: decks and the study screen. New / Learning / Due use accent / learn / ok: Anki's blue and green,
+   with a pencil amber for Learning (red would read as an error). */
 
 /* ---- counts ---- */
 .counts__list {
@@ -22,38 +22,36 @@
   color: var(--accent);
 }
 .count--learning .count__n {
-  color: var(--danger);
+  color: var(--learn);
 }
 .count--due .count__n {
   color: var(--ok);
 }
-/* the queue the card on screen comes from: an ink underline on paper (the highlighter is too faint on white),
-   the highlighter on the dark sheet */
+/* the queue the card on screen comes from: the highlighter */
 .count--current .count__n {
-  text-decoration: underline;
-  text-decoration-thickness: 3px;
-  text-underline-offset: 4px;
-  text-decoration-color: var(--ink);
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) .count--current .count__n {
-    text-decoration-color: var(--hi);
-  }
-}
-:root[data-theme='dark'] .count--current .count__n {
-  text-decoration-color: var(--hi);
+  padding: 0 2px;
+  margin: 0 -2px;
+  border-radius: 2px;
+  color: var(--mk-ink);
+  background: linear-gradient(to bottom, transparent var(--mk-top), var(--hi) var(--mk-top) 94%, transparent 94%);
 }
 
 /* ---- decks ---- */
+/* A deck is a small stack of index cards: the edges of two more cards show under it. */
+.deck-all,
+.deck {
+  --stack: 0 4px 0 -2px var(--card-edge), 0 8px 0 -5px var(--card-edge);
+  border-radius: var(--r-lg);
+  background: var(--sheet);
+  box-shadow: var(--card-shadow), var(--stack);
+}
 .deck-all {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 14px 16px;
-  padding: 18px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-lg);
-  background: var(--sheet);
+  padding: 16px;
 }
 .deck-all__text {
   flex: 1 1 14rem;
@@ -73,25 +71,28 @@
 }
 
 .decks-head {
-  margin-bottom: -12px;
-  font-size: 0.9375rem;
-  font-weight: 700;
-  color: var(--ink-2);
+  margin-bottom: -4px;
+  font-family: var(--font-read);
+  font-size: 1.25rem;
+  font-weight: 650;
 }
 
 .decks {
-  border-top: 1px solid var(--line-strong);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
 }
 .deck {
+  position: relative;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 10px 12px;
   min-height: 72px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--line);
+  padding: 12px 14px;
 }
 .deck__main {
-  flex: 1;
+  flex: 1 1 12rem;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -99,8 +100,8 @@
 }
 .deck__title {
   font-family: var(--font-read);
-  font-size: 1.0625rem;
-  font-weight: 600;
+  font-size: 1.125rem;
+  font-weight: 650;
   line-height: 1.3;
   overflow-wrap: anywhere;
 }
@@ -118,6 +119,60 @@
 .deck > .chip {
   flex: none;
 }
+/* what is due, written in the margin beside the deck */
+.deck .mnote,
+.deck-all .mnote {
+  top: 14px;
+}
+.mnote--due .mnote__n {
+  color: var(--ok);
+}
+.mnote--done {
+  color: var(--ok);
+}
+
+/* a wide page: All lessons and the daily limits on the left, the lesson decks beside them */
+.deck-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.deck-layout__side,
+.deck-layout__decks {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+@media (min-width: 72rem) {
+  .deck-layout {
+    display: grid;
+    grid-template-columns: minmax(18rem, 24rem) minmax(0, 1fr);
+    column-gap: 40px;
+    align-items: start;
+  }
+  .deck-layout__side {
+    position: sticky;
+    top: calc(var(--header-h) + 24px);
+  }
+  /* beside another column there is no page margin to write in: the count gets its own margin inside the card */
+  .deck-layout__decks .deck {
+    padding-left: calc(4.5rem + 14px);
+  }
+  .deck-layout__decks .deck .mnote {
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 4.5rem;
+    justify-content: center;
+    border-right: 1px solid var(--line);
+  }
+  .decks--grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+    gap: 22px 24px;
+  }
+}
 
 /* ---- study screen ---- */
 .study {
@@ -126,13 +181,14 @@
   gap: 16px;
 }
 .study-head {
-  display: flex;
-  align-items: flex-start;
-  gap: 4px;
-  margin-left: -10px;
+  display: grid;
+  grid-template-columns: var(--mw) minmax(0, 1fr);
+  column-gap: var(--mgap);
+  align-items: start;
+  margin-left: calc(-1 * (var(--mw) + var(--mgap)));
 }
 .study-head .icon-btn {
-  flex: none;
+  justify-self: center;
 }
 .study-head__text {
   flex: 1;
@@ -159,7 +215,7 @@
   min-height: 44px;
   padding: 0 10px;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--ink-2);
   font-weight: 650;
@@ -174,8 +230,8 @@
   cursor: not-allowed;
 }
 
-/* The card is a sheet from the notebook (the same red margin rule as a review page). It turns over in 3D: both
-   faces sit in one grid cell, so the card is as tall as its taller side. */
+/* The card is an index card. It turns over in 3D: both faces sit in one grid cell, so the card is as tall as its
+   taller side. */
 .flashcard-scene {
   perspective: 1400px;
   cursor: pointer;
@@ -194,24 +250,13 @@
   flex-direction: column;
   gap: 14px;
   min-height: 15rem;
-  padding: 22px 18px 24px 40px;
-  border: 1px solid var(--line);
-  border-radius: 4px var(--r-lg) var(--r-lg) 4px;
+  padding: 22px 18px 24px;
+  border-radius: var(--r-lg);
   background: var(--sheet);
-  box-shadow: 0 6px 18px rgb(14 17 38 / 0.08);
+  box-shadow: var(--card-shadow);
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
   overflow-wrap: anywhere;
-}
-.flashcard__face::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 26px;
-  width: 2px;
-  background: var(--margin);
-  opacity: 0.6;
 }
 .flashcard__face--front {
   justify-content: center;
@@ -231,12 +276,8 @@
   color: var(--ink-2);
   font-size: 0.875rem;
   font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 .flashcard__lesson {
-  text-transform: none;
-  letter-spacing: 0;
   font-weight: 600;
 }
 .flashcard__front {
@@ -247,11 +288,11 @@
 }
 .flashcard__front--term {
   align-self: flex-start;
-  padding: 0 6px;
-  margin-left: -6px;
-  border-radius: 3px;
-  background: var(--hi);
-  color: var(--on-hi);
+  padding: 0 3px;
+  margin-left: -3px;
+  border-radius: 2px;
+  background: linear-gradient(to bottom, transparent var(--mk-top), var(--hi) var(--mk-top) 94%, transparent 94%);
+  color: var(--mk-ink);
   font-weight: 700;
 }
 .flashcard__asked {
@@ -291,11 +332,9 @@
   position: sticky;
   bottom: calc(var(--tabbar-h) + var(--safe-bottom) + var(--lessonnav-gap));
   z-index: 10;
-  padding: 8px;
-  border: 1px solid var(--line-strong);
-  border-radius: 14px;
-  background: var(--sheet);
-  box-shadow: 0 6px 18px rgb(14 17 38 / 0.1);
+  padding: 8px 0;
+  border-top: 1px solid var(--line-strong);
+  background: var(--paper);
 }
 .study-show {
   width: 100%;
@@ -309,7 +348,7 @@
   font-weight: 650;
   padding: 1px 6px;
   border: 1px solid currentColor;
-  border-radius: 4px;
+  border-radius: var(--r-sm);
   opacity: 0.7;
 }
 
@@ -351,8 +390,8 @@
   gap: 2px;
   min-height: 56px;
   padding: 6px 2px;
-  border: 1.5px solid var(--line-strong);
-  border-radius: 10px;
+  border: 1.5px solid var(--control-border);
+  border-radius: var(--r-sm);
   background: var(--sheet);
   line-height: 1.2;
   transition: background-color 0.12s, border-color 0.12s;
@@ -373,31 +412,36 @@
 }
 .rate__btn--again {
   border-color: var(--danger);
-  background: var(--danger-wash);
 }
 .rate__btn--again .rate__name {
   color: var(--danger);
 }
 .rate__btn--hard {
   border-color: var(--ink-2);
-  background: var(--paper);
 }
 .rate__btn--good {
   border-color: var(--ok);
-  background: var(--ok-wash);
 }
 .rate__btn--good .rate__name {
   color: var(--ok);
 }
 .rate__btn--easy {
   border-color: var(--accent);
-  background: var(--accent-wash);
 }
 .rate__btn--easy .rate__name {
   color: var(--accent);
 }
-.rate__btn:not(:disabled):hover {
-  border-color: var(--ink);
+.rate__btn--again:not(:disabled):hover {
+  background: var(--danger-wash);
+}
+.rate__btn--hard:not(:disabled):hover {
+  background: var(--paper);
+}
+.rate__btn--good:not(:disabled):hover {
+  background: var(--ok-wash);
+}
+.rate__btn--easy:not(:disabled):hover {
+  background: var(--accent-wash);
 }
 
 /* done for today */
@@ -407,9 +451,9 @@
   align-items: flex-start;
   gap: 12px;
   padding: 24px 18px;
-  border: 1px solid var(--line);
   border-radius: var(--r-lg);
   background: var(--sheet);
+  box-shadow: var(--card-shadow);
 }
 .done__icon {
   color: var(--ok);
@@ -439,10 +483,7 @@
   }
   .flashcard__face {
     min-height: 17rem;
-    padding: 28px 28px 28px 48px;
-  }
-  .flashcard__face::before {
-    left: 30px;
+    padding: 28px;
   }
   .flashcard__front {
     font-size: 1.5rem;
@@ -466,6 +507,17 @@
 @media (min-width: 56rem) {
   .study-actions {
     bottom: 16px;
+  }
+  /* a wide page: a landscape index card, like a real 5 x 3 card */
+  .flashcard__face {
+    min-height: 20rem;
+    padding: 36px 40px;
+  }
+  .flashcard__front {
+    font-size: 1.75rem;
+  }
+  .flashcard__back {
+    font-size: 1.375rem;
   }
 }
 

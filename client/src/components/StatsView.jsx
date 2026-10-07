@@ -1,58 +1,40 @@
-import { Bar, BarChart, CartesianGrid, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { prettyTitle } from '../lib/format.js';
 import { paths } from '../lib/router.js';
 import { ACTIVITIES, cardsLine, mostActiveDay, pct, studyTime, weekRows } from '../lib/stats.js';
 
-const AXIS = { fill: 'var(--ink-2)', fontSize: 14 };
-
-function Swatch({ color }) {
-  return <span className="swatch" style={{ '--swatch': color }} aria-hidden="true" />;
+function Swatch({ color, activity }) {
+  return <span className={activity ? `swatch swatch--${activity}` : 'swatch'} style={{ '--swatch': color }} aria-hidden="true" />;
 }
 
-function WeekTip({ active, payload }) {
-  if (!active || !payload?.length) return null;
-  const row = payload[0].payload;
-  return (
-    <div className="chart-tip">
-      <p className="chart-tip__title">
-        {row.day} · {studyTime(row.total * 60_000)}
-      </p>
-      {ACTIVITIES.map((a) => (
-        <p key={a.key} className="chart-tip__row">
-          <Swatch color={a.color} /> {a.label}: {studyTime(row[a.key] * 60_000)}
-        </p>
-      ))}
-    </div>
-  );
+// A percentage written in the margin. A screen reader hears "no answers yet" instead of "dash".
+function Percent({ value }) {
+  if (value === null || value === undefined) {
+    return (
+      <>
+        <span aria-hidden="true">–</span>
+        <span className="visually-hidden">No answers yet:</span>
+      </>
+    );
+  }
+  return pct(value);
 }
 
-// Study time this week: a tile per activity, then minutes per day stacked by activity (with a table view).
-function WeekCard({ week, own }) {
+// Study time this week, written out: one sentence with the total, the three parts, then one ruled line per day (the
+// day in the margin, a bar in the activity colours, the time written at the end), with a table view.
+function Week({ week, own }) {
   const rows = weekRows(week.days);
   const { totals } = week;
   const empty = totals.total_ms === 0;
+  const most = Math.max(...rows.map((r) => r.total), 0);
+  const scale = most || 1;
   return (
-    <section className="stats-card" aria-labelledby="stats-week">
-      <h2 id="stats-week" className="stats-card__title">
-        Study time this week
+    <section className="stats-part" aria-labelledby="stats-week">
+      <h2 id="stats-week" className="stats-part__title">
+        This week
       </h2>
-      <dl className="stat-tiles">
-        <div className="stat-tile stat-tile--total">
-          <dt>Total</dt>
-          <dd>{studyTime(totals.total_ms)}</dd>
-        </div>
-        {ACTIVITIES.map((a) => (
-          <div key={a.key} className="stat-tile">
-            <dt>
-              <Swatch color={a.color} /> {a.label}
-            </dt>
-            <dd>{studyTime(totals[`${a.key}_ms`])}</dd>
-          </div>
-        ))}
-      </dl>
       {empty ? (
         <>
-          <p className="muted">No study time yet this week. Time counts while you read, study flashcards or take a quiz.</p>
+          <p className="stats-lede">No study time yet this week. Time counts while you read, study flashcards or take a quiz.</p>
           {own && (
             <div>
               <a className="link-btn" href={paths.library()}>
@@ -63,32 +45,30 @@ function WeekCard({ week, own }) {
         </>
       ) : (
         <>
-          <div className="stats-chart" aria-hidden="true">
-            <ResponsiveContainer>
-              <BarChart data={rows} margin={{ top: 18, right: 4, bottom: 0, left: -18 }} barCategoryGap="22%">
-                <CartesianGrid vertical={false} stroke="var(--line)" />
-                <XAxis dataKey="day" tick={AXIS} tickLine={false} axisLine={{ stroke: 'var(--line-strong)' }} />
-                <YAxis tick={AXIS} tickLine={false} axisLine={false} allowDecimals={false} width={44} unit="m" />
-                <Tooltip content={<WeekTip />} cursor={{ fill: 'var(--accent-wash)' }} />
-                {ACTIVITIES.map((a, i) => (
-                  <Bar
-                    key={a.key}
-                    dataKey={a.key}
-                    stackId="time"
-                    fill={a.color}
-                    stroke="var(--sheet)"
-                    strokeWidth={2}
-                    radius={i === ACTIVITIES.length - 1 ? [4, 4, 0, 0] : 0}
-                    isAnimationActive={false}
-                  >
-                    {i === ACTIVITIES.length - 1 && (
-                      <LabelList dataKey="total" position="top" fill="var(--ink-2)" fontSize={14} formatter={(v) => (v >= 1 ? Math.round(v) : v > 0 ? '<1' : '')} />
-                    )}
-                  </Bar>
-                ))}
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <p className="stats-lede">
+            You studied <strong className="mk">{studyTime(totals.total_ms)}</strong> this week.
+          </p>
+          <dl className="legend">
+            {ACTIVITIES.map((a) => (
+              <div key={a.key} className="legend__item">
+                <dt>
+                  <Swatch color={a.color} activity={a.key} /> {a.label}
+                </dt>
+                <dd>{studyTime(totals[`${a.key}_ms`])}</dd>
+              </div>
+            ))}
+          </dl>
+          <ul className="days" aria-label="Study time per day">
+            {rows.map((r) => (
+              <li key={r.date} className={`days__row${r.total > 0 && r.total === most ? ' days__row--peak' : ''}`}>
+                <span className="days__day">{r.day}</span>
+                <span className="days__bar" aria-hidden="true">
+                  {ACTIVITIES.map((a) => (r[a.key] > 0 ? <i key={a.key} data-activity={a.key} style={{ width: `${(r[a.key] / scale) * 100}%`, backgroundColor: a.color }} /> : null))}
+                </span>
+                <span className="days__time">{r.total > 0 ? studyTime(r.total * 60_000) : <span className="muted">–<span className="visually-hidden">none</span></span>}</span>
+              </li>
+            ))}
+          </ul>
           <p className="muted">{mostActiveDay(week.days)}</p>
           <details className="table-view">
             <summary>Show as a table</summary>
@@ -125,30 +105,34 @@ function WeekCard({ week, own }) {
   );
 }
 
-function CardsCard({ cards, dueTomorrow, own }) {
+// The flashcard figures, each written large in the margin with what it means beside it.
+function Cards({ cards, dueTomorrow, own }) {
   return (
-    <section className="stats-card" aria-labelledby="stats-cards">
-      <h2 id="stats-cards" className="stats-card__title">
+    <section className="stats-part" aria-labelledby="stats-cards">
+      <h2 id="stats-cards" className="stats-part__title">
         Flashcards
       </h2>
-      <dl className="stat-tiles">
-        <div className="stat-tile">
-          <dt>Reviewed this week</dt>
-          <dd>{cards.week.reviewed}</dd>
-        </div>
-        <div className="stat-tile">
-          <dt>Good or Easy this week</dt>
-          <dd>{pct(cards.week.good_easy_pct)}</dd>
-        </div>
-        <div className="stat-tile">
-          <dt>Due tomorrow</dt>
-          <dd>{dueTomorrow}</dd>
-        </div>
-        <div className="stat-tile">
-          <dt>All time</dt>
-          <dd className="stat-tile__note">{cardsLine(cards.all)}</dd>
-        </div>
-      </dl>
+      <ul className="figures">
+        <li className="figure">
+          <span className="figure__n">{cards.week.reviewed}</span>
+          <span>reviewed this week</span>
+        </li>
+        <li className="figure">
+          <span className="figure__n">
+            {cards.week.good_easy_pct === null || cards.week.good_easy_pct === undefined ? (
+              <Percent value={null} />
+            ) : (
+              <span className="mk">{pct(cards.week.good_easy_pct)}</span>
+            )}
+          </span>
+          <span>answered Good or Easy this week</span>
+        </li>
+        <li className="figure">
+          <span className="figure__n">{dueTomorrow}</span>
+          <span>due tomorrow</span>
+        </li>
+      </ul>
+      <p className="muted">All time: {cardsLine(cards.all)}.</p>
       {own && cards.all.reviewed === 0 && (
         <div>
           <a className="link-btn" href={paths.tab('flashcards')}>
@@ -173,61 +157,69 @@ const scoreRows = (q) =>
         { name: BEST.label, value: q.best_pct, color: BEST.color },
       ];
 
-// First and best finished quiz score per lesson: one small chart per lesson, so long titles stay readable.
-function QuizCard({ quiz }) {
+// First and best finished quiz score per lesson: the best score in the margin, a thin track per score.
+function Quiz({ quiz }) {
   return (
-    <section className="stats-card" aria-labelledby="stats-quiz">
-      <h2 id="stats-quiz" className="stats-card__title">
+    <section className="stats-part" aria-labelledby="stats-quiz">
+      <h2 id="stats-quiz" className="stats-part__title">
         Quiz scores
       </h2>
       {quiz.length === 0 ? (
-        <p className="muted">Finish a mock quiz to see your first and best score per lesson.</p>
+        <p className="figure figure--empty">
+          <span className="figure__n" aria-hidden="true">
+            –
+          </span>
+          <span className="muted">Finish a mock quiz to see your first and best score per lesson.</span>
+        </p>
       ) : (
-        <>
-          <ul className="quiz-scores">
-            {quiz.map((q) => {
-              const rows = scoreRows(q);
-              return (
-                <li key={q.lesson_id}>
-                  <p className="quiz-scores__title">{prettyTitle(q.title)}</p>
+        <ul className="figures">
+          {quiz.map((q) => {
+            const rows = scoreRows(q);
+            return (
+              <li key={q.lesson_id} className="figure figure--quiz">
+                <span className="figure__n figure__n--pct" aria-hidden="true">
+                  {pct(q.best_pct)}
+                </span>
+                <div className="quiz-score-lines">
+                  <h3 className="quiz-scores__title">{prettyTitle(q.title)}</h3>
                   <p className="visually-hidden">
                     {q.attempts === 1 ? `Score ${pct(q.best_pct)}, 1 finished quiz.` : `First try ${pct(q.first_pct)}, best ${pct(q.best_pct)}, ${q.attempts} finished quizzes.`}
                   </p>
-                  <div className={`stats-chart stats-chart--small${rows.length === 1 ? ' stats-chart--one' : ''}`} aria-hidden="true">
-                    <ResponsiveContainer>
-                      <BarChart data={rows} layout="vertical" margin={{ top: 0, right: 44, bottom: 0, left: 0 }} barCategoryGap="18%">
-                        <XAxis type="number" domain={[0, 100]} hide />
-                        <YAxis type="category" dataKey="name" tick={AXIS} tickLine={false} axisLine={false} width={68} />
-                        <Bar dataKey="value" radius={[0, 4, 4, 0]} isAnimationActive={false} background={{ fill: 'var(--paper)', radius: 4 }}>
-                          {rows.map((r) => (
-                            <Cell key={r.name} fill={r.color} />
-                          ))}
-                          <LabelList dataKey="value" position="right" fill="var(--ink)" fontSize={14} fontWeight={650} formatter={(v) => pct(v)} />
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
+                  <div aria-hidden="true">
+                    {rows.map((r) => (
+                      <div key={r.name} className="score-line">
+                        <span className={r.name === FIRST_TRY.label ? 'muted' : undefined}>{r.name}</span>
+                        <span className="score-line__track">
+                          <i style={{ transform: `scaleX(${(r.value ?? 0) / 100})`, background: r.color }} />
+                        </span>
+                        <b>{pct(r.value)}</b>
+                      </div>
+                    ))}
                   </div>
                   <p className="muted">
                     {q.attempts} finished {q.attempts === 1 ? 'quiz' : 'quizzes'}
                   </p>
-                </li>
-              );
-            })}
-          </ul>
-        </>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
       )}
     </section>
   );
 }
 
-// Everything the Stats tab shows for one participant (also used by admin to look at a participant).
+// Everything the Stats tab shows for one participant (also used by admin to look at a participant), written like a
+// page of notes: no cards or tiles. On a wide screen the week sits on the left, flashcards and quiz scores beside it.
 // `own`: the participant's own Stats tab (empty states link to what to do next; admin's view has no such links).
 export default function StatsView({ stats, own = false }) {
   return (
-    <div className="stats stack">
-      <WeekCard week={stats.week} own={own} />
-      <CardsCard cards={stats.cards} dueTomorrow={stats.due_tomorrow} own={own} />
-      <QuizCard quiz={stats.quiz} />
+    <div className="stats">
+      <Week week={stats.week} own={own} />
+      <div className="stats__side">
+        <Cards cards={stats.cards} dueTomorrow={stats.due_tomorrow} own={own} />
+        <Quiz quiz={stats.quiz} />
+      </div>
     </div>
   );
 }
