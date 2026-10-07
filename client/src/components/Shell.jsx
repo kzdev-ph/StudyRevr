@@ -31,7 +31,9 @@ export function Header({ settingsActive, participant }) {
   );
 }
 
-// Bottom bar on a phone, a left rail on a wide screen. The highlighter mark slides to the tab you open.
+// Divider tabs: a bar at the bottom of a phone, standing out of the page's left edge on a wide screen. The open tab is
+// a paper divider that slides to the tab you open (MotionConfig turns the slide off under reduced motion), and its
+// label gets the highlighter.
 export function TabBar({ active }) {
   return (
     <nav className="tabbar" aria-label="Main">
@@ -39,7 +41,7 @@ export function TabBar({ active }) {
         <a key={id} className="tab" href={to} aria-current={active === id ? 'page' : undefined}>
           {active === id && <motion.span layoutId="tab-mark" className="tab__mark" transition={{ type: 'spring', stiffness: 520, damping: 40 }} />}
           <Icon className="tab__icon" />
-          <span className="tab__label">{label}</span>
+          <span className={active === id ? 'tab__label mk mk--draw' : 'tab__label'}>{label}</span>
         </a>
       ))}
     </nav>

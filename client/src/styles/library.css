@@ -7,7 +7,7 @@
   flex-wrap: wrap;
   padding: 18px;
   border: 1.5px dashed var(--line-strong);
-  border-radius: var(--r-lg);
+  border-radius: var(--r-sm);
   background: var(--sheet);
   transition: border-color 0.12s, background-color 0.12s;
 }
@@ -45,16 +45,34 @@
   font-size: 0.9375rem;
 }
 
-/* ruled list of lessons */
+/* ruled list of lessons, numbered in the margin like a notebook's list */
 .lessons {
   border-top: 1px solid var(--line-strong);
+  counter-reset: lesson;
 }
 .lesson {
+  position: relative;
+  counter-increment: lesson;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 4px;
   border-bottom: 1px solid var(--line);
+}
+.lesson:not(.lesson--confirm)::before {
+  content: counter(lesson);
+  position: absolute;
+  top: 22px;
+  left: calc(-1 * (var(--mw) + var(--mgap)));
+  width: var(--mw);
+  color: var(--ink-2);
+  font-family: var(--font-read);
+  font-size: 1.25rem;
+  font-style: italic;
+  font-weight: 600;
+  line-height: 1;
+  text-align: center;
+  font-variant-numeric: lining-nums;
 }
 .lesson__link {
   flex: 1 1 0;
@@ -67,7 +85,8 @@
 }
 .lesson__link:hover .lesson__title {
   text-decoration: underline;
-  text-underline-offset: 3px;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 4px;
 }
 .lesson__main {
   flex: 1;
@@ -78,7 +97,7 @@
 }
 .lesson__title {
   font-family: var(--font-read);
-  font-size: 1.0625rem;
+  font-size: 1.125rem;
   font-weight: 600;
   line-height: 1.3;
   overflow-wrap: anywhere;
@@ -111,7 +130,7 @@
 .lesson__extra--failed {
   margin-bottom: 12px;
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   background: var(--danger-wash);
 }
 .lesson__extra--failed .lesson__extra-text {
@@ -121,10 +140,11 @@
   flex-direction: column;
   align-items: stretch;
   gap: 12px;
-  padding: 16px 0;
+  margin: 8px 0;
+  padding: 16px;
+  border: 1px solid var(--danger);
+  border-radius: var(--r-sm);
   background: var(--danger-wash);
-  margin-inline: calc(var(--gutter) * -1);
-  padding-inline: var(--gutter);
 }
 .lesson__ask {
   overflow-wrap: anywhere;
@@ -140,7 +160,7 @@
   align-items: center;
   gap: 6px;
   padding: 3px 10px;
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   font-size: 0.875rem;
   font-weight: 650;
 }
@@ -224,10 +244,5 @@
 @media (min-width: 40rem) {
   .upload > .btn {
     flex: none;
-  }
-  .lesson--confirm {
-    margin-inline: 0;
-    padding-inline: 16px;
-    border-radius: var(--r-md);
   }
 }

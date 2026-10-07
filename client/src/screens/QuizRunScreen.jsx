@@ -193,12 +193,12 @@ export default function QuizRunScreen({ lessonId }) {
 
       {(phase === 'question' || phase === 'feedback') && (
         <div className="progress__track quiz-progress" role="progressbar" aria-label="Quiz progress" aria-valuemin={0} aria-valuemax={total} aria-valuenow={index + (feedback ? 1 : 0)}>
-          <span className="progress__fill" style={{ width: `${((index + (feedback ? 1 : 0)) / total) * 100}%` }} />
+          <span className="progress__fill" style={{ transform: `scaleX(${(index + (feedback ? 1 : 0)) / total})` }} />
         </div>
       )}
 
       {notice && phase !== 'results' && (
-        <Notice tone="warn" onDismiss={() => setNotice(null)}>
+        <Notice tone="info" onDismiss={() => setNotice(null)}>
           {notice}
         </Notice>
       )}

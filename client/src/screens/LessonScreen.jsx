@@ -78,7 +78,7 @@ export default function LessonScreen({ id, view }) {
       <nav className="subnav" aria-label="Lesson">
         {VIEWS.map(({ id: viewId, label }) => (
           <a key={viewId} href={paths.lesson(lesson.id, viewId)} aria-current={view === viewId ? 'page' : undefined}>
-            {label}
+            <span className={view === viewId ? 'mk' : undefined}>{label}</span>
           </a>
         ))}
       </nav>

@@ -1,4 +1,6 @@
-/* App frame: header on top, a bottom tab bar on phones that becomes a left rail from 56rem. */
+/* App frame. On a phone: a header, the page with its margin column (the red line at its edge) and a bar of divider
+   tabs at the bottom, where the open tab stands up out of the bar. From 56rem the page is a sheet centred on the desk
+   and the same tabs stand out of its left edge. */
 
 .app {
   min-height: 100dvh;
@@ -12,7 +14,7 @@
   align-items: center;
   justify-content: space-between;
   height: var(--header-h);
-  padding: 0 calc(var(--gutter) - 8px) 0 var(--gutter);
+  padding: 0 calc(var(--gutter) - 8px) 0 0;
   background: var(--paper);
   border-bottom: 1px solid var(--line);
 }
@@ -27,15 +29,39 @@
   font-weight: 700;
   letter-spacing: -0.01em;
 }
-
-.main {
-  width: 100%;
-  max-width: 46rem;
-  margin: 0 auto;
-  padding: 20px var(--gutter) calc(var(--tabbar-h) + var(--safe-bottom) + 28px);
+/* in the header the logo sits in the margin column and the name starts where the text does */
+.header .wordmark {
+  gap: calc((var(--mw) - 28px) / 2 + var(--mgap));
+  padding-left: calc((var(--mw) - 28px) / 2);
 }
 
-/* ---- tab bar ---- */
+/* the page: text starts right of the margin column; the margin line runs down its edge */
+.main {
+  position: relative;
+  width: 100%;
+  min-height: calc(100dvh - var(--header-h));
+  padding: 20px var(--gutter) calc(var(--tabbar-h) + var(--safe-bottom) + 28px) calc(var(--mw) + var(--mgap));
+}
+.main::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--mw);
+  width: 1.5px;
+  background: var(--margin);
+  pointer-events: none;
+}
+
+/* reading on a phone: a slim margin, so the text gets the width (the full margin comes back from 40rem) */
+@media (max-width: 39.99rem) {
+  .main:has(.lesson-view) {
+    --mw: 14px;
+    --mgap: 14px;
+  }
+}
+
+/* ---- divider tabs ---- */
 .tabbar {
   position: fixed;
   left: 0;
@@ -44,10 +70,11 @@
   z-index: 30;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
   height: calc(var(--tabbar-h) + var(--safe-bottom));
-  padding-bottom: var(--safe-bottom);
-  background: var(--sheet);
-  border-top: 1px solid var(--line);
+  padding: 0 6px var(--safe-bottom);
+  background: var(--paper);
+  border-top: 1px solid var(--line-strong);
 }
 
 .tab {
@@ -58,8 +85,8 @@
   justify-content: center;
   gap: 2px;
   color: var(--ink-2);
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-size: 0.8125rem;
+  font-weight: 650;
 }
 .tab:hover {
   color: var(--ink);
@@ -72,67 +99,89 @@
   position: relative;
   z-index: 1;
 }
-/* the highlighter swipe: a short stroke behind the active tab's icon */
+/* the open tab: a paper divider standing up out of the bar (it slides to the tab you open) */
 .tab__mark {
   position: absolute;
-  top: 8px;
-  left: 50%;
-  width: 52px;
-  height: 28px;
-  margin-left: -26px;
-  border-radius: 14px;
-  background: var(--hi);
+  inset: -7px 0 0;
+  border-radius: 6px 6px 0 0;
+  background: var(--sheet);
+  box-shadow: 0 0 0 1px var(--line-strong), 0 -4px 10px -8px rgb(0 0 0 / 0.35);
+  clip-path: inset(-12px -12px 0 -12px); /* no shadow over the bar below it */
 }
-.tab[aria-current='page'] .tab__icon {
-  color: var(--on-hi);
+
+@media (min-width: 40rem) {
+  .main {
+    max-width: 50rem;
+    margin: 0 auto;
+    --mw: 64px;
+    --mgap: 16px;
+  }
 }
 
 @media (min-width: 56rem) {
+  body {
+    background: var(--desk);
+  }
   .app {
     display: grid;
-    grid-template-columns: var(--rail-w) minmax(0, 1fr);
+    grid-template-columns: 10rem minmax(0, 1fr);
     grid-template-rows: auto 1fr;
+    width: min(var(--book-max), calc(100% - 48px));
+    margin: 0 auto;
   }
   .header {
     grid-column: 1 / -1;
-    padding: 0 20px;
+    padding: 0;
+    background: var(--desk);
+    border-bottom: 0;
+  }
+  .header .wordmark {
+    gap: 10px;
+    padding-left: 0;
   }
   .tabbar {
     position: sticky;
-    top: calc(var(--header-h) + 20px);
+    top: calc(var(--header-h) + 28px);
+    z-index: 2;
     grid-row: 2;
     align-self: start;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 6px;
     height: auto;
-    padding: 0 12px 0 16px;
+    padding: 0;
     background: transparent;
     border-top: 0;
   }
   .tab {
     flex-direction: row;
     justify-content: flex-start;
-    gap: 12px;
-    min-height: 46px;
+    gap: 10px;
+    min-height: 48px;
     padding: 0 14px;
-    border-radius: 12px;
+    border-radius: 6px 0 0 6px;
+    background: var(--card-edge);
     font-size: 0.9375rem;
   }
   .tab__mark {
-    inset: 0;
-    width: auto;
-    height: auto;
-    margin: 0;
-    border-radius: 12px;
-  }
-  .tab[aria-current='page'] .tab__label {
-    color: var(--on-hi);
+    inset: 0 -1px 0 0;
+    border-radius: 6px 0 0 6px;
+    background: var(--paper);
+    box-shadow: -1px 0 0 var(--line-strong), 0 -1px 0 var(--line-strong), 0 1px 0 var(--line-strong);
+    clip-path: none;
   }
   .main {
+    position: relative;
+    z-index: 1;
     grid-row: 2;
-    padding: 28px 32px 64px;
-    margin: 0;
-    max-width: 52rem;
+    max-width: none;
+    min-height: calc(100dvh - var(--header-h) - 48px);
+    margin: 0 0 40px;
+    padding: 36px 40px 64px calc(var(--mw) + var(--mgap));
+    border-radius: 0 4px 4px 4px;
+    background: var(--paper);
+    box-shadow: 0 0 0 1px var(--line-strong), 0 30px 60px -30px rgb(0 0 0 / 0.4);
+    --mw: 7.5rem;
+    --mgap: 28px;
   }
 }
