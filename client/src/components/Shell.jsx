@@ -1,4 +1,3 @@
-import { motion } from 'motion/react';
 import { CardsIcon, GearIcon, LogoMark, QuizIcon, ReviewIcon, StatsIcon } from './Icons.jsx';
 import { paths } from '../lib/router.js';
 
@@ -31,15 +30,13 @@ export function Header({ settingsActive, participant }) {
   );
 }
 
-// Divider tabs: a bar at the bottom of a phone, standing out of the page's left edge on a wide screen. The open tab is
-// a paper divider that slides to the tab you open (MotionConfig turns the slide off under reduced motion), and its
-// label gets the highlighter.
+// The four main screens: a plain bar at the bottom of a phone, a quiet column beside the page on a wide screen. The
+// open one gets the highlighter on its label (drawn in once; not at all under reduced motion).
 export function TabBar({ active }) {
   return (
     <nav className="tabbar" aria-label="Main">
       {TABS.map(({ id, label, Icon, to }) => (
         <a key={id} className="tab" href={to} aria-current={active === id ? 'page' : undefined}>
-          {active === id && <motion.span layoutId="tab-mark" className="tab__mark" transition={{ type: 'spring', stiffness: 520, damping: 40 }} />}
           <Icon className="tab__icon" />
           <span className={active === id ? 'tab__label mk mk--draw' : 'tab__label'}>{label}</span>
         </a>

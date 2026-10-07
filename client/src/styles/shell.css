@@ -1,6 +1,6 @@
-/* App frame. On a phone: a header, the page with its margin column (the red line at its edge) and a bar of divider
-   tabs at the bottom, where the open tab stands up out of the bar. From 56rem the page is a sheet centred on the desk
-   and the same tabs stand out of its left edge. */
+/* App frame. On a phone: a header, the page with its margin column (a thin hairline at its edge, only on pages
+   whose margin holds numbers) and a plain bar of four tabs at the bottom, the open one highlighted. From 56rem the
+   page is a sheet centred on the desk with the same four links in a quiet column on its left. */
 
 .app {
   min-height: 100dvh;
@@ -35,33 +35,44 @@
   padding-left: calc((var(--mw) - 28px) / 2);
 }
 
-/* the page: text starts right of the margin column; the margin line runs down its edge */
+/* the page: text starts right of the margin column */
 .main {
   position: relative;
   width: 100%;
   min-height: calc(100dvh - var(--header-h));
   padding: 20px var(--gutter) calc(var(--tabbar-h) + var(--safe-bottom) + 28px) calc(var(--mw) + var(--mgap));
 }
+/* The margin's edge: a 1px neutral hairline, drawn only where the margin holds numbers (deck counts, list numbers,
+   answer keys, the week's figures). An empty margin gets no line, and neither does the reader. */
 .main::before {
   content: '';
   position: absolute;
   top: 0;
   bottom: 0;
   left: var(--mw);
-  width: 1.5px;
-  background: var(--margin);
+  width: 1px;
+  background: var(--line);
   pointer-events: none;
+  display: none;
 }
-
-/* reading on a phone: a slim margin, so the text gets the width (the full margin comes back from 40rem) */
-@media (max-width: 39.99rem) {
-  .main:has(.lesson-view) {
-    --mw: 14px;
-    --mgap: 14px;
+.main:not(:has(.lesson-view)):has(.mnote, .lesson, .days, .figures)::before {
+  display: block;
+}
+/* answer keys and missed-question numbers stand in the margin only until 64rem, where they move into the columns */
+@media (max-width: 63.99rem) {
+  .main:not(:has(.lesson-view)):has(.quiz-opt__key, .quiz-missed__item)::before {
+    display: block;
   }
 }
 
-/* ---- divider tabs ---- */
+/* reading: a slim margin at every width, so the text and the quick check get the page (the section number is on the
+   "3/8 sections" line) */
+.main:has(.lesson-view) {
+  --mw: 14px;
+  --mgap: 14px;
+}
+
+/* ---- the four main screens ---- */
 .tabbar {
   position: fixed;
   left: 0;
@@ -72,7 +83,7 @@
   grid-template-columns: repeat(4, 1fr);
   gap: 4px;
   height: calc(var(--tabbar-h) + var(--safe-bottom));
-  padding: 0 6px var(--safe-bottom);
+  padding: 0 6px var(--safe-bottom); /* the home indicator / gesture bar sits below the tabs, not over them */
   background: var(--paper);
   border-top: 1px solid var(--line-strong);
 }
@@ -84,6 +95,7 @@
   align-items: center;
   justify-content: center;
   gap: 2px;
+  min-height: 44px;
   color: var(--ink-2);
   font-size: 0.8125rem;
   font-weight: 650;
@@ -91,22 +103,9 @@
 .tab:hover {
   color: var(--ink);
 }
+/* the open one: the highlighter under its label, nothing else */
 .tab[aria-current='page'] {
   color: var(--ink);
-}
-.tab__icon,
-.tab__label {
-  position: relative;
-  z-index: 1;
-}
-/* the open tab: a paper divider standing up out of the bar (it slides to the tab you open) */
-.tab__mark {
-  position: absolute;
-  inset: -7px 0 0;
-  border-radius: 6px 6px 0 0;
-  background: var(--sheet);
-  box-shadow: 0 0 0 1px var(--line-strong), 0 -4px 10px -8px rgb(0 0 0 / 0.35);
-  clip-path: inset(-12px -12px 0 -12px); /* no shadow over the bar below it */
 }
 
 @media (min-width: 40rem) {
@@ -114,18 +113,20 @@
     max-width: 50rem;
     margin: 0 auto;
     --mw: 64px;
-    --mgap: 16px;
+    --mgap: 28px;
   }
 }
 
+/* A wide screen: the page is a sheet on the desk, and the four links stand quietly in a column on its left. */
 @media (min-width: 56rem) {
   body {
     background: var(--desk);
   }
   .app {
     display: grid;
-    grid-template-columns: 10rem minmax(0, 1fr);
+    grid-template-columns: 8.5rem minmax(0, 1fr);
     grid-template-rows: auto 1fr;
+    column-gap: 16px;
     width: min(var(--book-max), calc(100% - 48px));
     margin: 0 auto;
   }
@@ -147,7 +148,7 @@
     align-self: start;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 4px;
     height: auto;
     padding: 0;
     background: transparent;
@@ -156,19 +157,9 @@
   .tab {
     flex-direction: row;
     justify-content: flex-start;
-    gap: 10px;
-    min-height: 48px;
-    padding: 0 14px;
-    border-radius: 6px 0 0 6px;
-    background: var(--card-edge);
+    gap: 12px;
+    padding: 0 4px;
     font-size: 0.9375rem;
-  }
-  .tab__mark {
-    inset: 0 -1px 0 0;
-    border-radius: 6px 0 0 6px;
-    background: var(--paper);
-    box-shadow: -1px 0 0 var(--line-strong), 0 -1px 0 var(--line-strong), 0 1px 0 var(--line-strong);
-    clip-path: none;
   }
   .main {
     position: relative;
@@ -178,10 +169,10 @@
     min-height: calc(100dvh - var(--header-h) - 48px);
     margin: 0 0 40px;
     padding: 36px 40px 64px calc(var(--mw) + var(--mgap));
-    border-radius: 0 4px 4px 4px;
+    border-radius: 4px;
     background: var(--paper);
     box-shadow: 0 0 0 1px var(--line-strong), 0 30px 60px -30px rgb(0 0 0 / 0.4);
-    --mw: 7.5rem;
+    --mw: 4.5rem;
     --mgap: 28px;
   }
 }

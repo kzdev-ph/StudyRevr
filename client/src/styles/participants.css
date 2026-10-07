@@ -19,20 +19,10 @@
 .gate__card {
   position: relative;
   width: 100%;
-  padding: 28px 20px 28px 52px;
+  padding: 28px 24px;
   border-radius: var(--r-lg);
   background: var(--paper);
   box-shadow: 0 0 0 1px var(--line-strong), var(--card-shadow);
-}
-/* the red margin line of the page */
-.gate__card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 34px;
-  width: 1.5px;
-  background: var(--margin);
 }
 .gate__input {
   font-size: 1.375rem;

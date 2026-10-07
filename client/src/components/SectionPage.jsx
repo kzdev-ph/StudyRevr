@@ -25,9 +25,8 @@ function Skeleton({ label }) {
 
 // One section of the review. `variant` is 'summary' | 'simple' | 'filipino'; a rewrite is made on the first tap and
 // then kept, so tapping the button again just shows it. The stored summary is never changed. `note`: a line under a
-// rewrite that a fallback AI answered ("Your key didn't work, so the default AI answered."). `number`: the section's
-// place in the lesson (1-based), written in the margin.
-export default function SectionPage({ lesson, section, number, variant, busy, failure, note, showSource, focusTitle, onVariant, onRetry, onToggleSource }) {
+// rewrite that a fallback AI answered ("Your key didn't work, so the default AI answered.").
+export default function SectionPage({ lesson, section, variant, busy, failure, note, showSource, focusTitle, onVariant, onRetry, onToggleSource }) {
   const title = useRef(null);
   useEffect(() => {
     if (focusTitle) title.current?.focus({ preventScroll: true });
@@ -42,9 +41,6 @@ export default function SectionPage({ lesson, section, number, variant, busy, fa
   return (
     <div className="page">
       <div className="page__main">
-        <span className="mnote page__num" aria-hidden="true">
-          <span className="mnote__n">{number}</span>
-        </span>
         <h2 className="page__title" ref={title} tabIndex={-1}>
           {heading}
         </h2>

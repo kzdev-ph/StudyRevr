@@ -165,7 +165,7 @@
     left: 0;
     width: 4.5rem;
     justify-content: center;
-    border-right: 1.5px solid var(--margin);
+    border-right: 1px solid var(--line);
   }
   .decks--grid {
     display: grid;

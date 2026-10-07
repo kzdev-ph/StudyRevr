@@ -268,7 +268,7 @@ details.table-view summary {
   width: 100%;
 }
 
-/* a wide page: the week on the left; flashcards and quiz scores beside it, with their own margin line */
+/* a wide page: the week on the left; flashcards and quiz scores beside it, with their own margin (and hairline) */
 @media (min-width: 64rem) {
   .stats {
     display: grid;
@@ -279,7 +279,7 @@ details.table-view summary {
   .stats__side {
     position: relative;
     --mw: 3.75rem;
-    --mgap: 16px;
+    --mgap: 20px;
     padding-left: calc(var(--mw) + var(--mgap));
   }
   .stats__side::before {
@@ -288,7 +288,7 @@ details.table-view summary {
     top: 0;
     bottom: 0;
     left: var(--mw);
-    width: 1.5px;
-    background: var(--margin);
+    width: 1px;
+    background: var(--line);
   }
 }

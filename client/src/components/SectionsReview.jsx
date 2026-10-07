@@ -103,7 +103,6 @@ export default function SectionsReview({ lesson, sections, progress, keyTermCoun
             <SectionPage
               lesson={lesson}
               section={section}
-              number={index + 1}
               variant={variant}
               busy={Boolean(busy[key])}
               failure={failure[key]}

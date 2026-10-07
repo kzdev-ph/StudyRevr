@@ -16,12 +16,11 @@
 .lesson-head__back {
   justify-self: center;
 }
-@media (max-width: 39.99rem) {
-  .lesson-view .lesson-head {
-    grid-template-columns: 44px minmax(0, 1fr);
-    column-gap: 2px;
-    margin-left: -12px;
-  }
+/* the reader has a slim margin (see shell.css): the back button hangs in it, a little left of the text */
+.lesson-view .lesson-head {
+  grid-template-columns: 44px minmax(0, 1fr);
+  column-gap: 2px;
+  margin-left: calc(16px - var(--mw) - var(--mgap));
 }
 .lesson-head__text {
   min-width: 0;
@@ -104,9 +103,8 @@
   transform-origin: left center;
 }
 
-/* The section: written straight on the page. Its number is written large in the margin (not in the slim phone
-   margin, where "3/8 sections" above says it). From 72rem the quick check and the original text stand beside the
-   reading column instead of under it. */
+/* The section: written straight on the page ("3/8 sections" above says which one). From 72rem the quick check and
+   the original text stand beside the reading column instead of under it. */
 .page {
   display: flex;
   flex-direction: column;
@@ -124,18 +122,6 @@
 }
 .page__aside:empty {
   display: none;
-}
-.page__num {
-  top: 2px;
-}
-.page__num .mnote__n {
-  color: var(--margin);
-  font-size: 1.875rem;
-}
-@media (max-width: 39.99rem) {
-  .lesson-view .page__num {
-    display: none;
-  }
 }
 .page__title {
   font-family: var(--font-read);
@@ -308,25 +294,6 @@
   padding-top: 18px;
   border-top: 1px solid var(--line-strong);
 }
-/* a question mark in the margin */
-.quickcheck::before {
-  content: '?';
-  position: absolute;
-  top: 16px;
-  left: calc(-1 * (var(--mw) + var(--mgap)));
-  width: var(--mw);
-  color: var(--margin);
-  font-family: var(--font-read);
-  font-size: 1.5rem;
-  font-weight: 700;
-  line-height: 1;
-  text-align: center;
-}
-@media (max-width: 39.99rem) {
-  .lesson-view .quickcheck::before {
-    display: none;
-  }
-}
 .quickcheck__title {
   font-family: var(--font-read);
   font-size: 1.125rem;
@@ -470,14 +437,13 @@
   line-height: 1.4;
   text-align: center;
 }
-@media (max-width: 39.99rem) {
-  .lesson-view .points__item {
-    padding-left: 30px;
-  }
-  .lesson-view .points__item::before {
-    left: 0;
-    width: auto;
-  }
+/* the reader's margin is slim: the number stands inline */
+.lesson-view .points__item {
+  padding-left: 30px;
+}
+.lesson-view .points__item::before {
+  left: 0;
+  width: auto;
 }
 
 /* key terms */
@@ -612,9 +578,6 @@
   .page__aside .quickcheck {
     padding-top: 0;
     border-top: 0;
-  }
-  .page__aside .quickcheck::before {
-    display: none;
   }
   .endcard {
     max-width: 52rem;

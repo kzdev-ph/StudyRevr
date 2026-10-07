@@ -45,8 +45,8 @@
   --font-read: 'Literata Variable', Georgia, 'Times New Roman', serif;
 
   --gutter: 16px;
-  --mw: 52px; /* the margin column; the red line is its right edge */
-  --mgap: 12px; /* from the margin line to the text */
+  --mw: 52px; /* the margin column; a thin neutral hairline marks its edge where it holds numbers */
+  --mgap: 20px; /* from the margin's edge to the text */
   --header-h: 56px;
   --tabbar-h: 64px;
   --lessonnav-h: 3.875rem; /* the sticky Previous / Next bar in a lesson */
