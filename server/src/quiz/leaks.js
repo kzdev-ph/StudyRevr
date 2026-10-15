@@ -34,9 +34,20 @@ export const STOPWORDS = new Set(`${STOP_EN} ${STOP_FIL}`.split(' '));
 const FIL_MARKERS = new Set('ang ng sa mga ay ito nang isang para hindi upang dahil ating nito'.split(' '));
 const EN_MARKERS = new Set('the of is are and to in a an that this it for with'.split(' '));
 
-// Negatives, and the reversing verbs wrong answers are often built from (as stems: "itago", "pagtatago" -> "tago").
+// Negatives, and the reversing verbs wrong answers are often built from. Whole words only, so a topic word that
+// starts like one ("harmony", "blockchain", "hidden layer", "burador", "reduction") is not a negative. Words that
+// only describe an amount ("reduce", "decrease", "bawasan") are left out: in a science lesson they are often the
+// right answer. Filipino reversing verbs are matched by their stem ("itigil", "pagtigil" -> "tigil"), except where
+// the stem is also a plain topic word: "hirap" (paghihirap, hardship), "alis" (pag-alis, departure) and "tago"
+// (nakatago, stored) count only in these verb forms.
 const NEGATIVE_WORDS = new Set('not never no none without cannot nothing hindi wala walang huwag di'.split(' '));
-const NEGATIVE_STEMS = ['tago', 'alis', 'pigil', 'bawas', 'tanggal', 'limita', 'sugp', 'hadlang', 'bura', 'tigil', 'hirap', 'limot', 'limut', 'galit', 'ayaw', 'wala', 'prevent', 'remov', 'reduc', 'decreas', 'hinder', 'block', 'ignor', 'avoid', 'lose', 'losing', 'lost', 'hide', 'hidd', 'hiding', 'restrict', 'forbid', 'destroy', 'weaken', 'discourag', 'neglect', 'refus', 'deny', 'denie', 'harm'];
+const NEGATIVE_EN = new Set(
+  'prevent prevents prevented preventing prevention remove removes removed removing removal hinder hinders hindered hindering ignore ignores ignored ignoring avoid avoids avoided avoiding lose loses losing hide hides hiding hid restrict restricts restricted restricting forbid forbids forbade forbidden destroy destroys destroyed destroying weaken weakens weakened weakening discourage discourages discouraged discouraging neglect neglects neglected neglecting refuse refuses refused refusing deny denies denied denying harm harms harmed harming harmful'.split(' '),
+);
+const NEGATIVE_FIL = new Set(
+  'mahirapan pahirapan pinahirapan nahirapan mahihirapan pinahihirapan alisin inalis inaalis aalisin maalis naalis itago itinago itinatago itatago tinatago pagtatago'.split(' '),
+);
+const NEGATIVE_FIL_STEMS = new Set('pigil tanggal limita sugpo sugpu hadlang hadla bura tigil limot limut galit ayaw wala'.split(' '));
 
 export const words = (s) => String(s ?? '').normalize('NFKC').toLowerCase().match(/[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)*/gu) ?? [];
 const wordCount = (s) => String(s ?? '').match(/\S+/g)?.length ?? 0;
@@ -44,8 +55,8 @@ const wordCount = (s) => String(s ?? '').match(/\S+/g)?.length ?? 0;
 // A light stemmer, enough to see that two words are forms of one. English (lang 'en'): plurals and -ing/-ed.
 // Otherwise Filipino: the linker ("wikang" -> "wika"), common prefixes ("pag-unlad" -> "unlad", "nagbabago" ->
 // "bago"), the infixes -um-/-in- ("ginamit" -> "gamit"), first-syllable reduplication and -an/-in/-han/-hin. The
-// language is the text's (see contentWords); an English plural in a Filipino or Taglish text still matches its
-// singular through sameWord's containment.
+// language is the text's, or both when it can't tell (see wordStems); an English plural in a Filipino or Taglish
+// text still matches its singular through sameWord's containment.
 const PREFIXES = ['pinakama', 'pinaka', 'nakaka', 'makaka', 'nakapag', 'makapag', 'ipinag', 'ipag', 'pagka', 'pagpa', 'pinag', 'pang', 'pam', 'pan', 'nag', 'mag', 'pag', 'naka', 'maka', 'napa', 'mapa', 'ika', 'ipa', 'ma', 'na', 'ka', 'i'];
 export function stem(word, lang = null) {
   let s = String(word).normalize('NFKC').toLowerCase();
@@ -67,22 +78,95 @@ export function stem(word, lang = null) {
   return s;
 }
 
-// The meaning-carrying words of a text, as stems, each once.
-export function contentWords(text) {
-  const lang = language(text);
-  return [...new Set(words(text).filter((w) => w.length > 1 && !STOPWORDS.has(w)).map((w) => stem(w, lang)))];
+// A word's possible stems: its text's language's, or both languages' when language() can't tell (a short phrase
+// such as "Pattern matching", where the Filipino rules alone would cut "matching" to "tchi").
+function stemsOf(word, lang) {
+  if (lang) return [stem(word, lang)];
+  const fil = stem(word);
+  const en = stem(word, 'en');
+  return fil === en ? [fil] : [fil, en];
 }
+const isContent = (w) => w.length > 1 && !STOPWORDS.has(w);
+
+// The meaning-carrying words of a text, each once, as lists of possible stems (see stemsOf).
+export function wordStems(text) {
+  const lang = language(text);
+  const seen = new Map();
+  for (const w of words(text).filter(isContent)) {
+    const forms = stemsOf(w, lang);
+    const key = forms.join('|');
+    if (!seen.has(key)) seen.set(key, forms);
+  }
+  return [...seen.values()];
+}
+
+// The meaning-carrying words of a text, as stems, each once (the first stem of each; see wordStems).
+export const contentWords = (text) => [...new Set(wordStems(text).map((forms) => forms[0]))];
 
 // Two stems are one word when equal, or when one holds the other and the shorter has at least 4 letters
 // ("wika" / "wikain", "gamit" / "ginagamit").
 export const sameWord = (a, b) => a === b || (Math.min(a.length, b.length) >= 4 && (a.includes(b) || b.includes(a)));
-const shared = (list, other) => list.filter((w) => other.some((o) => sameWord(w, o)));
+// Two words (lists of possible stems, from wordStems) are one when any of their stems are (sameWord), or for
+// `exact`, equal.
+const matches = (a, b) => a.some((x) => b.some((y) => sameWord(x, y)));
+const exact = (a, b) => a.some((x) => b.includes(x));
+const shared = (list, other, same = matches) => list.filter((w) => other.some((o) => same(w, o)));
+const names = (list) => list.map((forms) => forms[0]);
 const coverage = (part, whole) => (part.length ? shared(part, whole).length / part.length : 0);
 const jaccard = (a, b) => {
   if (!a.length || !b.length) return 0;
   const n = shared(a, b).length;
   return n / (a.length + b.length - n);
 };
+
+// The words of a lesson for the off-topic check (rule f): every word under both languages' stems, so a Taglish
+// lesson or an English word in a Filipino lesson is still found. `holds(stem)` is memoised; `count(stem)` is how
+// often the lesson uses it. Cached by the text itself, so a changed or replaced lesson is read again.
+class LessonWords {
+  constructor(text) {
+    this.counts = new Map();
+    for (const w of words(text).filter(isContent))
+      for (const s of new Set([stem(w), stem(w, 'en')])) this.counts.set(s, (this.counts.get(s) ?? 0) + 1);
+    this.memo = new Map();
+  }
+  count(s) {
+    return this.counts.get(s) ?? 0;
+  }
+  has(s) {
+    return this.counts.has(s);
+  }
+  holds(s) {
+    if (this.counts.has(s)) return true;
+    if (!this.memo.has(s)) {
+      let found = false;
+      for (const l of this.counts.keys())
+        if (sameWord(s, l)) {
+          found = true;
+          break;
+        }
+      this.memo.set(s, found);
+    }
+    return this.memo.get(s);
+  }
+}
+const LESSON_CACHE = 20;
+const lessonCache = new Map(); // raw text -> LessonWords, oldest first
+export function lessonWords(text) {
+  if (!text) return null;
+  let entry = lessonCache.get(text);
+  if (entry) lessonCache.delete(text);
+  else entry = new LessonWords(text);
+  lessonCache.set(text, entry);
+  if (lessonCache.size > LESSON_CACHE) lessonCache.delete(lessonCache.keys().next().value);
+  return entry;
+}
+// Whether two texts share a content word ("on the same subject").
+export const sharesWord = (a, b) => {
+  const other = wordStems(b);
+  return wordStems(a).some((w) => other.some((o) => matches(w, o)));
+};
+// whether a lesson (a LessonWords, or a plain Set of stems as in tests) holds a word (a list of possible stems)
+const lessonHolds = (lesson, forms) => forms.some((s) => (lesson.holds ? lesson.holds(s) : lesson.has(s) || [...lesson].some((l) => sameWord(s, l))));
 
 // 'en', 'fil' or null when it can't tell (Taglish, a list of names).
 export function language(text) {
@@ -93,8 +177,10 @@ export function language(text) {
   return fil > en ? 'fil' : 'en';
 }
 
+// "No. 5", "(no.)": the abbreviation of number, not a negative
+const withoutNumberSign = (text) => String(text ?? '').replace(/\bno\.(?=\s*(?:\d|#|\)))/gi, ' ');
 export const isNegative = (text) =>
-  words(text).some((w) => NEGATIVE_WORDS.has(w) || [stem(w), stem(w, 'en')].some((s) => NEGATIVE_STEMS.some((n) => s.startsWith(n))));
+  words(withoutNumberSign(text)).some((w) => NEGATIVE_WORDS.has(w) || NEGATIVE_EN.has(w) || NEGATIVE_FIL.has(w) || NEGATIVE_FIL_STEMS.has(stem(w)));
 const fullSentence = (text) => /[.!?]$/.test(String(text).trim()) && wordCount(text) >= 4;
 const opening = (text) => words(text).slice(0, 2).join(' ');
 const plain = (s) => words(s).join(' ');
@@ -108,36 +194,38 @@ const LENGTH_SLACK = 4; // ... or within this many words of it
 export function answerInQuestion(question, answer) {
   const a = plain(answer);
   if (a && ` ${plain(question)} `.includes(` ${a} `)) return 'the question holds the answer';
-  const answerWords = contentWords(answer);
-  const questionWords = contentWords(question);
+  const answerWords = wordStems(answer);
+  const questionWords = wordStems(question);
   if (answerWords.length >= 2 && coverage(answerWords, questionWords) >= ANSWER_COVERAGE)
-    return `the question holds most of the answer (${shared(answerWords, questionWords).join(', ')})`;
-  if (answerWords.length === 1 && shared(answerWords, questionWords).length) return `the question holds the answer word "${answerWords[0]}"`;
+    return `the question holds most of the answer (${names(shared(answerWords, questionWords)).join(', ')})`;
+  if (answerWords.length === 1 && shared(answerWords, questionWords).length) return `the question holds the answer word "${answerWords[0][0]}"`;
   return null;
 }
 
 // Rule d / h: the term (or most of a multi-word term) appears in the text. -> the words found, or null
 export function termInText(term, text) {
-  const termWords = contentWords(term);
+  const termWords = wordStems(term);
   if (!termWords.length) return null;
-  const found = shared(termWords, contentWords(text));
-  return found.length === termWords.length || (termWords.length >= 2 && found.length * 2 >= termWords.length) ? found : null;
+  const found = shared(termWords, wordStems(text));
+  return found.length === termWords.length || (termWords.length >= 2 && found.length * 2 >= termWords.length) ? names(found) : null;
 }
 
 // A definition with its own term blanked out, so "Does this describe X?" and "Which term matches?" don't answer
-// themselves. Only words that are forms of the term's words are replaced; the rest is left as written.
+// themselves. Only words that are forms of the term's words are replaced; the rest is left as written. Each word is
+// stemmed the way termInText stems the text, so every form it finds is blanked.
 export function maskTerm(text, term) {
   if (!termInText(term, text)) return text;
-  const termWords = contentWords(term);
+  const termWords = wordStems(term);
+  const lang = language(text);
   const masked = String(text).replace(/[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)*/gu, (w) => {
     const lower = w.normalize('NFKC').toLowerCase();
-    return !STOPWORDS.has(lower) && termWords.some((t) => sameWord(stem(lower), t)) ? '___' : w;
+    return isContent(lower) && termWords.some((t) => matches(stemsOf(lower, lang), t)) ? '___' : w;
   });
   return masked.replace(/___(?:\s+___)+/g, '___');
 }
 
-// What is wrong with one wrong option next to the right answer (rules c and f). `lessonWords`: contentWords of the
-// lesson text, for the off-topic check (skipped without it). `lengths: false` for term names, which differ in length
+// What is wrong with one wrong option next to the right answer (rules c and f). `lessonWords`: lessonWords(lesson
+// text), for the off-topic check (skipped without it). `lengths: false` for term names, which differ in length
 // on their own. -> [{ rule, detail }]
 export function wrongOptionProblems(wrong, correct, { lessonWords = null, lengths = true, otherAnswers = [] } = {}) {
   const problems = [];
@@ -151,11 +239,11 @@ export function wrongOptionProblems(wrong, correct, { lessonWords = null, length
   const lc = language(correct);
   const lw = language(wrong);
   if (lc && lw && lc !== lw) problems.push({ rule: 'f', detail: 'another language' });
-  const own = contentWords(wrong);
-  if (jaccard(own, contentWords(correct)) >= NEAR_DUPLICATE) problems.push({ rule: 'f', detail: 'the right answer’s own words: reworded (a second right answer) or reversed' });
+  const own = wordStems(wrong);
+  if (jaccard(own, wordStems(correct)) >= NEAR_DUPLICATE) problems.push({ rule: 'f', detail: 'the right answer’s own words: reworded (a second right answer) or reversed' });
   // another card's answer reads as the answer to that other question, so a student can match it away
-  if (otherAnswers.some((a) => jaccard(own, contentWords(a)) >= NEAR_DUPLICATE)) problems.push({ rule: 'f', detail: 'another card’s answer: it answers a different question' });
-  if (lessonWords && own.length >= 2 && !own.some((w) => lessonWords.has(w) || [...lessonWords].some((l) => sameWord(w, l)))) problems.push({ rule: 'f', detail: 'about nothing in the lesson' });
+  if (otherAnswers.some((a) => jaccard(own, wordStems(a)) >= NEAR_DUPLICATE)) problems.push({ rule: 'f', detail: 'another card’s answer: it answers a different question' });
+  if (lessonWords && own.length >= 2 && !own.some((w) => lessonHolds(lessonWords, w))) problems.push({ rule: 'f', detail: 'about nothing in the lesson' });
   return problems;
 }
 
@@ -163,12 +251,12 @@ export function wrongOptionProblems(wrong, correct, { lessonWords = null, length
 export function optionSetProblems(question, correct, wrong) {
   const problems = [];
   if (!wrong.length) return problems;
-  const questionWords = contentWords(question);
+  const questionWords = wordStems(question);
   // a word of the question that the right option repeats and no wrong option does ("komunikasyon" in a question about
   // communication) points at the right one, even when every option shares the lesson's common words ("wika")
-  const echo = [...new Set(shared(contentWords(correct), questionWords))];
-  const only = echo.filter((e) => !wrong.some((w) => shared(contentWords(w), [e]).length));
-  if (only.length) problems.push({ rule: 'b', detail: `only the right option repeats the question (${only.join(', ')})` });
+  const echo = shared(wordStems(correct), questionWords);
+  const only = echo.filter((e) => !wrong.some((w) => shared(wordStems(w), [e]).length));
+  if (only.length) problems.push({ rule: 'b', detail: `only the right option repeats the question (${names(only).join(', ')})` });
   if (wrong.length >= 2 && wrong.every((w) => opening(w) === opening(wrong[0])) && opening(correct) !== opening(wrong[0]))
     problems.push({ rule: 'c', detail: `opening: every wrong option starts "${opening(wrong[0])}"` });
   if (wrong.every((w) => fullSentence(w) === fullSentence(wrong[0])) && fullSentence(correct) !== fullSentence(wrong[0]))
@@ -179,7 +267,7 @@ export function optionSetProblems(question, correct, wrong) {
     problems.push({ rule: 'c', detail: 'tone: the right option is the only negative statement' });
   for (let i = 0; i < wrong.length; i++)
     for (let j = i + 1; j < wrong.length; j++)
-      if (jaccard(contentWords(wrong[i]), contentWords(wrong[j])) >= NEAR_DUPLICATE) problems.push({ rule: 'f', detail: `near-duplicate wrong options ${i + 1} and ${j + 1}` });
+      if (jaccard(wordStems(wrong[i]), wordStems(wrong[j])) >= NEAR_DUPLICATE) problems.push({ rule: 'f', detail: `near-duplicate wrong options ${i + 1} and ${j + 1}` });
   return problems;
 }
 
@@ -190,7 +278,7 @@ export function falseStatementProblems(statement, answer) {
   const la = language(answer);
   const ls = language(statement);
   if (la && ls && la !== ls) problems.push({ rule: 'e', detail: 'another language' });
-  if (jaccard(contentWords(statement), contentWords(answer)) >= NEAR_DUPLICATE) problems.push({ rule: 'e', detail: 'the right answer’s own words: reworded (so it may be true) or reversed' });
+  if (jaccard(wordStems(statement), wordStems(answer)) >= NEAR_DUPLICATE) problems.push({ rule: 'e', detail: 'the right answer’s own words: reworded (so it may be true) or reversed' });
   return problems;
 }
 
@@ -243,14 +331,14 @@ export function cardLeaks(card, others = []) {
     if (/^(?:is|are|does|do|did|can|could|was|were|will|would|should|has|have|had)$/.test(ws[0] ?? '') || /\b(?:ba|o hindi|or not)\b/.test(joined))
       problems.push({ rule: 'i', detail: 'a yes/no or either/or question' });
   }
-  const front = contentWords(card.front);
+  const front = wordStems(card.front);
   for (const other of others) {
     if (other === card || (other.id != null && other.id === card.id)) continue;
-    const answerWords = contentWords(other.back);
+    const answerWords = wordStems(other.back);
     if (answerWords.length >= 3 && coverage(answerWords, front) >= 0.8) problems.push({ rule: 'j', detail: `the front holds the answer of "${other.front}"` });
   }
   if (card.kind !== 'term') {
-    const back = contentWords(card.back);
+    const back = wordStems(card.back);
     if (jaccard(front, back) >= 0.6) problems.push({ rule: 'k', detail: 'front and back are nearly the same' });
     else if (back.length >= 2 && coverage(back, front) >= 0.8) problems.push({ rule: 'k', detail: 'the back only restates the front' });
   }

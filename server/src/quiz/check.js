@@ -1,6 +1,6 @@
 import { loadDistractors } from './distractors.js';
 import { QUIZ_LENGTH, quizCandidates, usableCount } from './build.js';
-import { cardLeaks, contentWords, falseStatementProblems, sameWord, termInText, wrongOptionProblems } from './leaks.js';
+import { cardLeaks, falseStatementProblems, lessonWords as lessonWordsOf, sharesWord, termInText, wrongOptionProblems } from './leaks.js';
 
 // What gives answers away in one lesson, read from the database without any AI call: the flashcards that break rules
 // g-k, and every quiz question the builder could make (multiple choice, Yes/No false statements) with the ones it
@@ -15,7 +15,7 @@ export function lessonLeakReport(db, lessonId) {
   const cards = db.prepare('SELECT id, kind, front, back, evidence FROM flashcards WHERE lesson_id = ? ORDER BY position, id').all(lessonId);
   const extraTerms = db.prepare('SELECT term FROM key_terms WHERE lesson_id = ? ORDER BY id').all(lessonId).map((t) => t.term);
   const opts = { distractors: loadDistractors(db, lessonId), extraTerms, lessonText: lesson.raw_text };
-  const lessonWords = lesson.raw_text ? new Set(contentWords(lesson.raw_text)) : null;
+  const lessonWords = lessonWordsOf(lesson.raw_text);
   const candidates = quizCandidates(cards, opts);
 
   const flagged = cards.map((card) => ({ id: card.id, kind: card.kind, front: card.front, back: card.back, rules: cardLeaks(card, cards) })).filter((c) => c.rules.length);
@@ -39,7 +39,6 @@ export function lessonLeakReport(db, lessonId) {
       }
     }
 
-    const questionWords = contentWords(card.front);
     const clean = new Set(p.falseClean);
     for (const statement of p.falsePool) {
       falses.possible += 1;
@@ -49,7 +48,7 @@ export function lessonLeakReport(db, lessonId) {
       }
       const reasons = [...cardProblems, ...falseStatementProblems(statement, card.back)];
       if (p.mcWrong.includes(statement)) reasons.push(...wrongOptionProblems(statement, card.back, { lengths: false, otherAnswers }).filter((x) => x.detail.startsWith('another card')).map((x) => ({ ...x, rule: 'e' })));
-      if (!reasons.length && card.kind !== 'term' && !contentWords(statement).some((w) => questionWords.some((q) => sameWord(w, q))))
+      if (!reasons.length && card.kind !== 'term' && !sharesWord(statement, card.front))
         reasons.push({ rule: 'e', detail: 'about another subject: shares no word with the question' });
       falses.skipped.push({ card_id: card.id, question: card.front, statement, reasons });
     }

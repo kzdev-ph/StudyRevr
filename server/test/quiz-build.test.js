@@ -133,6 +133,18 @@ describe('quiz building', () => {
     }
   });
 
+  it('a definition is blanked under the stems termInText uses, so no term question shows its term (English marker word in the term)', () => {
+    const cards = [
+      term(1, 'Law of marketing', 'Marketing is the process of selling a product.'),
+      term(2, 'Supply', 'The amount of a product sellers offer.'),
+      term(3, 'Demand', 'The amount buyers want to buy.'),
+      term(4, 'Price', 'What buyers pay for a product.'),
+    ];
+    assert.equal(quizCandidates(cards).find((p) => p.card.id === 1).shown, '___ is the process of selling a product.');
+    for (let seed = 1; seed <= 30; seed++)
+      for (const q of buildQuiz({ cards, random: seeded(seed) })) assert.deepEqual(questionLeaks(q), [], `${q.type} #${q.flashcard_id}: ${q.question} / ${q.statement}`);
+  });
+
   it('a saved wrong answer that is another card’s answer is used neither as an option nor as a false statement', () => {
     const cards = CONCEPTS.slice(0, 3);
     const distractors = wrongFor(cards);

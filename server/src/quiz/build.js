@@ -1,5 +1,5 @@
 import { termKey } from '../pipeline/terms.js';
-import { answerInQuestion, cardLeaks, contentWords, falseStatementProblems, maskTerm, optionSetProblems, sameWord, wrongOptionProblems } from './leaks.js';
+import { answerInQuestion, cardLeaks, falseStatementProblems, lessonWords as lessonWordsOf, maskTerm, optionSetProblems, sharesWord, termInText, wrongOptionProblems } from './leaks.js';
 
 // Turning a lesson's flashcards into quiz questions. Pure: the caller passes the cards, the saved wrong answers and a
 // `random` function (tests pass a seeded one), so the same inputs always give the same quiz.
@@ -13,8 +13,9 @@ import { answerInQuestion, cardLeaks, contentWords, falseStatementProblems, mask
 //
 // Nothing that gives its answer away is asked (see leaks.js): a concept card whose question holds its answer is
 // skipped; wrong options and false statements that stand out are left out, and a card with too few left is asked
-// the other way or not at all. A definition that holds its own term is shown with the term blanked ("___"). So a
-// lesson whose cards can't fill 10 clean questions gets a shorter quiz instead of leaking ones.
+// the other way or not at all. A definition that holds its own term is shown with the term blanked ("___"), and is
+// checked again after blanking: one that still shows the term is not asked. So a lesson whose cards can't fill 10
+// clean questions gets a shorter quiz instead of leaking ones.
 
 export const QUIZ_LENGTH = 10;
 export const TF_SHARE = 0.3;
@@ -60,18 +61,23 @@ function arrange(correct, wrong, random) {
 //     its option set can't be used: [{ rule, detail }]) }
 // `npm run quiz:check` reports the candidates; the quiz only uses mcClean and falseClean.
 export function quizCandidates(cards, { distractors = new Map(), extraTerms = [], lessonText = null } = {}) {
-  const lessonWords = lessonText ? new Set(contentWords(lessonText)) : null;
+  const lessonWords = lessonWordsOf(lessonText);
   const names = new Map(); // termKey -> spelling, from term cards first, then key terms without a card
   for (const name of [...cards.filter((c) => c.kind === 'term').map((c) => c.front), ...extraTerms]) {
     const key = termKey(name);
     if (key && !names.has(key)) names.set(key, String(name).trim());
   }
-  const shown = (card) => (card.kind === 'term' ? maskTerm(card.back, card.front) : card.back);
   const termCards = cards.filter((c) => c.kind === 'term');
   const conceptCards = cards.filter((c) => c.kind !== 'term');
+  const masked = new Map(termCards.map((c) => [c.id, maskTerm(c.back, c.front)]));
+  const shown = (card) => (card.kind === 'term' ? masked.get(card.id) : card.back);
+  // checked again after blanking: a definition that still shows its term is neither asked nor used as a false statement
+  const stillShows = new Map(termCards.map((c) => [c.id, termInText(c.front, masked.get(c.id))]));
 
   return cards.map((card) => {
     if (card.kind === 'term') {
+      const visible = stillShows.get(card.id);
+      if (visible) return { card, shown: shown(card), mcWrong: [], mcClean: [], falsePool: [], falseClean: [], problems: [{ rule: 'd', detail: `the term still shows after blanking (${visible.join(', ')})` }] };
       const own = termKey(card.front);
       const mcWrong = usableWrong(
         [...names].filter(([key]) => key !== own).map(([, name]) => name),
@@ -79,7 +85,7 @@ export function quizCandidates(cards, { distractors = new Map(), extraTerms = []
         Infinity,
       );
       // only other definitions: another kind of card's answer under "Does this describe X?" is plainly not a definition
-      const falsePool = usableWrong(termCards.filter((c) => c.id !== card.id).map(shown), shown(card), Infinity);
+      const falsePool = usableWrong(termCards.filter((c) => c.id !== card.id && !stillShows.get(c.id)).map(shown), shown(card), Infinity);
       return { card, shown: shown(card), mcWrong, mcClean: mcWrong, falsePool, falseClean: falsePool, problems: [] };
     }
 
@@ -102,8 +108,7 @@ export function quizCandidates(cards, { distractors = new Map(), extraTerms = []
       Infinity,
     );
     const falsePool = saved.length ? saved : others;
-    const questionWords = contentWords(card.front);
-    const onTopic = (s) => contentWords(s).some((w) => questionWords.some((q) => sameWord(w, q)));
+    const onTopic = (s) => sharesWord(s, card.front);
     const plausible = (s) => !falseStatementProblems(s, card.back).length;
     const cardOk = !problems.some((p) => p.rule === 'a' || p.rule === 'k');
     const savedFalse = saved.filter((s) => plausible(s) && !wrongOptionProblems(s, card.back, { lengths: false, otherAnswers }).some((p) => p.detail.startsWith('another card')));

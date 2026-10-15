@@ -69,6 +69,15 @@ describe('npm run quiz:check', () => {
     assert.ok(fs.readFileSync(dbPath).equals(before));
   });
 
+  it('works on a database from before the settled column (migration 010)', () => {
+    const db = openDb(dbPath);
+    db.exec("ALTER TABLE quiz_distractors DROP COLUMN settled; DELETE FROM schema_migrations WHERE version LIKE '010%'");
+    db.close();
+    const { code, out } = quizCheck(['--db', dbPath]);
+    assert.equal(code, 0);
+    assert.equal(out.match(/Clean questions available: 6 of 10/g).length, 2);
+  });
+
   it('explains bad arguments, a missing file and an unknown lesson', () => {
     assert.equal(quizCheck(['--lesson', 'abc'], { dbPath }).code, 2);
     assert.equal(quizCheck(['--nope'], { dbPath }).code, 2);

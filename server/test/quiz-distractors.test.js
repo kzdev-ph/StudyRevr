@@ -118,6 +118,30 @@ describe('quiz wrong answers', () => {
       assert.deepEqual(loadDistractors(db, lessonId).get(id), [CLEAN[0]]);
     });
 
+    it('a set still not clean after the follow-up is settled: no remake or lesson retry asks for it again', async () => {
+      const [id] = addCards(1);
+      const ai = fakeAi(() => ({ items: [{ n: 1, wrong: [CLEAN[0], ...NEGATIVE] }] }));
+      await ensureDistractors({ db, ai, lessonId, includeFailing: true, log: quiet });
+      assert.equal(ai.calls.length, 2);
+      assert.equal(db.prepare('SELECT settled FROM quiz_distractors WHERE flashcard_id = ?').get(id).settled, 1);
+      assert.deepEqual(cardsNeedingDistractors(db, lessonId, { includeFailing: true }), []);
+      assert.deepEqual(await ensureDistractors({ db, ai, lessonId, includeFailing: true, log: quiet }), { made: 0, error: null });
+      assert.equal(ai.calls.length, 2, 'no more AI calls for it');
+    });
+
+    it('a set left short because the follow-up failed is not settled: a later remake tries again', async () => {
+      const [id] = addCards(1);
+      const ai = fakeAi((cards, call) => {
+        if (call === 2) throw new Error('Timed out.');
+        return call === 1 ? { items: [{ n: 1, wrong: [CLEAN[0], ...NEGATIVE] }] } : threeClean(cards);
+      });
+      await ensureDistractors({ db, ai, lessonId, includeFailing: true, log: quiet });
+      assert.equal(db.prepare('SELECT settled FROM quiz_distractors WHERE flashcard_id = ?').get(id).settled, 0);
+      assert.deepEqual(cardsNeedingDistractors(db, lessonId, { includeFailing: true }).map((c) => c.id), [id]);
+      await ensureDistractors({ db, ai, lessonId, includeFailing: true, log: quiet });
+      assert.deepEqual(loadDistractors(db, lessonId).get(id), CLEAN);
+    });
+
     it('a set where the right answer still stands out is asked again with the problem named (Filipino)', async () => {
       db.prepare('UPDATE lessons SET raw_text = ? WHERE id = ?').run('Ginagamit ang Filipino sa pamahalaan sa pagbibigay ng impormasyon at serbisyo. Malaki ang papel nito sa batas, buwis at ugnayan sa ibang bansa.', lessonId);
       const id = Number(db.prepare("INSERT INTO flashcards (lesson_id, kind, front, back, evidence, position) VALUES (?, 'concept', 'Paano ginagamit ang Filipino sa pamahalaan?', 'Ginagamit ito sa pagbibigay ng impormasyon at serbisyo sa mamamayan.', 'q', 1)").run(lessonId).lastInsertRowid);

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { mapLimit } from '../ai/pool.js';
 import { distractorsPrompt } from '../ai/prompts.js';
 import { quizCandidates, usableWrong } from './build.js';
-import { contentWords, language, optionSetProblems, wrongOptionProblems } from './leaks.js';
+import { language, lessonWords as lessonWordsOf, optionSetProblems, wrongOptionProblems } from './leaks.js';
 
 // Wrong answer options for a lesson's concept cards: made by the AI as the last step of lesson processing (the
 // pipeline's `quiz_options` stage), saved in quiz_distractors and reused from then on. Starting a quiz calls the same
@@ -15,8 +15,9 @@ import { contentWords, language, optionSetProblems, wrongOptionProblems } from '
 // next to a positive right answer, much shorter or longer, in another language or about nothing in the lesson is
 // dropped, and a set of 3 where the right answer still stands out (only it echoes the question, the wrong ones all
 // open alike, near-duplicates) is not used. Cards left without a clean set get ONE follow-up call that says what was
-// wrong; whatever is clean after it is saved. The processing stage and the admin retry also remake saved sets that
-// fail these checks (`includeFailing`); a quiz start never calls the AI for them: the quiz builder leaves them out.
+// wrong; whatever is clean after it is saved, and a set still not clean then is marked settled. The processing stage
+// and the admin retry also remake saved sets that fail these checks (`includeFailing`), but not settled ones; a quiz
+// start never calls the AI for them: the quiz builder leaves them out.
 
 export const BATCH_SIZE = 15;
 const MAX_WRONG_WORDS = 40; // same cap as a flashcard answer
@@ -41,11 +42,12 @@ const cardFields = ({ id, front, back, evidence }) => ({ id, front, back, eviden
 
 // Concept cards of the lesson that have no saved wrong answers yet. With { includeFailing }, also those whose saved
 // set the quiz can't use for multiple choice (quizCandidates in build.js), except a card whose question itself gives
-// the answer away: new wrong answers would not help it (the admin flag lists it).
+// the answer away (new wrong answers would not help it; the admin flag lists it) and a settled set: one that still
+// failed after the follow-up call, so asking again would only spend AI calls (see migration 010).
 export function cardsNeedingDistractors(db, lessonId, { includeFailing = false } = {}) {
   const rows = db
     .prepare(
-      `SELECT f.id, f.kind, f.front, f.back, f.evidence, d.flashcard_id IS NOT NULL AS has_saved FROM flashcards f
+      `SELECT f.id, f.kind, f.front, f.back, f.evidence, d.flashcard_id IS NOT NULL AS has_saved, d.settled FROM flashcards f
        LEFT JOIN quiz_distractors d ON d.flashcard_id = f.id WHERE f.lesson_id = ? AND f.kind = 'concept' ORDER BY f.position, f.id`,
     )
     .all(lessonId);
@@ -53,7 +55,7 @@ export function cardsNeedingDistractors(db, lessonId, { includeFailing = false }
   const candidates = quizCandidates(rows, { distractors: loadDistractors(db, lessonId), lessonText: lessonTextOf(db, lessonId) });
   const failing = new Set(
     candidates
-      .filter((p) => p.card.has_saved && p.mcClean.length < WRONG_PER_QUESTION && !p.problems.some((x) => x.rule === 'a' || x.rule === 'k'))
+      .filter((p) => p.card.has_saved && !p.card.settled && p.mcClean.length < WRONG_PER_QUESTION && !p.problems.some((x) => x.rule === 'a' || x.rule === 'k'))
       .map((p) => p.card.id),
   );
   return rows.filter((r) => !r.has_saved || failing.has(r.id)).map(cardFields);
@@ -144,14 +146,14 @@ export function ensureDistractors(options) {
 async function makeDistractors({ db, ai, lessonId, includeFailing = false, concurrency = 1, batchSize = BATCH_SIZE, now = () => new Date(), log = console, onProgress }) {
   const cards = cardsNeedingDistractors(db, lessonId, { includeFailing });
   if (!cards.length) return { made: 0, error: null };
-  const lessonWords = new Set(contentWords(lessonTextOf(db, lessonId)));
+  const lessonWords = lessonWordsOf(lessonTextOf(db, lessonId));
   const keyTerms = db.prepare('SELECT term FROM key_terms WHERE lesson_id = ? ORDER BY id').all(lessonId).map((t) => t.term);
   // the lesson's concept answers: a wrong answer that is another card's answer is dropped (it answers that question)
   const answers = db.prepare("SELECT id, back FROM flashcards WHERE lesson_id = ? AND kind <> 'term'").all(lessonId);
   const batches = [];
   for (let i = 0; i < cards.length; i += batchSize) batches.push(cards.slice(i, i + batchSize));
 
-  const save = db.prepare('INSERT OR REPLACE INTO quiz_distractors (flashcard_id, choices, made_at) VALUES (?, ?, ?)');
+  const save = db.prepare('INSERT OR REPLACE INTO quiz_distractors (flashcard_id, choices, made_at, settled) VALUES (?, ?, ?, ?)');
   let made = 0;
   let error = null;
   let done = 0;
@@ -167,7 +169,8 @@ async function makeDistractors({ db, ai, lessonId, includeFailing = false, concu
         }
         try {
           const again = await makeBatch({ ai, cards: retry.map((r) => r.card), keyTerms, answers, lessonWords, earlier: new Map(retry.map((r) => [r.card.id, r])) });
-          const byId = new Map(again.map((r) => [r.card.id, r]));
+          // still not clean after the follow-up: settled, so a later remake or retry doesn't ask for it again
+          const byId = new Map(again.map((r) => [r.card.id, { ...r, settled: !r.ok }]));
           results = results.map((r) => byId.get(r.card.id) ?? r);
         } catch (err) {
           // the first try's clean answers are still saved; the card is asked as true / false until a retry
@@ -176,8 +179,8 @@ async function makeDistractors({ db, ai, lessonId, includeFailing = false, concu
       }
       db.transaction(() => {
         // a card deleted while the call ran (lesson deleted, cards remade) is skipped
-        for (const { card, wrong } of results) {
-          if (db.prepare('SELECT 1 FROM flashcards WHERE id = ?').get(card.id)) made += save.run(card.id, JSON.stringify(wrong), now().toISOString()).changes;
+        for (const { card, wrong, settled } of results) {
+          if (db.prepare('SELECT 1 FROM flashcards WHERE id = ?').get(card.id)) made += save.run(card.id, JSON.stringify(wrong), now().toISOString(), settled ? 1 : 0).changes;
         }
       })();
       const short = results.filter((r) => !r.ok).length;

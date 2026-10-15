@@ -7,6 +7,7 @@ import {
   falseStatementProblems,
   isNegative,
   language,
+  lessonWords,
   maskTerm,
   optionSetProblems,
   questionLeaks,
@@ -41,9 +42,55 @@ describe('leak checks: words', () => {
   });
 
   it('spots negative and reversed statements in both languages', () => {
-    for (const t of ['It never changes.', 'Plants do not need light.', 'It prevents the spread of words.', 'Hindi ito nagbabago.', 'Upang itago ang mga konsepto.', 'Ginagamit ito upang limitahan ang komunikasyon.', 'Nabawasan ang mga salita.', 'Pinipigilan nito ang pagkalat.'])
+    for (const t of ['It never changes.', 'Plants do not need light.', 'It prevents the spread of words.', 'It hides the data.', 'Hindi ito nagbabago.', 'Upang itago ang mga konsepto.', 'Ginagamit ito upang limitahan ang komunikasyon.', 'Nawala ang mga salita.', 'Pinipigilan nito ang pagkalat.', 'Upang mahirapan ang mga mag-aaral.', 'Binura ang mga tala.', 'Bilang hadlang sa pagkakaisa.'])
       assert.ok(isNegative(t), t);
     for (const t of ['It slows down because less carbon dioxide enters.', 'Ginagamit ito sa edukasyon.', 'Upang palitan ang mga aklat ng mga lumang salita.']) assert.ok(!isNegative(t), t);
+  });
+
+  it('topic words that only start like a negative are not negative (English, Filipino and Taglish)', () => {
+    const neutral = [
+      // English
+      'It reduces stress levels.',
+      'The reduction of oxygen in the cell.',
+      'Harmony between the melody and the chords.',
+      'A blockchain keeps a shared ledger.',
+      'Building blocks of a sentence.',
+      'The hidden layer of the network.',
+      'Law No. 7 sets the national language.',
+      'A number (no.) written before the count.',
+      // Filipino and Taglish
+      'Nabawasan ang oras ng paglalakbay.',
+      'Ang unang burador ng sanaysay.',
+      'Ang paghihirap ng mga magsasaka noong digmaan.',
+      'Ang pag-alis ng mga Espanyol sa bansa.',
+      'Nakatago ang enerhiya sa asukal.',
+      'Ang blockchain ay ginagamit sa pagbabayad.',
+      'Mahalaga ang harmony sa awit.',
+      'Ayon sa Batas No. 7 ng Komonwelt.',
+      'Ang hidden layer ng network.',
+    ];
+    for (const t of neutral) assert.ok(!isNegative(t), t);
+    // so a positive right answer with "reduces" next to positive wrong ones is a fair set
+    assert.deepEqual(optionSetProblems('What does exercise do to stress?', 'It reduces stress levels.', ['It raises stress levels.', 'It moves stress to the muscles.', 'It turns stress into energy.']), []);
+    assert.deepEqual(rules(wrongOptionProblems('Ang unang burador ng sanaysay.', 'Ang huling bersyon ng sanaysay.')), []);
+  });
+
+  it('a short phrase the language check can’t place is compared under both stemmers (rules a, d, f)', () => {
+    assert.equal(language('Pattern matching'), null);
+    // a: "matching" in an English question is the answer's "matching"
+    assert.ok(answerInQuestion('What is finding a pattern by matching text called?', 'Pattern matching'));
+    assert.ok(answerInQuestion('Ano ang tawag sa pagtutugma ng pattern sa matching?', 'Pattern matching'));
+    // d: every form termInText finds is blanked, also when the term holds an English marker word
+    assert.deepEqual(termInText('Law of marketing', 'Marketing is the process of selling a product.'), ['market']);
+    assert.equal(maskTerm('Marketing is the process of selling a product.', 'Law of marketing'), '___ is the process of selling a product.');
+    assert.equal(termInText('Law of marketing', maskTerm('Marketing is the process of selling a product.', 'Law of marketing')), null);
+    assert.equal(maskTerm('Ginagamit ang marketing sa negosyo.', 'Marketing'), 'Ginagamit ang ___ sa negosyo.');
+    // f: an option about the lesson's own words is not "about nothing in the lesson"
+    const en = lessonWords('Marketing is the process of selling a product. Matching ads to buyers helps the business.');
+    assert.deepEqual(wrongOptionProblems('Marketing campaigns', 'Selling products', { lessonWords: en, lengths: false }), []);
+    assert.deepEqual(wrongOptionProblems('Matching buyers', 'Selling products', { lessonWords: en, lengths: false }), []);
+    const fil = lessonWords('Mahalaga ang marketing sa negosyo upang makilala ang produkto ng mga mamimili.');
+    assert.deepEqual(wrongOptionProblems('Marketing ng produkto', 'Pagbebenta ng produkto', { lessonWords: fil, lengths: false }), []);
   });
 });
 
@@ -83,7 +130,7 @@ describe('leak checks: quiz rules a-f', () => {
     const hamon = 'Nabawasan ang paggamit ng Filipino at nanganganib mawala ang ilang katutubong salita.';
     assert.match(optionSetProblems('Ano ang epekto ng mga hamon sa wika?', hamon, ['Lumalawak ang paggamit ng Filipino sa pamahalaan.', 'Dumarami ang mga bagong katutubong salita.', 'Napapaunlad ang paraan ng pakikipagkomunikasyon.']).map((p) => p.detail).join(), /only negative/);
     assert.match(optionSetProblems('What happens to photosynthesis in a drought?', 'It is reduced because carbon dioxide cannot enter.', ['It speeds up because more light arrives.', 'It moves to the roots of the plant.', 'It makes more oxygen at night.']).map((p) => p.detail).join(), /only negative/);
-    assert.doesNotMatch(optionSetProblems('Ano ang epekto ng mga hamon sa wika?', hamon, ['Nabawasan ang mga aklat sa paaralan.', 'Dumarami ang mga bagong katutubong salita.', 'Napapaunlad ang paraan ng pakikipagkomunikasyon.']).map((p) => p.detail).join(), /only negative/);
+    assert.doesNotMatch(optionSetProblems('Ano ang epekto ng mga hamon sa wika?', hamon, ['Nawala ang mga aklat sa paaralan.', 'Dumarami ang mga bagong katutubong salita.', 'Napapaunlad ang paraan ng pakikipagkomunikasyon.']).map((p) => p.detail).join(), /only negative/);
   });
 
   it('d: a definition that holds its term (or a form of it) is found and blanked', () => {
