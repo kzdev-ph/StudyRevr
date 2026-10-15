@@ -14,9 +14,11 @@ General
   counted).
 - time_ms (flashcard_reviews.csv, quiz_answers.csv) runs from when the card or question is on screen and can be
   answered to the answer. Animations are not counted: the deck coming out, a quiz sheet being handed out, a card
-  being turned over, the marks drawn after an answer. Rows answered before 2026-10-16 (the version that made this
-  change) also counted the animations of that time: about 0.2-0.6 s per flashcard (its slide-in and the flip) and
-  about 0.2-0.4 s per quiz question (the fade between questions). Split by reviewed_at / answered_at to compare.
+  being turned over, the marks drawn after an answer. Rows answered before the study copy was updated to this version
+  (the researcher notes that day) also counted the animations of that time: about 0.2-0.6 s per flashcard (its
+  slide-in and the flip) and about 0.2-0.4 s per quiz question (the fade between questions). Split by reviewed_at /
+  answered_at at that day to compare. A quiz's duration_ms likewise starts when its first question can be answered
+  (before, it included that question's 0.2 s fade-in), and there is no longer a fade between questions in it.
 
 summary.csv - one row per participant; columns grouped by SDL dimension
   Planning (study planning and time management)
