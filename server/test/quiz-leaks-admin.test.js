@@ -46,15 +46,25 @@ describe('admin: cards that give their answer away', () => {
   });
 
   it('the lesson list counts them, and the leak report lists them with the rules they break', async () => {
-    const row = (await call('GET', '/api/lessons')).body.lessons.find((l) => l.id === lessonId);
-    assert.deepEqual(row.leaks, { cards: 2 });
+    const row = (await call('GET', '/api/lessons?counts=1')).body.lessons.find((l) => l.id === lessonId);
+    assert.deepEqual(row.leaks, { cards: 1 }, 'the term card that names its term (h) is not counted: the quiz blanks the term');
     const res = await call('GET', `/api/admin/lessons/${lessonId}/leaks`);
     assert.equal(res.status, 200);
-    assert.deepEqual(res.body.cards.flagged.map((c) => [c.id, [...new Set(c.rules.map((r) => r.rule))]]), [[leaky, ['g', 'k']], [term, ['h']]]);
+    assert.deepEqual(res.body.cards.flagged.map((c) => [c.id, [...new Set(c.rules.map((r) => r.rule))]]), [[leaky, ['g', 'k']]]);
+    assert.deepEqual(res.body.cards.names_term.map((c) => c.id), [term], 'h is listed as information only');
     assert.equal(res.body.can_regenerate, true);
+    assert.equal(res.body.regenerate_blocked, null);
     assert.equal(typeof res.body.quiz.clean_questions, 'number');
     assert.equal((await call('GET', `/api/admin/lessons/${lessonId}/leaks`, { pin: null })).status, 401);
     assert.equal((await call('GET', '/api/admin/lessons/999/leaks')).status, 404);
+  });
+
+  it('only admin’s list (?counts=1, behind the PIN) runs the leak checks; the students’ list has no counts', async () => {
+    const student = (await t.call('GET', '/api/lessons', { as: 'P01' })).body.lessons.find((l) => l.id === lessonId);
+    assert.equal(student.leaks, undefined);
+    assert.equal(student.quiz_options, undefined);
+    assert.equal((await call('GET', '/api/lessons?counts=1', { pin: null })).status, 401);
+    assert.equal((await call('GET', '/api/lessons?counts=1', { pin: 'wrong' })).status, 401);
   });
 
   it('regenerates a concept card in place and clears its saved quiz answers', async () => {
@@ -67,8 +77,35 @@ describe('admin: cards that give their answer away', () => {
     assert.equal(t.db.prepare('SELECT COUNT(*) AS n FROM quiz_distractors WHERE flashcard_id = ?').get(leaky).n, 0);
     assert.match(ai.calls[0].user, /What gives it away: .*front holds/);
     assert.match(ai.calls[0].system, /must not contain any of these answers from other cards: .*Upang mas madaling/);
-    const list = (await call('GET', '/api/lessons')).body.lessons.find((l) => l.id === lessonId);
-    assert.deepEqual([list.leaks.cards, list.quiz_options.missing], [1, 2], 'one left (the term card); the new card needs quiz answers again');
+    const list = (await call('GET', '/api/lessons?counts=1')).body.lessons.find((l) => l.id === lessonId);
+    assert.deepEqual([list.leaks.cards, list.quiz_options.missing], [0, 2], 'none left; the new card needs quiz answers again');
+  });
+
+  it('is refused while a job runs on the lesson (quiz answers, Prepare, making cards)', async () => {
+    ai.reply = { question: 'Bakit tinatawag na dinamiko ang wika ayon sa aralin?', answer: 'Sumasabay ito sa pamumuhay at kultura ng mga tao.', evidence: 'patuloy itong nagbabago kasabay ng pamumuhay at kultura' };
+    for (const stage of ['quiz_options', 'section_versions', 'flashcards']) {
+      const job = t.db.prepare("INSERT INTO jobs (lesson_id, stage, status) VALUES (?, ?, 'running')").run(lessonId, stage).lastInsertRowid;
+      const res = await call('POST', `/api/admin/flashcards/${leaky}/regenerate`);
+      assert.equal(res.status, 409, stage);
+      assert.equal(res.body.error.code, 'lesson_busy');
+      assert.equal((await call('GET', `/api/admin/lessons/${lessonId}/leaks`)).body.regenerate_blocked, 'lesson_busy');
+      t.db.prepare("UPDATE jobs SET status = 'done' WHERE id = ?").run(job);
+    }
+    assert.equal(ai.calls.length, 0);
+    assert.equal((await call('POST', `/api/admin/flashcards/${leaky}/regenerate`)).status, 200);
+  });
+
+  it('checks again when saving: a participant who started during the AI call blocks it, and nothing is saved', async () => {
+    const p01 = t.db.prepare("SELECT id FROM participants WHERE code = 'P01'").get().id;
+    ai.generateJSON = async ({ schema }) => {
+      t.db.prepare("INSERT INTO events (participant_id, type, lesson_id, created_at, study_date) VALUES (?, 'stats_view', ?, 'x', '2026-10-05')").run(p01, lessonId);
+      return schema.parse({ question: 'Bakit tinatawag na dinamiko ang wika ayon sa aralin?', answer: 'Sumasabay ito sa pamumuhay at kultura ng mga tao.', evidence: 'patuloy itong nagbabago kasabay ng pamumuhay at kultura' });
+    };
+    const res = await call('POST', `/api/admin/flashcards/${leaky}/regenerate`);
+    assert.equal(res.status, 409);
+    assert.equal(res.body.error.code, 'lesson_has_records');
+    assert.equal(t.db.prepare('SELECT front FROM flashcards WHERE id = ?').get(leaky).front, 'Bakit nagbabago ang wika kasabay ng pamumuhay at kultura?');
+    assert.equal(t.db.prepare('SELECT COUNT(*) AS n FROM quiz_distractors WHERE flashcard_id = ?').get(leaky).n, 1, 'its quiz answers are kept');
   });
 
   it('regenerates a term card’s definition only, and refuses one that still names the term', async () => {

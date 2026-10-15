@@ -8,8 +8,7 @@ import { lastBackup, logAdminEvent, makeBackup, removeTemp } from '../services/b
 import { addParticipants, findParticipant, parseCodeList, UNKNOWN_CODE } from '../participants/codes.js';
 import { defaultAiProblems } from '../services/ai-problems.js';
 import { lessonLeakReport } from '../quiz/check.js';
-import { hasRecords, participantRecords } from '../services/lesson-records.js';
-import { regenerateCard } from '../services/regenerate-card.js';
+import { regenerateBlock, regenerateCard } from '../services/regenerate-card.js';
 import { deleteAllStudentKeys } from '../services/student-ai.js';
 import { participantStats, summaryTable } from '../stats/participant.js';
 
@@ -96,12 +95,14 @@ export function adminRouter({ db, ai, clock = () => new Date(), requireAdmin, lo
 
   // What gives answers away in a lesson (quiz/check.js): the flagged flashcards, the quiz questions the builder skips
   // and why, how many clean questions a quiz can have, and whether its cards may still be regenerated (no participant
-  // other than P00 has records on it).
+  // other than P00 has records on it, and no job is running on it).
   router.get('/lessons/:id/leaks', (req, res) => {
     const lessonId = parseId(req.params.id, 'Lesson');
     const report = lessonLeakReport(db, lessonId);
     if (!report) throw new HttpError(404, 'Lesson not found.');
-    res.json({ ...report, can_regenerate: report.lesson.status === 'ready' && !hasRecords(participantRecords(db, lessonId)) });
+    const blocked = regenerateBlock(db, lessonId);
+    // why not: lesson_has_records (participants studied it) or lesson_busy (processing, or a job running on it)
+    res.json({ ...report, can_regenerate: !blocked, regenerate_blocked: blocked?.extra.code ?? null });
   });
 
   // "Regenerate this card": writes a flagged card again with the Default AI (services/regenerate-card.js). 409

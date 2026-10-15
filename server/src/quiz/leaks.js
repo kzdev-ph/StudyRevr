@@ -5,7 +5,7 @@ import { singular } from '../pipeline/terms.js';
 // (which drops bad options), the admin flag and `npm run quiz:check`. Works on English, Filipino and Taglish.
 //
 //   a  the question holds the answer, or most of its content words
-//   b  only the right option shares content words with the question
+//   b  only the right option repeats words of the question (two or more, besides the question's topic)
 //   c  the right option stands out: length, sentence shape, opening words, or tone (it is the only one that isn't
 //      a negative or reversed statement)
 //   d  a term question's definition holds the term (or a form of it)
@@ -14,7 +14,7 @@ import { singular } from '../pipeline/terms.js';
 //   f  wrong options that are near-duplicates of each other, in another language, or about nothing in the lesson
 // Flashcards:
 //   g  the front holds the back, or most of its content words
-//   h  a term card's definition holds the term
+//   h  a term card's definition holds the term (reported only: the quiz blanks the term)
 //   i  a yes/no or either/or question
 //   j  the front holds another card's answer
 //   k  front and back are nearly the same, or the back only restates the front
@@ -29,6 +29,9 @@ const STOP_EN =
 const STOP_FIL =
   "ang ng sa mga na ay at ito iyon iyan isang isa para o si ni kay nang may kung din rin lamang lang ba pa po ano anong paano bakit saan saang kailan sino alin aling ating atin natin tayo kami namin amin sila nila kanila siya niya kaniya nito dito doon mula upang dahil kapag habang naman ayon tungkol bilang pamamagitan ibig sabihin kahulugan tumutukoy nina sina kanilang aming iba ibang hindi mas pang ilang lahat kasi pero ngunit subalit kaya noon ngayon itong iyong yung yun sapagkat tulad gaya";
 export const STOPWORDS = new Set(`${STOP_EN} ${STOP_FIL}`.split(' '));
+
+// Filipino question words, with their linked forms: a question with one of them is not a yes/no question, "ba" or not.
+const WH_WORDS = new Set('ano anong ano-ano anu-ano sino sinong sino-sino sinu-sino kanino saan saang nasaan kailan bakit paano paanong papaano alin aling ilan ilang gaano gaanong magkano'.split(' '));
 
 // Words that mark the language of a phrase.
 const FIL_MARKERS = new Set('ang ng sa mga ay ito nang isang para hindi upang dahil ating nito'.split(' '));
@@ -185,8 +188,12 @@ const fullSentence = (text) => /[.!?]$/.test(String(text).trim()) && wordCount(t
 const opening = (text) => words(text).slice(0, 2).join(' ');
 const plain = (s) => words(s).join(' ');
 
-export const ANSWER_COVERAGE = 0.6; // share of the answer's content words that, found in the question, give it away
+// Thresholds lean towards not flagging: a false flag drops a good question, and what these word checks miss is left
+// to the prompts and the admin list.
+export const ANSWER_COVERAGE = 0.8; // share of the answer's content words that, found in the question, give it away
+export const RESTATES = 0.8; // front / back content-word overlap at which a flashcard's back only restates its front
 export const NEAR_DUPLICATE = 0.7; // content-word overlap at which two options say the same thing
+export const ECHO_WORDS = 2; // question words only the right option repeats (besides the topic) that point at it
 const LENGTH_RATIO = [0.6, 1.6]; // a wrong option's words / the right one's ...
 const LENGTH_SLACK = 4; // ... or within this many words of it
 
@@ -198,16 +205,21 @@ export function answerInQuestion(question, answer) {
   const questionWords = wordStems(question);
   if (answerWords.length >= 2 && coverage(answerWords, questionWords) >= ANSWER_COVERAGE)
     return `the question holds most of the answer (${names(shared(answerWords, questionWords)).join(', ')})`;
-  if (answerWords.length === 1 && shared(answerWords, questionWords).length) return `the question holds the answer word "${answerWords[0][0]}"`;
+  // one word: the same word or a form of it, not a word that merely contains it ("data" in "database")
+  if (answerWords.length === 1 && shared(answerWords, questionWords, exact).length) return `the question holds the answer word "${answerWords[0][0]}"`;
   return null;
 }
 
-// Rule d / h: the term (or most of a multi-word term) appears in the text. -> the words found, or null
-export function termInText(term, text) {
+// Rule d / h: the term (or half of a multi-word term) appears in the text. -> the words found, or null. Generous, for
+// blanking (rule d: blanking a word too many costs nothing). `strict` (rule h, the flashcard itself): only the term's
+// own stems, and every word of a one- or two-word term (more than half of a longer one), so "Cell membrane" is not
+// flagged for a definition that says "cell".
+export function termInText(term, text, { strict = false } = {}) {
   const termWords = wordStems(term);
   if (!termWords.length) return null;
-  const found = shared(termWords, wordStems(text));
-  return found.length === termWords.length || (termWords.length >= 2 && found.length * 2 >= termWords.length) ? names(found) : null;
+  const found = shared(termWords, wordStems(text), strict ? exact : matches);
+  const enough = strict ? found.length === termWords.length || (termWords.length >= 3 && found.length * 2 > termWords.length) : found.length === termWords.length || (termWords.length >= 2 && found.length * 2 >= termWords.length);
+  return enough ? names(found) : null;
 }
 
 // A definition with its own term blanked out, so "Does this describe X?" and "Which term matches?" don't answer
@@ -247,16 +259,32 @@ export function wrongOptionProblems(wrong, correct, { lessonWords = null, length
   return problems;
 }
 
-// What gives the right option away among a full set of options (rules b, c, f). -> [{ rule, detail }]
-export function optionSetProblems(question, correct, wrong) {
+// The question's topic: its word the lesson uses most (needs lessonWords() counts). A right answer naturally names
+// what the question is about, so that word alone never points at it.
+function topicOf(questionWords, lessonWords) {
+  if (!lessonWords?.count) return null;
+  let best = null;
+  let most = 0;
+  for (const w of questionWords) {
+    const n = Math.max(...w.map((s) => lessonWords.count(s)));
+    if (n > most) [best, most] = [w, n];
+  }
+  return best;
+}
+
+// What gives the right option away among a full set of options (rules b, c, f). `lessonWords`: lessonWords(lesson
+// text), to find the question's topic for rule b. -> [{ rule, detail }]
+export function optionSetProblems(question, correct, wrong, { lessonWords = null } = {}) {
   const problems = [];
   if (!wrong.length) return problems;
   const questionWords = wordStems(question);
-  // a word of the question that the right option repeats and no wrong option does ("komunikasyon" in a question about
-  // communication) points at the right one, even when every option shares the lesson's common words ("wika")
-  const echo = shared(wordStems(correct), questionWords);
-  const only = echo.filter((e) => !wrong.some((w) => shared(wordStems(w), [e]).length));
-  if (only.length) problems.push({ rule: 'b', detail: `only the right option repeats the question (${names(only).join(', ')})` });
+  // words of the question that the right option repeats and no wrong option does ("ugat" and "sanga" in a question
+  // about roots and branches) point at the right one, even when every option shares the lesson's common words
+  // ("wika"). At least ECHO_WORDS of them besides the topic, each the same word (not "data" in "database").
+  const topic = topicOf(questionWords, lessonWords);
+  const echo = shared(wordStems(correct), questionWords, exact).filter((e) => !(topic && exact(e, topic)));
+  const only = echo.filter((e) => !wrong.some((w) => shared(wordStems(w), [e], exact).length));
+  if (only.length >= ECHO_WORDS) problems.push({ rule: 'b', detail: `only the right option repeats the question (${names(only).join(', ')})` });
   if (wrong.length >= 2 && wrong.every((w) => opening(w) === opening(wrong[0])) && opening(correct) !== opening(wrong[0]))
     problems.push({ rule: 'c', detail: `opening: every wrong option starts "${opening(wrong[0])}"` });
   if (wrong.every((w) => fullSentence(w) === fullSentence(wrong[0])) && fullSentence(correct) !== fullSentence(wrong[0]))
@@ -296,7 +324,7 @@ export function questionLeaks(q, { lessonWords = null } = {}) {
     } else {
       const given = answerInQuestion(q.question, correct);
       if (given) problems.push({ rule: 'a', detail: given });
-      problems.push(...optionSetProblems(q.question, correct, wrong));
+      problems.push(...optionSetProblems(q.question, correct, wrong, { lessonWords }));
     }
     for (const w of wrong) problems.push(...wrongOptionProblems(w, correct, { lessonWords, lengths: q.kind !== 'term' }).map((p) => ({ ...p, detail: `${p.detail}: "${w}"` })));
     return problems;
@@ -316,6 +344,9 @@ export function questionLeaks(q, { lessonWords = null } = {}) {
   return problems;
 }
 
+// The rules that make a flashcard give its answer away during flashcard study (h is only reported: see above).
+export const CARD_LEAK_RULES = ['g', 'i', 'j', 'k'];
+
 // Rules g-k for one flashcard. `others`: the lesson's other cards, for rule j. -> [{ rule, detail }]
 export function cardLeaks(card, others = []) {
   const problems = [];
@@ -323,12 +354,14 @@ export function cardLeaks(card, others = []) {
   const given = card.kind === 'term' ? null : answerInQuestion(card.front, card.back);
   if (given) problems.push({ rule: 'g', detail: given.replace('question', 'front') });
   if (card.kind === 'term') {
-    const found = termInText(card.front, card.back);
+    const found = termInText(card.front, card.back, { strict: true });
     if (found) problems.push({ rule: 'h', detail: `the definition holds the term (${found.join(', ')})` });
   } else {
     const ws = words(card.front);
     const joined = ws.join(' ');
-    if (/^(?:is|are|does|do|did|can|could|was|were|will|would|should|has|have|had)$/.test(ws[0] ?? '') || /\b(?:ba|o hindi|or not)\b/.test(joined))
+    // "ba" makes a yes/no question only without a question word: "Ano ba ang…?" still asks what
+    const yesNoBa = ws.includes('ba') && !ws.some((w) => WH_WORDS.has(w));
+    if (/^(?:is|are|does|do|did|can|could|was|were|will|would|should|has|have|had)$/.test(ws[0] ?? '') || /\b(?:o hindi|or not)\b/.test(joined) || yesNoBa)
       problems.push({ rule: 'i', detail: 'a yes/no or either/or question' });
   }
   const front = wordStems(card.front);
@@ -339,8 +372,9 @@ export function cardLeaks(card, others = []) {
   }
   if (card.kind !== 'term') {
     const back = wordStems(card.back);
-    if (jaccard(front, back) >= 0.6) problems.push({ rule: 'k', detail: 'front and back are nearly the same' });
-    else if (back.length >= 2 && coverage(back, front) >= 0.8) problems.push({ rule: 'k', detail: 'the back only restates the front' });
+    // "Bakit mahalaga ang wika…?" -> "Mahalaga ang wika dahil…" repeats the claim and adds the reason: not a restatement
+    if (jaccard(front, back) >= RESTATES) problems.push({ rule: 'k', detail: 'front and back are nearly the same' });
+    else if (back.length >= 2 && coverage(back, front) >= RESTATES) problems.push({ rule: 'k', detail: 'the back only restates the front' });
   }
   return problems;
 }

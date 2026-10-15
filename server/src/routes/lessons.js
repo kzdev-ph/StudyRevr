@@ -6,7 +6,7 @@ import { assertSignature, createUpload, fileExtension } from '../middleware/uplo
 import { extractText } from '../services/extract.js';
 import { getJobStatus, queueJob } from '../pipeline/jobs.js';
 import { cardsNeedingDistractors } from '../quiz/distractors.js';
-import { cardLeaks } from '../quiz/leaks.js';
+import { CARD_LEAK_RULES, cardLeaks } from '../quiz/leaks.js';
 import { hasRecords, participantRecords } from '../services/lesson-records.js';
 import { missingVersions, versionCounts } from '../services/prepare-versions.js';
 import { parseFilipino, parseSimple } from '../services/section-versions.js';
@@ -101,18 +101,19 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin) {
   // away (`weak`, see quiz/leaks.js; the quiz asks them as Yes/No or leaves them out until remade) and, when the last
   // job was making them, its `status` (queued | running | done | failed) and `error`. Admin uses it to show progress
   // and a retry button. `leaks.cards`: flashcards that give their answer away (rules g-k), listed by
-  // GET /api/admin/lessons/:id/leaks. `section_versions`: the shared Explain simpler / Filipino-Taglish versions still
-  // missing (`missing` of `total`, two per section) and, when the last job was making them ("Prepare"), its `status`,
-  // `error` and `progress`.
+  // GET /api/admin/lessons/:id/leaks. Both run the leak checks over every card, so they are only sent to admin's list
+  // (`?counts=1`, behind the PIN), not to the students' list. `section_versions`: the shared Explain simpler /
+  // Filipino-Taglish versions still missing (`missing` of `total`, two per section) and, when the last job was making
+  // them ("Prepare"), its `status`, `error` and `progress`.
   const quizOptionCounts = (lessonId) => {
     const missing = cardsNeedingDistractors(db, lessonId).length;
     return { missing, weak: cardsNeedingDistractors(db, lessonId, { includeFailing: true }).length - missing };
   };
   const leakyCards = (lessonId) => {
     const cards = db.prepare('SELECT id, kind, front, back FROM flashcards WHERE lesson_id = ?').all(lessonId);
-    return cards.filter((c) => cardLeaks(c, cards).length).length;
+    return cards.filter((c) => cardLeaks(c, cards).some((p) => CARD_LEAK_RULES.includes(p.rule))).length;
   };
-  router.get('/', (_req, res) => {
+  const listLessons = (res, counts) => {
     const versions = versionCounts(db);
     const lessons = db.prepare(`SELECT ${SUMMARY_COLUMNS} FROM lessons ORDER BY created_at DESC, id DESC`).all();
     res.json({
@@ -122,8 +123,10 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin) {
         const preparing = job?.stage === 'section_versions';
         return {
           ...lesson,
-          quiz_options: { ...quizOptionCounts(lesson.id), status: own ? job.status : null, error: own ? job.error : null },
-          leaks: { cards: leakyCards(lesson.id) },
+          ...(counts && {
+            quiz_options: { ...quizOptionCounts(lesson.id), status: own ? job.status : null, error: own ? job.error : null },
+            leaks: { cards: leakyCards(lesson.id) },
+          }),
           section_versions: {
             ...(versions.get(lesson.id) ?? { missing: 0, total: 0 }),
             status: preparing ? job.status : null,
@@ -133,6 +136,11 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin) {
         };
       }),
     });
+  };
+  // ?counts=1 (admin's list) goes through the PIN check, lockout included
+  router.get('/', (req, res, next) => {
+    if (req.query.counts !== '1') return listLessons(res, false);
+    return requireAdmin(req, res, (err) => (err ? next(err) : listLessons(res, true)));
   });
 
   // review_progress is the participant's own, or null when no participant is sent (the admin's lesson list)

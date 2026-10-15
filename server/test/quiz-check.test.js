@@ -49,7 +49,8 @@ describe('npm run quiz:check', () => {
     assert.match(out, /Lesson \d+: Photosynthesis basics \(ready\)/);
     assert.match(out, /Lesson \d+: Pag-unlad ng Wika \(ready\)/);
     assert.equal(out.match(/Clean questions available: 6 of 10/g).length, 2);
-    assert.match(out, /Flashcards that give their answer away \(g-k\): 2 {2}\[g 1, h 1\]/, 'English: card 7 (g) and card 3 (h)');
+    assert.match(out, /Flashcards that give their answer away \(g, i, j, k\): 1 {2}\[g 1\]/, 'English: card 7 (g)');
+    assert.match(out, /Info: term definitions that name their term \(h; the quiz blanks it\): #\d+/, 'English: card 3 (h), information only');
     assert.match(out, /Multiple choice: 4 possible, 2 clean, 2 skipped {2}\[c 2\]/, 'English: cards 5 (tone) and 6 (length)');
     assert.match(out, /Term definitions shown with the term blanked \(d\)/);
     assert.match(out, /#\d+ "Why do leaves look green\?" .*tone/);
@@ -59,7 +60,7 @@ describe('npm run quiz:check', () => {
     const { code, out } = quizCheck(['--db', 'study.db', '--lesson', String(ids['Pag-unlad ng Wika'])], { cwd: dir });
     assert.equal(code, 0);
     assert.doesNotMatch(out, /Photosynthesis/);
-    assert.match(out, /Multiple choice: 3 possible, 1 clean, 2 skipped {2}\[b 1, c 2, f 1\]/, 'Filipino: cards 14 (tone; one wrong answer is about nothing in the lesson) and 16 (opening; no wrong option says "ginagamit")');
+    assert.match(out, /Multiple choice: 3 possible, 1 clean, 2 skipped {2}\[c 2, f 1\]/, 'Filipino: cards 14 (tone; one wrong answer is about nothing in the lesson) and 16 (opening; one echoed word is not rule b)');
     assert.match(out, /opening: every wrong option starts "malaking papel"/);
   });
 

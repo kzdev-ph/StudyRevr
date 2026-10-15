@@ -85,6 +85,8 @@ const quietly = (promise) => promise.catch(() => null);
 
 export const api = {
   listLessons: (signal) => request('/lessons', { signal }),
+  // admin's list: the same rows plus the quiz-answers and leak counts (quiz_options, leaks), behind the PIN
+  listLessonsWithCounts: (signal) => request('/lessons?counts=1', { signal, admin: true }),
   getLesson: (id, signal) => request(`/lessons/${id}`, { signal }),
   getStatus: (id, signal) => request(`/lessons/${id}/status`, { signal }),
   // admin only: upload, retry, delete, make cards

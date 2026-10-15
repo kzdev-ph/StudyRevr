@@ -133,6 +133,22 @@ describe('quiz building', () => {
     }
   });
 
+  it('a term Yes/No false statement goes through rule e: not one naming the asked term, negative, or in another language', () => {
+    const cards = [
+      term(1, 'Hypothesis', 'A testable prediction about variables.'),
+      term(2, 'Sample', 'The part of the population that is studied.'),
+      term(3, 'Guess', 'A rough hypothesis made before any testing.'),
+      term(4, 'Bias', 'A result that is not fair to every group.'),
+      term(5, 'Populasyon', 'Ang buong pangkat na pinag-aaralan ng mananaliksik.'),
+    ];
+    const p = quizCandidates(cards).find((x) => x.card.id === 1);
+    assert.equal(p.falsePool.length, 4);
+    assert.deepEqual(p.falseClean, ['The part of the population that is studied.']);
+    for (let seed = 1; seed <= 30; seed++)
+      for (const q of buildQuiz({ cards, random: seeded(seed) }).filter((x) => x.flashcard_id === 1 && x.type === 'tf' && x.answer_index === 1))
+        assert.equal(q.statement, 'The part of the population that is studied.');
+  });
+
   it('a definition is blanked under the stems termInText uses, so no term question shows its term (English marker word in the term)', () => {
     const cards = [
       term(1, 'Law of marketing', 'Marketing is the process of selling a product.'),

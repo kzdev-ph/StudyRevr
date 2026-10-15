@@ -181,6 +181,28 @@ describe('quiz wrong answers', () => {
       assert.deepEqual(loadDistractors(db, lessonId).get(bad), CLEAN);
     });
 
+    it('no wrong answers are made for a card that can never be multiple choice (its question gives the answer, rule a or k)', async () => {
+      const [ok, given, restated] = addCards(3);
+      db.prepare("UPDATE flashcards SET front = 'Why is a survey used to collect data from many people?' WHERE id = ?").run(given); // a
+      db.prepare("UPDATE flashcards SET front = 'How is a survey used to reach people?', back = 'A survey is used to reach people.' WHERE id = ?").run(restated); // k
+      assert.deepEqual(cardsNeedingDistractors(db, lessonId).map((c) => c.id), [ok]);
+      assert.deepEqual(cardsNeedingDistractors(db, lessonId, { includeFailing: true }).map((c) => c.id), [ok]);
+      const ai = fakeAi(threeClean);
+      assert.deepEqual(await ensureDistractors({ db, ai, lessonId, log: quiet }), { made: 1, error: null });
+      assert.equal(ai.calls[0].cards.length, 1);
+    });
+
+    it('a card whose text changed during the AI call keeps no wrong answers made for its old text', async () => {
+      const [id] = addCards(1);
+      const ai = fakeAi((cards) => {
+        db.prepare("UPDATE flashcards SET front = 'Why do researchers use interviews?', back = 'To ask one person questions in depth.' WHERE id = ?").run(id); // Regenerate this card, meanwhile
+        return threeClean(cards);
+      });
+      await ensureDistractors({ db, ai, lessonId, log: quiet });
+      assert.equal(loadDistractors(db, lessonId).has(id), false);
+      assert.deepEqual(cardsNeedingDistractors(db, lessonId).map((c) => c.id), [id], 'it is asked for again with its new text');
+    });
+
     it('checkWrong and pickWrongSet: per-option reasons, and the first set of 3 that gives nothing away', () => {
       const lessonWords = new Set(contentWords(TEXT));
       const { clean, rejected } = checkWrong([...NEGATIVE, 'Short.', 'It is used to grow rice in the mountains.', ...CLEAN], ANSWER, lessonWords);

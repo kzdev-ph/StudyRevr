@@ -102,13 +102,26 @@ describe('leak checks: quiz rules a-f', () => {
     assert.equal(answerInQuestion(card(FIL_LESSON, 15).front, card(FIL_LESSON, 15).back), null);
   });
 
-  it('b: only the right option repeats the question', () => {
-    assert.deepEqual(rules(optionSetProblems('What do plants release through the stomata?', 'Oxygen through the stomata.', ['Glucose through the leaves.', 'Water through the roots.', 'Sugar through the stems.'])), ['b']);
-    assert.deepEqual(rules(optionSetProblems('Paano ginagamit ang wika sa midya?', 'Ginagamit ito upang maabot ang mas maraming tao.', ['Upang magbenta ng produkto.', 'Para sa libangan lamang.', 'Upang turuan ang mga dayuhan.'])), ['b']);
-    assert.deepEqual(optionSetProblems('Paano ginagamit ang wika sa midya?', 'Ginagamit ito upang maabot ang mas maraming tao.', ['Ginagamit ito sa pagbebenta.', 'Para sa libangan lamang.', 'Upang turuan ang mga dayuhan.']), []);
-    // every option shares the lesson's common word ("wika", "plants"), but only the right one repeats the key words
+  it('a: a one-word answer counts only as a whole word or stem, not inside another word', () => {
+    assert.equal(answerInQuestion('Where is a database stored?', 'Data'), null);
+    assert.equal(answerInQuestion('Why is the mitochondrion an excellent energy source?', 'Cell'), null);
+    assert.ok(answerInQuestion('What is the smallest unit of life, the cell, made of?', 'Cell'));
+    assert.ok(answerInQuestion('Ano ang tawag sa mga salitang hiram sa wikang Espanyol?', 'Hiram'));
+  });
+
+  it('b: only the right option repeats two or more of the question’s words, the topic aside', () => {
+    // every option shares the lesson's common word ("wika"), but only the right one repeats the key words
     assert.match(optionSetProblems('Ano ang kinakatawan ng mga ugat at mga sanga ng wika?', 'Ang ugat ay ang katutubong wika at ang mga sanga ay ang mga impluwensiya.', ['Nagmula ang wika sa mga dayuhan.', 'Binubuo ang wika ng mga katutubong salita.', 'Nagbago ang wika dahil sa teknolohiya.'])[0].detail, /\(ugat, sanga\)/);
-    assert.match(optionSetProblems('How do plants use the stomata?', 'Plants open the stomata to take in carbon dioxide.', ['Plants store sugar in the roots.', 'Plants release water through the leaves.', 'Plants make glucose in the stroma.'])[0].detail, /\(stomata\)/);
+    const green = ['Why are plants green?', 'Plants are green because chlorophyll reflects green light.', ['Because the soil gives them color.', 'Because rain washes their surface.', 'Because the sun paints the leaves.']];
+    assert.match(optionSetProblems(...green)[0].detail, /\(plant, green\)/);
+    // one echoed word is not enough: a fair answer naturally repeats the thing asked about
+    assert.deepEqual(optionSetProblems('What do plants release through the stomata?', 'Oxygen through the stomata.', ['Glucose through the leaves.', 'Water through the roots.', 'Sugar through the stems.']), []);
+    assert.deepEqual(optionSetProblems('How do plants use the stomata?', 'Plants open the stomata to take in carbon dioxide.', ['Plants store sugar in the roots.', 'Plants release water through the leaves.', 'Plants make glucose in the stroma.']), []);
+    assert.deepEqual(optionSetProblems('Paano ginagamit ang wika sa midya?', 'Ginagamit ito upang maabot ang mas maraming tao.', ['Upang magbenta ng produkto.', 'Para sa libangan lamang.', 'Upang turuan ang mga dayuhan.']), []);
+    // the question's topic (the word the lesson uses most) doesn't count: "plants" in a lesson about plants
+    assert.deepEqual(optionSetProblems(...green, { lessonWords: lessonWords(EN_LESSON.text) }), []);
+    // the same word, not a word that starts like it: "data" is not "database"
+    assert.deepEqual(optionSetProblems('Why do researchers collect data from schools?', 'To build a database of schools for later study.', ['To sell the records to companies.', 'To grade the teachers each year.', 'To plan new roads in the town.']), []);
   });
 
   it('c: length, opening words, sentence shape and tone', () => {
@@ -155,6 +168,12 @@ describe('leak checks: quiz rules a-f', () => {
     assert.deepEqual(rules(questionLeaks(own)), ['e'], 'a true statement that names its own term');
   });
 
+  it('e: an English false statement that is negative or reversed', () => {
+    assert.match(falseStatementProblems('Plants do not need sunlight to make food.', 'Plants use sunlight to make glucose.')[0].detail, /negative/);
+    assert.match(falseStatementProblems('Chlorophyll never absorbs red light.', 'Chlorophyll absorbs red and blue light.')[0].detail, /negative/);
+    assert.deepEqual(falseStatementProblems('Plants store sugar in the roots.', 'Plants use sunlight to make glucose.'), []);
+  });
+
   it('f: near-duplicate wrong options, another language, off-topic', () => {
     assert.match(optionSetProblems('Where do the light reactions take place?', 'In the thylakoid membranes.', ['In the stroma of the cell.', 'In the cell stroma.', 'In the green pigment.']).map((p) => p.detail).join(), /near-duplicate/);
     assert.deepEqual(rules(wrongOptionProblems('The government uses it to make laws.', card(FIL_LESSON, 16).back)), ['f']);
@@ -191,25 +210,42 @@ describe('leak checks: flashcard rules g-k', () => {
     assert.deepEqual(rules(cardLeaks(card(EN_LESSON, 3))), ['h']);
     assert.deepEqual(rules(cardLeaks(card(FIL_LESSON, 13))), ['h']);
     assert.deepEqual(cardLeaks(card(FIL_LESSON, 12)), []);
+    // every word of a two-word term, as whole words: "cell" alone is not "Cell membrane"
+    assert.deepEqual(cardLeaks({ kind: 'term', front: 'Cell membrane', back: 'The thin layer that surrounds every cell and controls what enters it.' }), []);
+    assert.deepEqual(rules(cardLeaks({ kind: 'term', front: 'Cell membrane', back: 'The cell membrane controls what enters.' })), ['h']);
   });
 
   it('i: yes/no and either/or questions, but not a Filipino "o" between two nouns', () => {
     assert.deepEqual(rules(cardLeaks({ kind: 'concept', front: 'Does chlorophyll absorb green light?', back: 'Mostly red and blue light.' })), ['i']);
     assert.deepEqual(rules(cardLeaks({ kind: 'concept', front: 'Nagbabago ba ang wika?', back: 'Oo, kasabay ng kultura.' })), ['i']);
     assert.deepEqual(rules(cardLeaks({ kind: 'concept', front: 'Katutubo ang wika o hindi?', back: 'Mula sa mga ninuno natin.' })), ['i']);
+    assert.deepEqual(rules(cardLeaks({ kind: 'concept', front: 'Does it grow or not?', back: 'It grows in the light.' })), ['i']);
+    assert.ok(rules(cardLeaks({ kind: 'concept', front: 'Is glucose made in the stroma or in the thylakoid?', back: 'In the stroma.' })).includes('i'));
     assert.deepEqual(cardLeaks({ kind: 'concept', front: 'Saang mga institusyon o larangan ginagamit ang Filipino?', back: 'Sa edukasyon, pamahalaan at midya.' }), []);
+    // "ba" in a question that asks what / why is still an open question
+    assert.deepEqual(cardLeaks({ kind: 'concept', front: 'Ano ba ang ibig sabihin ng barayti ng wika?', back: 'Ang iba’t ibang anyo nito sa bawat lugar.' }), []);
+    assert.deepEqual(cardLeaks({ kind: 'concept', front: 'Bakit ba mahalaga ang wika sa bansa?', back: 'Pinag-iisa nito ang mga mamamayan.' }), []);
   });
 
-  it('j: the front holds another card’s answer', () => {
+  it('j: the front holds another card’s answer (English and Filipino)', () => {
     const a = { id: 1, kind: 'concept', front: 'Why does photosynthesis slow down when less carbon dioxide enters the leaf?', back: 'Because the stomata close on hot days.' };
     const b = { id: 2, kind: 'concept', front: 'What happens when the stomata close?', back: 'Less carbon dioxide enters the leaf.' };
     assert.ok(rules(cardLeaks(a, [a, b])).includes('j'));
     assert.ok(!rules(cardLeaks(b, [a, b])).includes('j'));
+    const fa = { id: 3, kind: 'concept', front: 'Bakit ginagamit ang Filipino sa edukasyon, pamahalaan at midya?', back: 'Upang mas madaling maunawaan ng mamamayan.' };
+    const fb = { id: 4, kind: 'concept', front: 'Saan ginagamit ang Wikang Filipino?', back: 'Sa edukasyon, pamahalaan at midya.' };
+    assert.ok(rules(cardLeaks(fa, [fa, fb])).includes('j'));
+    assert.ok(!rules(cardLeaks(fb, [fa, fb])).includes('j'));
   });
 
   it('k: the back only restates the front', () => {
     assert.ok(rules(cardLeaks(card(FIL_LESSON, 17))).includes('k'));
     assert.deepEqual(rules(cardLeaks({ kind: 'concept', front: 'How does light energy change in photosynthesis?', back: 'Light energy changes in photosynthesis.' })).sort(), ['g', 'k']);
+  });
+
+  it('g / k: a "Bakit mahalaga…" card whose answer repeats the topic but gives the reason is kept', () => {
+    assert.deepEqual(cardLeaks({ kind: 'concept', front: 'Bakit mahalaga ang wika sa komunikasyon?', back: 'Mahalaga ang wika dahil ito ang daan sa komunikasyon.' }), []);
+    assert.deepEqual(cardLeaks({ kind: 'concept', front: 'Why is water important to plants?', back: 'Water is important because plants use it to make glucose.' }), []);
   });
 
   it('every clean card of both lessons passes', () => {

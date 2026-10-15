@@ -130,7 +130,7 @@ describe('quiz answer options as a processing step', () => {
     });
 
     it('the lesson list tells admin which lesson needs it, and why', async () => {
-      const row = (await call('GET', '/api/lessons')).body.lessons.find((l) => l.id === lessonId);
+      const row = (await call('GET', '/api/lessons?counts=1')).body.lessons.find((l) => l.id === lessonId);
       assert.equal(row.quiz_options.missing, 4);
       assert.equal(row.quiz_options.status, 'failed');
       assert.match(row.quiz_options.error, /rate limiting/);
@@ -163,7 +163,7 @@ describe('quiz answer options as a processing step', () => {
       assert.equal(saved(), 4);
       const { lesson, job } = getJobStatus(t.db, lessonId);
       assert.deepEqual([lesson.status, job.status], ['ready', 'done']);
-      const row = (await call('GET', '/api/lessons')).body.lessons.find((l) => l.id === lessonId);
+      const row = (await call('GET', '/api/lessons?counts=1')).body.lessons.find((l) => l.id === lessonId);
       assert.equal(row.quiz_options.missing, 0);
     });
 

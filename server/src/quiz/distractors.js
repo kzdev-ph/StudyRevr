@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { mapLimit } from '../ai/pool.js';
 import { distractorsPrompt } from '../ai/prompts.js';
 import { quizCandidates, usableWrong } from './build.js';
-import { language, lessonWords as lessonWordsOf, optionSetProblems, wrongOptionProblems } from './leaks.js';
+import { answerInQuestion, cardLeaks, language, lessonWords as lessonWordsOf, optionSetProblems, wrongOptionProblems } from './leaks.js';
 
 // Wrong answer options for a lesson's concept cards: made by the AI as the last step of lesson processing (the
 // pipeline's `quiz_options` stage), saved in quiz_distractors and reused from then on. Starting a quiz calls the same
@@ -40,10 +40,11 @@ const wordCount = (s) => (String(s).match(/\S+/g) ?? []).length;
 const lessonTextOf = (db, lessonId) => db.prepare('SELECT raw_text FROM lessons WHERE id = ?').get(lessonId)?.raw_text ?? '';
 const cardFields = ({ id, front, back, evidence }) => ({ id, front, back, evidence });
 
-// Concept cards of the lesson that have no saved wrong answers yet. With { includeFailing }, also those whose saved
-// set the quiz can't use for multiple choice (quizCandidates in build.js), except a card whose question itself gives
-// the answer away (new wrong answers would not help it; the admin flag lists it) and a settled set: one that still
-// failed after the follow-up call, so asking again would only spend AI calls (see migration 010).
+// Concept cards of the lesson that have no saved wrong answers yet, except cards the quiz never asks (the question
+// holds the answer, or the answer only restates it: wrong answers would not help them). With { includeFailing }, also
+// those whose saved set the quiz can't use for multiple choice (quizCandidates in build.js), except those same cards
+// and a settled set: one that still failed after the follow-up call, so asking again would only spend AI calls (see
+// migration 010).
 export function cardsNeedingDistractors(db, lessonId, { includeFailing = false } = {}) {
   const rows = db
     .prepare(
@@ -51,14 +52,16 @@ export function cardsNeedingDistractors(db, lessonId, { includeFailing = false }
        LEFT JOIN quiz_distractors d ON d.flashcard_id = f.id WHERE f.lesson_id = ? AND f.kind = 'concept' ORDER BY f.position, f.id`,
     )
     .all(lessonId);
-  if (!includeFailing) return rows.filter((r) => !r.has_saved).map(cardFields);
+  // a card whose question holds its answer (a) or whose answer only restates it (k) is never asked: no wrong answers
+  const askable = (r) => !answerInQuestion(r.front, r.back) && !cardLeaks(r).some((p) => p.rule === 'k');
+  if (!includeFailing) return rows.filter((r) => !r.has_saved && askable(r)).map(cardFields);
   const candidates = quizCandidates(rows, { distractors: loadDistractors(db, lessonId), lessonText: lessonTextOf(db, lessonId) });
   const failing = new Set(
     candidates
       .filter((p) => p.card.has_saved && !p.card.settled && p.mcClean.length < WRONG_PER_QUESTION && !p.problems.some((x) => x.rule === 'a' || x.rule === 'k'))
       .map((p) => p.card.id),
   );
-  return rows.filter((r) => !r.has_saved || failing.has(r.id)).map(cardFields);
+  return rows.filter((r) => (!r.has_saved && askable(r)) || failing.has(r.id)).map(cardFields);
 }
 
 // Map card id -> [wrong answer] for every saved row of the lesson.
@@ -68,14 +71,15 @@ export function loadDistractors(db, lessonId) {
 }
 
 // The first 3 of `clean` that make a set where the right answer doesn't stand out. -> { wrong, ok, problems }; when
-// none does, `wrong` is the first 3 clean ones (still saved, for true / false) and `problems` say why.
-export function pickWrongSet(question, correct, clean) {
+// none does, `wrong` is the first 3 clean ones (still saved, for true / false) and `problems` say why. `lessonWords`
+// as for optionSetProblems.
+export function pickWrongSet(question, correct, clean, lessonWords = null) {
   let first = [];
   for (let i = 0; i < clean.length; i++)
     for (let j = i + 1; j < clean.length; j++)
       for (let k = j + 1; k < clean.length; k++) {
         const set = [clean[i], clean[j], clean[k]];
-        const problems = optionSetProblems(question, correct, set);
+        const problems = optionSetProblems(question, correct, set, { lessonWords });
         if (!problems.length) return { wrong: set, ok: true, problems: [] };
         if (!first.length) first = problems;
       }
@@ -116,7 +120,7 @@ async function makeBatch({ ai, cards, keyTerms, answers, lessonWords, earlier = 
   const byN = new Map(reply.items.map((item) => [item.n, item.wrong]));
   return cards.map((card, i) => {
     const { clean, rejected } = checkWrong([...(byN.get(i + 1) ?? []), ...(earlier?.get(card.id)?.clean ?? [])], card.back, lessonWords, answers.filter((a) => a.id !== card.id).map((a) => a.back));
-    return { card, clean, rejected, ...pickWrongSet(card.front, card.back, clean) };
+    return { card, clean, rejected, ...pickWrongSet(card.front, card.back, clean, lessonWords) };
   });
 }
 
@@ -178,9 +182,11 @@ async function makeDistractors({ db, ai, lessonId, includeFailing = false, concu
         }
       }
       db.transaction(() => {
-        // a card deleted while the call ran (lesson deleted, cards remade) is skipped
+        // a card deleted or written again while the call ran (lesson deleted, cards remade, "Regenerate this card") is
+        // skipped: these wrong answers were made for its old text
         for (const { card, wrong, settled } of results) {
-          if (db.prepare('SELECT 1 FROM flashcards WHERE id = ?').get(card.id)) made += save.run(card.id, JSON.stringify(wrong), now().toISOString(), settled ? 1 : 0).changes;
+          const nowCard = db.prepare('SELECT front, back FROM flashcards WHERE id = ?').get(card.id);
+          if (nowCard?.front === card.front && nowCard.back === card.back) made += save.run(card.id, JSON.stringify(wrong), now().toISOString(), settled ? 1 : 0).changes;
         }
       })();
       const short = results.filter((r) => !r.ok).length;

@@ -1,9 +1,9 @@
 import { loadDistractors } from './distractors.js';
 import { QUIZ_LENGTH, quizCandidates, usableCount } from './build.js';
-import { cardLeaks, falseStatementProblems, lessonWords as lessonWordsOf, sharesWord, termInText, wrongOptionProblems } from './leaks.js';
+import { CARD_LEAK_RULES, cardLeaks, falseStatementProblems, lessonWords as lessonWordsOf, sharesWord, termInText, wrongOptionProblems } from './leaks.js';
 
 // What gives answers away in one lesson, read from the database without any AI call: the flashcards that break rules
-// g-k, and every quiz question the builder could make (multiple choice, Yes/No false statements) with the ones it
+// g, i, j, k (rule h only as information), and every quiz question the builder could make (multiple choice, Yes/No false statements) with the ones it
 // skips and why (rules a-f). Shared by the admin leak list and `npm run quiz:check`, and built on the quiz builder's
 // own quizCandidates, so the report always matches what a quiz really asks.
 
@@ -18,7 +18,11 @@ export function lessonLeakReport(db, lessonId) {
   const lessonWords = lessonWordsOf(lesson.raw_text);
   const candidates = quizCandidates(cards, opts);
 
-  const flagged = cards.map((card) => ({ id: card.id, kind: card.kind, front: card.front, back: card.back, rules: cardLeaks(card, cards) })).filter((c) => c.rules.length);
+  // g, i, j, k give the answer away in flashcard study; h (a definition naming its term) is only listed: the quiz
+  // blanks the term, and the card itself is still a fair "what does this term mean?"
+  const checked = cards.map((card) => ({ id: card.id, kind: card.kind, front: card.front, back: card.back, rules: cardLeaks(card, cards) }));
+  const flagged = checked.map((c) => ({ ...c, rules: c.rules.filter((r) => CARD_LEAK_RULES.includes(r.rule)) })).filter((c) => c.rules.length);
+  const namesTerm = checked.filter((c) => c.rules.some((r) => r.rule === 'h')).map((c) => ({ ...c, rules: c.rules.filter((r) => r.rule === 'h') }));
 
   const mc = { possible: 0, clean: 0, skipped: [] };
   const falses = { possible: 0, clean: 0, skipped: [] };
@@ -46,7 +50,8 @@ export function lessonLeakReport(db, lessonId) {
         falses.clean += 1;
         continue;
       }
-      const reasons = [...cardProblems, ...falseStatementProblems(statement, card.back)];
+      const named = card.kind === 'term' ? termInText(card.front, statement) : null;
+      const reasons = [...cardProblems, ...(named ? [{ rule: 'e', detail: `the statement holds the asked term (${named.join(', ')})` }] : []), ...falseStatementProblems(statement, p.shown)];
       if (p.mcWrong.includes(statement)) reasons.push(...wrongOptionProblems(statement, card.back, { lengths: false, otherAnswers }).filter((x) => x.detail.startsWith('another card')).map((x) => ({ ...x, rule: 'e' })));
       if (!reasons.length && card.kind !== 'term' && !sharesWord(statement, card.front))
         reasons.push({ rule: 'e', detail: 'about another subject: shares no word with the question' });
@@ -62,7 +67,7 @@ export function lessonLeakReport(db, lessonId) {
   const usable = usableCount(cards, opts);
   return {
     lesson: { id: lesson.id, title: lesson.title, status: lesson.status },
-    cards: { total: cards.length, term: cards.filter((c) => c.kind === 'term').length, concept: cards.filter((c) => c.kind !== 'term').length, flagged },
+    cards: { total: cards.length, term: cards.filter((c) => c.kind === 'term').length, concept: cards.filter((c) => c.kind !== 'term').length, flagged, names_term: namesTerm },
     quiz: { multiple_choice: mc, yes_no_false: falses, masked, never, usable_cards: usable, clean_questions: Math.min(QUIZ_LENGTH, usable) },
   };
 }
@@ -83,8 +88,9 @@ export function formatReport(report, { examples = 5 } = {}) {
   const lines = [];
   lines.push(`Lesson ${lesson.id}: ${lesson.title} (${lesson.status})`);
   lines.push(`  Flashcards: ${cards.total} (${cards.term} term, ${cards.concept} concept)`);
-  lines.push(`  Flashcards that give their answer away (g-k): ${cards.flagged.length}  [${rules(countByRule(cards.flagged, 'rules'))}]`);
+  lines.push(`  Flashcards that give their answer away (g, i, j, k): ${cards.flagged.length}  [${rules(countByRule(cards.flagged, 'rules'))}]`);
   for (const c of cards.flagged.slice(0, examples)) lines.push(`    #${c.id} "${cut(c.front)}" -> "${cut(c.back)}"  (${why(c.rules)})`);
+  if (cards.names_term.length) lines.push(`  Info: term definitions that name their term (h; the quiz blanks it): ${cards.names_term.map((c) => `#${c.id}`).join(' ')}`);
   const mc = quiz.multiple_choice;
   lines.push(`  Multiple choice: ${mc.possible} possible, ${mc.clean} clean, ${mc.skipped.length} skipped  [${rules(countByRule(mc.skipped))}]`);
   for (const q of mc.skipped.slice(0, examples)) lines.push(`    #${q.card_id} "${cut(q.question)}"  (${cut(why(q.reasons), 200)})`);

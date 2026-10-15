@@ -84,9 +84,12 @@ export function quizCandidates(cards, { distractors = new Map(), extraTerms = []
         card.front,
         Infinity,
       );
-      // only other definitions: another kind of card's answer under "Does this describe X?" is plainly not a definition
+      // only other definitions: another kind of card's answer under "Does this describe X?" is plainly not a definition.
+      // Rule e as for concept cards: not one that names the asked term, is negative beside a positive definition, is in
+      // another language or is nearly this card's own definition.
       const falsePool = usableWrong(termCards.filter((c) => c.id !== card.id && !stillShows.get(c.id)).map(shown), shown(card), Infinity);
-      return { card, shown: shown(card), mcWrong, mcClean: mcWrong, falsePool, falseClean: falsePool, problems: [] };
+      const falseClean = falsePool.filter((s) => !termInText(card.front, s) && !falseStatementProblems(s, shown(card)).length);
+      return { card, shown: shown(card), mcWrong, mcClean: mcWrong, falsePool, falseClean, problems: [] };
     }
 
     const problems = [];
@@ -97,7 +100,7 @@ export function quizCandidates(cards, { distractors = new Map(), extraTerms = []
     const saved = usableWrong(distractors.get(card.id), card.back);
     const otherAnswers = conceptCards.filter((c) => c.id !== card.id).map((c) => c.back);
     const savedClean = saved.filter((w) => !wrongOptionProblems(w, card.back, { lessonWords, otherAnswers }).length);
-    const setProblems = savedClean.length >= WRONG_PER_QUESTION ? optionSetProblems(card.front, card.back, savedClean) : [];
+    const setProblems = savedClean.length >= WRONG_PER_QUESTION ? optionSetProblems(card.front, card.back, savedClean, { lessonWords }) : [];
     problems.push(...setProblems);
     const mcClean = !given && !problems.length && savedClean.length >= WRONG_PER_QUESTION ? savedClean : [];
 
