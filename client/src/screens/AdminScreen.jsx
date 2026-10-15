@@ -107,7 +107,7 @@ function LessonsSection({ participant }) {
       {lessons?.length > 0 && (
         <ul className="lessons">
           {lessons.map((lesson) => (
-            <LessonRow key={lesson.id} lesson={lesson} onDelete={remove} onMakeQuizOptions={makeQuizOptions} onPrepareVersions={prepareVersions} />
+            <LessonRow key={lesson.id} lesson={lesson} onDelete={remove} onMakeQuizOptions={makeQuizOptions} onPrepareVersions={prepareVersions} onCardsChanged={load} />
           ))}
         </ul>
       )}

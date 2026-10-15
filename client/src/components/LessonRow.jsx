@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronRight, TrashIcon } from './Icons.jsx';
+import LeakyCards from './LeakyCards.jsx';
 import { prettyTitle } from '../lib/format.js';
 import { quizOptionsNotice } from '../lib/quizOptions.js';
 import { sectionVersionsNotice } from '../lib/sectionVersions.js';
@@ -59,8 +60,8 @@ function LessonStep({ lesson, notice, busyText, onMake }) {
 
 // One lesson on the ruled list. With `onDelete` (admin), Delete asks first, in place, so a slip of the thumb can't
 // remove a lesson. `onMakeQuizOptions` (admin) enables the quiz-answers retry, `onPrepareVersions` (admin) the
-// "Prepare simpler and Taglish" step.
-export default function LessonRow({ lesson, onDelete, onMakeQuizOptions, onPrepareVersions }) {
+// "Prepare simpler and Taglish" step, `onCardsChanged` (admin) the list of cards that give their answer away.
+export default function LessonRow({ lesson, onDelete, onMakeQuizOptions, onPrepareVersions, onCardsChanged }) {
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const trash = useRef(null);
@@ -116,6 +117,7 @@ export default function LessonRow({ lesson, onDelete, onMakeQuizOptions, onPrepa
           <TrashIcon size={20} />
         </button>
       )}
+      {onCardsChanged && <LeakyCards lesson={lesson} onChanged={onCardsChanged} />}
       {onMakeQuizOptions && <LessonStep lesson={lesson} notice={quizOptionsNotice(lesson)} busyText="Making the quiz answers…" onMake={onMakeQuizOptions} />}
       {onPrepareVersions && (
         <LessonStep lesson={lesson} notice={sectionVersionsNotice(lesson)} busyText="Preparing simpler and Taglish versions…" onMake={onPrepareVersions} />

@@ -1,12 +1,17 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRng } from '../src/flashcards/scheduler.js';
-import { buildQuiz, reshuffle, sameAnswer, shuffle, TF_CHOICES, usableCount, usableWrong } from '../src/quiz/build.js';
+import { buildQuiz, quizCandidates, reshuffle, sameAnswer, shuffle, TF_CHOICES, usableCount, usableWrong } from '../src/quiz/build.js';
+import { questionLeaks } from '../src/quiz/leaks.js';
+import { distractorMap, EN_LESSON, FIL_LESSON } from './fixtures/leak-lessons.js';
 
 const seeded = (seed = 1) => createRng(seed);
 
 const term = (id, front, back) => ({ id, kind: 'term', front, back, evidence: `${front} quote` });
-const concept = (id, n = id) => ({ id, kind: 'concept', front: `Question ${n}?`, back: `Answer ${n}.`, evidence: `quote ${n}` });
+// every concept card is about "the topic", so another card's answer is a believable false statement for it; each
+// answer has a word of its own (two answers that differ only in a number would be one answer to the leak checks)
+const NAMES = 'rivers mountains forests deserts islands valleys oceans glaciers meadows canyons volcanoes beaches'.split(' ');
+const concept = (id, n = id) => ({ id, kind: 'concept', front: `Question ${n} about the topic?`, back: `Topic answer number ${n}: ${NAMES[n % NAMES.length]}.`, evidence: `quote ${n}` });
 const TERMS = [
   term(1, 'Hypothesis', 'A testable prediction about variables.'),
   term(2, 'Independent variable', 'The factor the researcher changes.'),
@@ -15,7 +20,7 @@ const TERMS = [
   term(5, 'Sample', 'The part of the population that is studied.'),
 ];
 const CONCEPTS = Array.from({ length: 8 }, (_, i) => concept(10 + i, i + 1));
-const wrongFor = (cards) => new Map(cards.map((c) => [c.id, [`Wrong A for ${c.id}`, `Wrong B for ${c.id}`, `Wrong C for ${c.id}`]]));
+const wrongFor = (cards) => new Map(cards.map((c) => [c.id, [`Topic reason alpha ${c.id}.`, `Topic cause beta ${c.id}.`, `Topic effect gamma ${c.id}.`]]));
 
 describe('quiz building', () => {
   it('compares answers ignoring case and surrounding spaces', () => {
@@ -98,7 +103,7 @@ describe('quiz building', () => {
 
   it('with 1-2 saved wrong answers the false statement comes from them', () => {
     const cards = CONCEPTS.slice(0, 2);
-    const distractors = new Map([[cards[0].id, ['Saved wrong']], [cards[1].id, ['Other saved', 'Answer 2.']]]);
+    const distractors = new Map([[cards[0].id, ['Saved wrong']], [cards[1].id, ['Other saved', cards[1].back]]]);
     for (let seed = 1; seed <= 10; seed++) {
       for (const q of buildQuiz({ cards, distractors, random: seeded(seed) })) {
         if (q.answer_index === 1) assert.equal(q.statement, q.flashcard_id === cards[0].id ? 'Saved wrong' : 'Other saved');
@@ -112,8 +117,83 @@ describe('quiz building', () => {
     assert.equal(usableCount([concept(1)]), 0);
     assert.equal(usableCount([concept(1), concept(2)]), 2);
     // two cards with the same answer cannot be wrong against each other
-    assert.equal(usableCount([concept(1), { ...concept(2), back: 'answer 1.' }]), 0);
+    assert.equal(usableCount([concept(1), { ...concept(2), back: 'topic answer number 1: mountains.' }]), 0);
   });
+
+  it('a term card is never asked against a concept card’s answer, and is skipped with no other definition', () => {
+    const cards = [term(1, 'Hypothesis', 'A testable prediction about variables.'), ...CONCEPTS.slice(0, 4)];
+    for (let seed = 1; seed <= 20; seed++) {
+      assert.ok(!buildQuiz({ cards, distractors: wrongFor(CONCEPTS), random: seeded(seed) }).some((q) => q.flashcard_id === 1));
+    }
+    const two = [term(1, 'Hypothesis', 'A testable prediction about variables.'), term(2, 'Sample', 'The part of the population that is studied.'), ...CONCEPTS.slice(0, 4)];
+    for (let seed = 1; seed <= 20; seed++) {
+      for (const q of buildQuiz({ cards: two, distractors: wrongFor(CONCEPTS), random: seeded(seed) }).filter((x) => x.kind === 'term' && x.answer_index === 1)) {
+        assert.ok(two.some((c) => c.kind === 'term' && c.back === q.statement), 'the false statement is another definition');
+      }
+    }
+  });
+
+  it('a saved wrong answer that is another card’s answer is used neither as an option nor as a false statement', () => {
+    const cards = CONCEPTS.slice(0, 3);
+    const distractors = wrongFor(cards);
+    distractors.set(cards[0].id, [cards[1].back, ...distractors.get(cards[0].id).slice(1)]);
+    const [first] = quizCandidates(cards, { distractors });
+    assert.equal(first.mcClean.length, 0, 'only 2 clean wrong answers left: no multiple choice');
+    assert.ok(!first.falseClean.includes(cards[1].back));
+    assert.equal(first.falseClean.length, 2);
+  });
+});
+
+// The leak rules applied while building (rules in leaks.js, tested in quiz-leaks.test.js).
+for (const lesson of [EN_LESSON, FIL_LESSON]) {
+  const opts = { distractors: distractorMap(lesson), extraTerms: lesson.keyTerms, lessonText: lesson.text };
+  const byId = (id) => lesson.cards.find((c) => c.id === id);
+  describe(`quiz building skips what gives the answer away (${lesson.title})`, () => {
+    const quizzes = Array.from({ length: 40 }, (_, i) => buildQuiz({ cards: lesson.cards, ...opts, random: seeded(i + 1) }));
+    const asked = quizzes.flat();
+
+    it('no built question breaks a leak rule', () => {
+      const lessonWords = null;
+      for (const q of asked) assert.deepEqual(questionLeaks(q, { lessonWords }), [], `${q.type} #${q.flashcard_id}: ${q.question} / ${q.statement}`);
+    });
+
+    it('a lesson that can’t fill 10 clean questions gets fewer', () => {
+      assert.equal(usableCount(lesson.cards, opts), 6);
+      for (const quiz of quizzes) assert.equal(quiz.length, 6);
+    });
+
+    it('cards whose question holds the answer, or whose every wrong answer is a reversal, are never asked', () => {
+      const never = lesson === EN_LESSON ? [5, 7] : [17];
+      for (const q of asked) assert.ok(!never.includes(q.flashcard_id), `card ${q.flashcard_id} was asked`);
+    });
+
+    it('a card whose wrong answers stand out is asked as Yes/No only, with a plausible false statement', () => {
+      const tfOnly = lesson === EN_LESSON ? [6] : [14, 16];
+      for (const q of asked.filter((x) => tfOnly.includes(x.flashcard_id))) {
+        assert.equal(q.type, 'tf');
+        if (q.answer_index === 1) assert.ok(lesson.distractors[q.flashcard_id].includes(q.statement));
+      }
+      if (lesson === FIL_LESSON) {
+        const falses = asked.filter((q) => q.flashcard_id === 14 && q.answer_index === 1).map((q) => q.statement);
+        assert.ok(falses.length > 0);
+        assert.ok(falses.every((s) => !/mahirapan|itago/.test(s)), 'the reversed wrong answers are never the false statement');
+      }
+    });
+
+    it('a definition that holds its own term is shown with the term blanked, and the stored answer is unchanged', () => {
+      const id = lesson === EN_LESSON ? 3 : 13;
+      const card = byId(id);
+      const shown = quizCandidates(lesson.cards, opts).find((p) => p.card.id === id).shown;
+      assert.match(shown, /___/);
+      for (const q of asked.filter((x) => x.flashcard_id === id)) {
+        assert.equal(q.answer_text, card.back);
+        if (q.type === 'tf' && q.answer_index === 0) assert.equal(q.statement, shown);
+      }
+    });
+  });
+}
+
+describe('quiz building, continued', () => {
 
   it('is deterministic for the same random source', () => {
     const make = () => buildQuiz({ cards: [...TERMS, ...CONCEPTS], distractors: wrongFor(CONCEPTS), random: seeded(42) });

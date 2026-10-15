@@ -7,13 +7,22 @@ import { HttpError } from '../middleware/errors.js';
 import { lastBackup, logAdminEvent, makeBackup, removeTemp } from '../services/backup.js';
 import { addParticipants, findParticipant, parseCodeList, UNKNOWN_CODE } from '../participants/codes.js';
 import { defaultAiProblems } from '../services/ai-problems.js';
+import { lessonLeakReport } from '../quiz/check.js';
+import { hasRecords, participantRecords } from '../services/lesson-records.js';
+import { regenerateCard } from '../services/regenerate-card.js';
 import { deleteAllStudentKeys } from '../services/student-ai.js';
 import { participantStats, summaryTable } from '../stats/participant.js';
 
 const addBody = z.object({ codes: z.string().max(2000) });
+const id = z.coerce.number().int().positive();
+const parseId = (value, what) => {
+  const parsed = id.safeParse(value);
+  if (!parsed.success) throw new HttpError(400, `${what} id must be a positive number.`);
+  return parsed.data;
+};
 
 // The researcher's admin area. Every route here sits behind requireAdmin (ADMIN_PIN). Mounted at /api/admin.
-export function adminRouter({ db, clock = () => new Date(), requireAdmin }) {
+export function adminRouter({ db, ai, clock = () => new Date(), requireAdmin, log = console }) {
   const router = Router();
   router.use(requireAdmin);
   const opts = (req) => ({ now: clock(), config: loadSchedulerConfig(db), includeP00: ['1', 'true', 'yes'].includes(String(req.query.include_p00 ?? '')) });
@@ -84,6 +93,26 @@ export function adminRouter({ db, clock = () => new Date(), requireAdmin }) {
 
   // Why the Default AI failed for students in the last 24 hours (students only see "try again"): { problems: [...] }
   router.get('/ai-problems', (_req, res) => res.json({ problems: defaultAiProblems(db, clock()) }));
+
+  // What gives answers away in a lesson (quiz/check.js): the flagged flashcards, the quiz questions the builder skips
+  // and why, how many clean questions a quiz can have, and whether its cards may still be regenerated (no participant
+  // other than P00 has records on it).
+  router.get('/lessons/:id/leaks', (req, res) => {
+    const lessonId = parseId(req.params.id, 'Lesson');
+    const report = lessonLeakReport(db, lessonId);
+    if (!report) throw new HttpError(404, 'Lesson not found.');
+    res.json({ ...report, can_regenerate: report.lesson.status === 'ready' && !hasRecords(participantRecords(db, lessonId)) });
+  });
+
+  // "Regenerate this card": writes a flagged card again with the Default AI (services/regenerate-card.js). 409
+  // lesson_has_records once participants have studied the lesson; 422 when the new card still gives its answer away.
+  router.post('/flashcards/:id/regenerate', async (req, res, next) => {
+    try {
+      res.json({ card: await regenerateCard({ db, ai, cardId: parseId(req.params.id, 'Flashcard'), log }) });
+    } catch (e) {
+      next(e);
+    }
+  });
 
   // When the last backup was downloaded: { last: { file, created_at } | null }
   router.get('/backup/last', (_req, res) => res.json({ last: lastBackup(db) }));

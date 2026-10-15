@@ -18,7 +18,7 @@ const fakeAi = () => {
       ai.calls += 1;
       if (ai.fail) throw ai.fail;
       const numbers = [...user.matchAll(/^\[(\d+)\] Question:/gm)].map((m) => Number(m[1]));
-      return schema.parse({ items: numbers.map((n) => ({ n, wrong: [`Wrong A${n}`, `Wrong B${n}`, `Wrong C${n}`] })) });
+      return schema.parse({ items: numbers.map((n) => ({ n, wrong: [`Alpha topic answer ${n}.`, `Beta topic answer ${n}.`, `Gamma topic answer ${n}.`] })) });
     },
   };
   return ai;
@@ -179,8 +179,8 @@ describe('quiz answer options as a processing step', () => {
   });
 
   it('a failed batch keeps the batches that worked, so a retry only asks for the rest', async () => {
-    const insert = t.db.prepare("INSERT INTO flashcards (lesson_id, kind, front, back, evidence, position) VALUES (?, 'concept', ?, 'An answer.', 'quote', ?)");
-    for (let i = 5; i <= 20; i++) insert.run(lessonId, `Extra Q${i}?`, i); // 20 cards: batches of 15 and 5
+    const insert = t.db.prepare("INSERT INTO flashcards (lesson_id, kind, front, back, evidence, position) VALUES (?, 'concept', ?, ?, 'quote', ?)");
+    for (let i = 5; i <= 20; i++) insert.run(lessonId, `Extra Q${i}: what about the topic?`, `Topic answer ${i} about rivers and lakes.`, i); // 20 cards: batches of 15 and 5
     const original = ai.generateJSON;
     let n = 0;
     ai.generateJSON = (args) => (++n === 2 ? Promise.reject(rateLimit()) : original(args));

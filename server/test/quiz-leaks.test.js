@@ -1,0 +1,172 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  answerInQuestion,
+  cardLeaks,
+  contentWords,
+  falseStatementProblems,
+  isNegative,
+  language,
+  maskTerm,
+  optionSetProblems,
+  questionLeaks,
+  stem,
+  termInText,
+  wrongOptionProblems,
+} from '../src/quiz/leaks.js';
+import { EN_LESSON, FIL_LESSON } from './fixtures/leak-lessons.js';
+
+const rules = (problems) => problems.map((p) => p.rule);
+const card = (lesson, id) => lesson.cards.find((c) => c.id === id);
+
+describe('leak checks: words', () => {
+  it('Filipino forms reduce to one stem (linker, prefixes, infixes, reduplication, suffixes)', () => {
+    assert.equal(stem('wikang'), 'wika');
+    for (const w of ['nagbabago', 'pagbabago', 'magbago']) assert.equal(stem(w), 'bago');
+    for (const w of ['ginagamit', 'ginamit', 'gamit']) assert.equal(stem(w), 'gamit');
+    assert.equal(stem('pag-unlad'), 'unlad');
+    assert.equal(stem('pambansang'), 'bansa');
+    assert.equal(stem('kumain'), 'kain');
+  });
+
+  it('English plurals and -ing reduce in an English text, and stopwords of both languages are dropped', () => {
+    assert.deepEqual(contentWords('The variables are changing'), ['variable', 'chang']);
+    assert.deepEqual(contentWords('Ano ang mga epekto ng wika sa bansa?'), ['epekto', 'wika', 'bansa']);
+  });
+
+  it('tells English from Filipino, and says nothing for a bare list', () => {
+    assert.equal(language('The plant releases oxygen into the air.'), 'en');
+    assert.equal(language('Ginagamit ito sa pagbibigay ng impormasyon.'), 'fil');
+    assert.equal(language('Nobela, tula, sanaysay'), null);
+  });
+
+  it('spots negative and reversed statements in both languages', () => {
+    for (const t of ['It never changes.', 'Plants do not need light.', 'It prevents the spread of words.', 'Hindi ito nagbabago.', 'Upang itago ang mga konsepto.', 'Ginagamit ito upang limitahan ang komunikasyon.', 'Nabawasan ang mga salita.', 'Pinipigilan nito ang pagkalat.'])
+      assert.ok(isNegative(t), t);
+    for (const t of ['It slows down because less carbon dioxide enters.', 'Ginagamit ito sa edukasyon.', 'Upang palitan ang mga aklat ng mga lumang salita.']) assert.ok(!isNegative(t), t);
+  });
+});
+
+describe('leak checks: quiz rules a-f', () => {
+  it('a: the question holds the answer or most of its words (English and Filipino)', () => {
+    assert.ok(answerInQuestion(card(EN_LESSON, 7).front, card(EN_LESSON, 7).back));
+    assert.ok(answerInQuestion('Bakit tinatawag na dinamiko ang wika na patuloy na nagbabago?', 'Dahil patuloy itong nagbabago.'));
+    assert.equal(answerInQuestion(card(EN_LESSON, 4).front, card(EN_LESSON, 4).back), null);
+    assert.equal(answerInQuestion(card(FIL_LESSON, 15).front, card(FIL_LESSON, 15).back), null);
+  });
+
+  it('b: only the right option repeats the question', () => {
+    assert.deepEqual(rules(optionSetProblems('What do plants release through the stomata?', 'Oxygen through the stomata.', ['Glucose through the leaves.', 'Water through the roots.', 'Sugar through the stems.'])), ['b']);
+    assert.deepEqual(rules(optionSetProblems('Paano ginagamit ang wika sa midya?', 'Ginagamit ito upang maabot ang mas maraming tao.', ['Upang magbenta ng produkto.', 'Para sa libangan lamang.', 'Upang turuan ang mga dayuhan.'])), ['b']);
+    assert.deepEqual(optionSetProblems('Paano ginagamit ang wika sa midya?', 'Ginagamit ito upang maabot ang mas maraming tao.', ['Ginagamit ito sa pagbebenta.', 'Para sa libangan lamang.', 'Upang turuan ang mga dayuhan.']), []);
+    // every option shares the lesson's common word ("wika", "plants"), but only the right one repeats the key words
+    assert.match(optionSetProblems('Ano ang kinakatawan ng mga ugat at mga sanga ng wika?', 'Ang ugat ay ang katutubong wika at ang mga sanga ay ang mga impluwensiya.', ['Nagmula ang wika sa mga dayuhan.', 'Binubuo ang wika ng mga katutubong salita.', 'Nagbago ang wika dahil sa teknolohiya.'])[0].detail, /\(ugat, sanga\)/);
+    assert.match(optionSetProblems('How do plants use the stomata?', 'Plants open the stomata to take in carbon dioxide.', ['Plants store sugar in the roots.', 'Plants release water through the leaves.', 'Plants make glucose in the stroma.'])[0].detail, /\(stomata\)/);
+  });
+
+  it('c: length, opening words, sentence shape and tone', () => {
+    const six = card(EN_LESSON, 6);
+    assert.deepEqual(rules(wrongOptionProblems('It stops.', six.back)), ['c']);
+    assert.deepEqual(rules(wrongOptionProblems('Sa mga larangan.', 'Nabawasan ang paggamit ng Filipino sa negosyo, teknolohiya at siyensya at nanganganib mawala ang mga salita.')), ['c']);
+    assert.deepEqual(wrongOptionProblems('It speeds up because more light arrives.', six.back), []);
+
+    const sixteen = card(FIL_LESSON, 16);
+    assert.match(optionSetProblems(sixteen.front, sixteen.back, FIL_LESSON.distractors[16]).map((p) => p.detail).join(), /opening/);
+    assert.match(optionSetProblems('Why is the sky blue?', 'Air scatters short light waves more.', ['It is because of the ocean.', 'It is because of clouds.', 'It is because of dust.'])[0].detail, /opening/);
+    assert.match(optionSetProblems('Why do leaves look green?', 'Chlorophyll reflects green light while absorbing red light.', ['Red pigment', 'Blue pigment', 'Yellow pigment']).map((p) => p.detail).join(), /sentence shape/);
+
+    assert.match(wrongOptionProblems('Upang mahirapan ang mga mag-aaral.', card(FIL_LESSON, 14).back)[0].detail, /tone/);
+    assert.match(wrongOptionProblems('Chlorophyll never reflects any light at all.', card(EN_LESSON, 5).back)[0].detail, /tone/);
+    // a negative next to a negative right answer is fine
+    assert.deepEqual(wrongOptionProblems('Kapag hindi ito ginagamit sa paaralan.', 'Kapag hindi naipapasa sa bagong henerasyon.'), []);
+    // ...but a negative right answer among only positive wrong options stands out the other way
+    const hamon = 'Nabawasan ang paggamit ng Filipino at nanganganib mawala ang ilang katutubong salita.';
+    assert.match(optionSetProblems('Ano ang epekto ng mga hamon sa wika?', hamon, ['Lumalawak ang paggamit ng Filipino sa pamahalaan.', 'Dumarami ang mga bagong katutubong salita.', 'Napapaunlad ang paraan ng pakikipagkomunikasyon.']).map((p) => p.detail).join(), /only negative/);
+    assert.match(optionSetProblems('What happens to photosynthesis in a drought?', 'It is reduced because carbon dioxide cannot enter.', ['It speeds up because more light arrives.', 'It moves to the roots of the plant.', 'It makes more oxygen at night.']).map((p) => p.detail).join(), /only negative/);
+    assert.doesNotMatch(optionSetProblems('Ano ang epekto ng mga hamon sa wika?', hamon, ['Nabawasan ang mga aklat sa paaralan.', 'Dumarami ang mga bagong katutubong salita.', 'Napapaunlad ang paraan ng pakikipagkomunikasyon.']).map((p) => p.detail).join(), /only negative/);
+  });
+
+  it('d: a definition that holds its term (or a form of it) is found and blanked', () => {
+    assert.deepEqual(termInText('Calvin cycle', card(EN_LESSON, 3).back), ['calv', 'cycle']);
+    assert.equal(maskTerm(card(EN_LESSON, 3).back, 'Calvin cycle'), 'The ___ builds glucose from carbon dioxide in the stroma.');
+    assert.ok(termInText('Wikang Pambansa', card(FIL_LESSON, 13).back));
+    assert.equal(maskTerm(card(FIL_LESSON, 13).back, 'Wikang Pambansa'), 'Ang ___ na ginagamit sa buong ___.');
+    assert.ok(termInText('Dinamiko', 'Ang pagiging dinamikong wika ay patuloy na pagbabago.'));
+    assert.equal(termInText('Balarila', card(FIL_LESSON, 11).back), null);
+    assert.equal(maskTerm(card(FIL_LESSON, 11).back, 'Balarila'), card(FIL_LESSON, 11).back);
+  });
+
+  it('e: a false Yes/No statement that is false from its wording', () => {
+    assert.deepEqual(rules(falseStatementProblems('Upang itago ang mga konsepto sa mga mag-aaral.', card(FIL_LESSON, 14).back)), ['e']);
+    assert.deepEqual(rules(falseStatementProblems('It is used to collect taxes from citizens.', card(FIL_LESSON, 16).back)), ['e']);
+    assert.deepEqual(falseStatementProblems('Upang palitan ang mga aklat ng mga lumang salita.', card(FIL_LESSON, 14).back), []);
+    assert.match(falseStatementProblems('Paraan ito ng pagkakaisa bilang simbolo ng kultura at identidad ng mga Pilipino.', 'Nagpapakita ito ng pagkakaisa bilang simbolo ng kultura at identidad ng mga Pilipino.')[0].detail, /right answer’s own words/);
+    assert.match(falseStatementProblems('Plants turn sunlight into stored chemical energy.', 'Plants turn sunlight into chemical energy they store.')[0].detail, /right answer’s own words/);
+    const tf = { type: 'tf', kind: 'term', question: 'Balarila', statement: 'Nagkaroon tayo ng mga salitang galing sa Espanyol.', choices: ['True', 'False'], answer_index: 1, answer_text: card(FIL_LESSON, 11).back, false_from: 'concept' };
+    assert.deepEqual(rules(questionLeaks(tf)), ['e']);
+    const own = { type: 'tf', kind: 'term', question: 'Calvin cycle', statement: card(EN_LESSON, 3).back, choices: ['True', 'False'], answer_index: 0, answer_text: card(EN_LESSON, 3).back };
+    assert.deepEqual(rules(questionLeaks(own)), ['e'], 'a true statement that names its own term');
+  });
+
+  it('f: near-duplicate wrong options, another language, off-topic', () => {
+    assert.match(optionSetProblems('Where do the light reactions take place?', 'In the thylakoid membranes.', ['In the stroma of the cell.', 'In the cell stroma.', 'In the green pigment.']).map((p) => p.detail).join(), /near-duplicate/);
+    assert.deepEqual(rules(wrongOptionProblems('The government uses it to make laws.', card(FIL_LESSON, 16).back)), ['f']);
+    const lessonWords = new Set(contentWords(EN_LESSON.text));
+    assert.match(wrongOptionProblems('In the mitochondria of animal cells.', card(EN_LESSON, 4).back, { lessonWords })[0].detail, /nothing in the lesson/);
+    assert.deepEqual(wrongOptionProblems('In the stroma of the chloroplast.', card(EN_LESSON, 4).back, { lessonWords }), []);
+    // a reworded right answer is a second right answer
+    assert.match(wrongOptionProblems('Paraan ito ng pagkakaisa sa pamamagitan ng pagsisilbing simbolo ng kultura at identidad ng mga Pilipino.', 'Nagpapakita ito ng pagkakaisa sa pamamagitan ng pagsisilbing simbolo ng kultura at identidad ng mga Pilipino.').map((p) => p.detail).join(), /right answer’s own words/);
+    assert.match(wrongOptionProblems('Chlorophyll reflects green light and absorbs red light.', card(EN_LESSON, 5).back).map((p) => p.detail).join(), /right answer’s own words/);
+    const filWords = new Set(contentWords(FIL_LESSON.text));
+    assert.match(wrongOptionProblems('Lumaki ang mga bundok at ilog sa kapuluan.', card(FIL_LESSON, 15).back, { lessonWords: filWords }).map((p) => p.detail).join(), /nothing in the lesson/);
+    // another card's answer answers that other question, so it is matched away
+    const govt = 'Ginagamit ito sa pagbibigay ng impormasyon at serbisyo sa mamamayan.';
+    assert.match(wrongOptionProblems('Ginagamit ito sa pagbibigay ng impormasyon at serbisyo sa lahat ng mamamayan.', 'Ginagamit ito upang mas madaling maipaliwanag ang mga konsepto.', { otherAnswers: [govt] }).map((p) => p.detail).join(), /another card’s answer/);
+    assert.match(wrongOptionProblems('Plants release oxygen into the air.', card(EN_LESSON, 6).back, { otherAnswers: ['Plants release oxygen into the air as a by-product.'] }).map((p) => p.detail).join(), /another card’s answer/);
+    assert.deepEqual(wrongOptionProblems('Ginagamit ito sa pagsulat ng mga batas.', 'Ginagamit ito upang mas madaling maipaliwanag ang mga konsepto.', { otherAnswers: [govt] }), []);
+  });
+
+  it('a clean multiple-choice question breaks no rule (English and Filipino)', () => {
+    const en = { type: 'mc', kind: 'concept', question: card(EN_LESSON, 8).front, choices: ['ATP and NADPH.', ...EN_LESSON.distractors[8]], answer_index: 0, answer_text: 'ATP and NADPH.' };
+    assert.deepEqual(questionLeaks(en, { lessonWords: new Set(contentWords(EN_LESSON.text)) }), []);
+    const fil = { type: 'mc', kind: 'concept', question: card(FIL_LESSON, 15).front, choices: [card(FIL_LESSON, 15).back, ...FIL_LESSON.distractors[15]], answer_index: 0, answer_text: card(FIL_LESSON, 15).back };
+    assert.deepEqual(questionLeaks(fil, { lessonWords: new Set(contentWords(FIL_LESSON.text)) }), []);
+  });
+});
+
+describe('leak checks: flashcard rules g-k', () => {
+  it('g: the front holds the back', () => {
+    assert.deepEqual(rules(cardLeaks(card(EN_LESSON, 7))), ['g']);
+    assert.ok(rules(cardLeaks(card(FIL_LESSON, 17))).includes('g'));
+  });
+
+  it('h: a term card whose definition holds the term', () => {
+    assert.deepEqual(rules(cardLeaks(card(EN_LESSON, 3))), ['h']);
+    assert.deepEqual(rules(cardLeaks(card(FIL_LESSON, 13))), ['h']);
+    assert.deepEqual(cardLeaks(card(FIL_LESSON, 12)), []);
+  });
+
+  it('i: yes/no and either/or questions, but not a Filipino "o" between two nouns', () => {
+    assert.deepEqual(rules(cardLeaks({ kind: 'concept', front: 'Does chlorophyll absorb green light?', back: 'Mostly red and blue light.' })), ['i']);
+    assert.deepEqual(rules(cardLeaks({ kind: 'concept', front: 'Nagbabago ba ang wika?', back: 'Oo, kasabay ng kultura.' })), ['i']);
+    assert.deepEqual(rules(cardLeaks({ kind: 'concept', front: 'Katutubo ang wika o hindi?', back: 'Mula sa mga ninuno natin.' })), ['i']);
+    assert.deepEqual(cardLeaks({ kind: 'concept', front: 'Saang mga institusyon o larangan ginagamit ang Filipino?', back: 'Sa edukasyon, pamahalaan at midya.' }), []);
+  });
+
+  it('j: the front holds another card’s answer', () => {
+    const a = { id: 1, kind: 'concept', front: 'Why does photosynthesis slow down when less carbon dioxide enters the leaf?', back: 'Because the stomata close on hot days.' };
+    const b = { id: 2, kind: 'concept', front: 'What happens when the stomata close?', back: 'Less carbon dioxide enters the leaf.' };
+    assert.ok(rules(cardLeaks(a, [a, b])).includes('j'));
+    assert.ok(!rules(cardLeaks(b, [a, b])).includes('j'));
+  });
+
+  it('k: the back only restates the front', () => {
+    assert.ok(rules(cardLeaks(card(FIL_LESSON, 17))).includes('k'));
+    assert.deepEqual(rules(cardLeaks({ kind: 'concept', front: 'How does light energy change in photosynthesis?', back: 'Light energy changes in photosynthesis.' })).sort(), ['g', 'k']);
+  });
+
+  it('every clean card of both lessons passes', () => {
+    for (const lesson of [EN_LESSON, FIL_LESSON])
+      for (const c of lesson.cards.filter((x) => ![3, 7, 13, 17].includes(x.id))) assert.deepEqual(cardLeaks(c, lesson.cards), [], `${lesson.title} #${c.id}`);
+  });
+});

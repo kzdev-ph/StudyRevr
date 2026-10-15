@@ -97,6 +97,9 @@ export const api = {
   // makes the AI wrong answers for the quiz (the retry for that step, and for lessons made before it existed)
   makeQuizOptions: (id) => request(`/lessons/${id}/quiz-options`, { method: 'POST', admin: true }),
   deleteLesson: (id) => request(`/lessons/${id}`, { method: 'DELETE', admin: true }),
+  // flashcards and quiz questions that give their answer away, and writing one card again (only before participants study it)
+  lessonLeaks: (id) => request(`/admin/lessons/${id}/leaks`, { admin: true }),
+  regenerateCard: (id) => request(`/admin/flashcards/${id}/regenerate`, { method: 'POST', admin: true }),
   // makes the shared Explain simpler and Filipino/Taglish versions of every section ahead of study day
   prepareVersions: (id) => request(`/lessons/${id}/section-versions`, { method: 'POST', admin: true }),
   simplifySection: (id) => request(`/sections/${id}/simplify`, { method: 'POST' }),
