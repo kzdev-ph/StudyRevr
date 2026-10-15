@@ -1,15 +1,19 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
+import { riffleFrames, shufflePlan } from '../lib/paper.js';
 
-const SHUFFLE_MS = 1200;
 const FADE_MS = 450;
 const CARDS = 5;
+const STAGGER_S = 0.03;
 
-// The deck being shuffled as a quiz starts: the cards split left and right and riffle back into one pile, twice.
-// The server has already set the question order; this is the moment it happens on screen. With reduced motion the
-// deck just fades in and out. Tapping it skips ahead. Calls `onDone` once.
-export default function DeckShuffle({ count, onDone }) {
+// The deck coming out as a flashcard deck starts: the cards split left and right and riffle back into one pile, 3 or
+// 4 times (picked at random each time: 1.8 or 2.4 s). The order of the cards is already set by the scheduler
+// (learning, due reviews, new), so it says "Getting your deck out", never "Shuffling". With reduced motion the deck
+// just fades in and out. A tap, Enter, Space or Escape skips it. The first card's answer clock starts only once it is
+// over, however long it ran. Calls `onDone` once.
+export default function DeckShuffle({ onDone }) {
   const reduce = useReducedMotion();
+  const [plan] = useState(() => shufflePlan());
   const done = useRef(false);
   const finish = useRef(onDone);
   finish.current = onDone;
@@ -21,9 +25,9 @@ export default function DeckShuffle({ count, onDone }) {
   };
 
   useEffect(() => {
-    const timer = setTimeout(end, reduce ? FADE_MS : SHUFFLE_MS);
+    const timer = setTimeout(end, reduce ? FADE_MS : plan.ms);
     return () => clearTimeout(timer);
-  }, [reduce]);
+  }, [reduce, plan]);
 
   // Enter, Space or Escape skip it too, so it is not a touch-only shortcut
   useEffect(() => {
@@ -38,13 +42,12 @@ export default function DeckShuffle({ count, onDone }) {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const shown = Math.max(1, Math.min(CARDS, count));
   return (
     <div className="shuffle" onClick={end}>
       <div className="shuffle__deck" aria-hidden="true">
-        {Array.from({ length: shown }, (_, i) => {
-          const side = i % 2 ? 1 : -1;
-          const rest = { x: 0, y: -i * 3, rotate: (i - (shown - 1) / 2) * 1.5 };
+        {Array.from({ length: CARDS }, (_, i) => {
+          const f = riffleFrames(i, CARDS, plan.riffles);
+          const rest = { x: 0, y: f.y[0], rotate: f.rotate[0], zIndex: i };
           return reduce ? (
             <motion.div key={i} className="shuffle__card" style={rest} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} />
           ) : (
@@ -52,21 +55,14 @@ export default function DeckShuffle({ count, onDone }) {
               key={i}
               className="shuffle__card"
               initial={rest}
-              animate={{
-                x: [0, side * 78, 0, side * -54, 0],
-                y: [rest.y, rest.y - 10, rest.y, rest.y - 6, rest.y],
-                rotate: [rest.rotate, side * 9, rest.rotate, side * -6, rest.rotate],
-                zIndex: [i, i, shown - i, shown - i, i],
-              }}
-              transition={{ duration: (SHUFFLE_MS - 150) / 1000, delay: i * 0.03, times: [0, 0.25, 0.5, 0.75, 1], ease: 'easeInOut' }}
-            >
-              {i === shown - 1 && <span className="shuffle__mark">?</span>}
-            </motion.div>
+              animate={{ x: f.x, y: f.y, rotate: f.rotate, zIndex: f.zIndex }}
+              transition={{ duration: (plan.ms - 150) / 1000, delay: i * STAGGER_S, times: f.times, ease: 'easeInOut' }}
+            />
           );
         })}
       </div>
       <p className="shuffle__text" role="status">
-        Shuffling {count} {count === 1 ? 'question' : 'questions'}…
+        Getting your deck out
       </p>
       <p className="muted" aria-hidden="true">
         Tap or press Enter to skip

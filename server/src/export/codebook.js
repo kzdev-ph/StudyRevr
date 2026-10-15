@@ -12,6 +12,11 @@ General
 - Active time counts only time with the app in front and the student interacting: it pauses when the app goes to
   the background and a session ends after 5 minutes without a tap, scroll or key press (those 5 minutes are not
   counted).
+- time_ms (flashcard_reviews.csv, quiz_answers.csv) runs from when the card or question is on screen and can be
+  answered to the answer. Animations are not counted: the deck coming out, a quiz sheet being handed out, a card
+  being turned over, the marks drawn after an answer. Rows answered before 2026-10-16 (the version that made this
+  change) also counted the animations of that time: about 0.2-0.6 s per flashcard (its slide-in and the flip) and
+  about 0.2-0.4 s per quiz question (the fade between questions). Split by reviewed_at / answered_at to compare.
 
 summary.csv - one row per participant; columns grouped by SDL dimension
   Planning (study planning and time management)

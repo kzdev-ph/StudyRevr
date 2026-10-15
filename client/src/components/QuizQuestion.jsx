@@ -1,9 +1,14 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { CheckIcon, CloseIcon } from './Icons.jsx';
+import { PenLoop, PenStrike, PenTick } from './Pen.jsx';
 import { truncateAtWord } from '../lib/format.js';
 import { questionLead, yesNo, yesNoAsk } from '../lib/quiz.js';
 
 const EVIDENCE_MAX = 220;
+// the marks, after the answer is saved: the student's loop round their number, then the teacher's tick or strike
+const LOOP_MS = 260;
+const MARK_MS = 180;
+const MARK_DELAY_MS = 220;
 
 // What an option says it is once answered; colour is never the only cue.
 function optionState(i, feedback) {
@@ -15,16 +20,29 @@ function optionState(i, feedback) {
 
 // One question: what is asked, the options (1-4 on a keyboard) and, once answered, whether it was right, the right
 // answer and the card's "From the lesson" quote. Focus moves to the question when it appears, so a screen reader
-// reads it and the keyboard starts from it.
+// reads it and the keyboard starts from it. Once the answer is saved it is marked like a test paper: a pen loop round
+// the number chosen, a tick on the right answer, a line through a wrong one. The marks never hold anything up (Next
+// works at once) and a tap finishes them.
 export default function QuizQuestion({ question: q, feedback, onAnswer, busy }) {
   const tf = q.type === 'tf';
   const ask = tf ? yesNoAsk(q) : null;
   const headingRef = useRef(null);
+  const optsRef = useRef(null);
+  const marks = useRef(new Set()).current;
+  const [strike, setStrike] = useState(false); // only through a wrong answer on one line: a long one keeps its cross
   useEffect(() => {
     headingRef.current?.focus();
   }, []);
+  useLayoutEffect(() => {
+    if (!feedback || feedback.correct) return;
+    const text = optsRef.current?.children[feedback.chosen_index]?.querySelector('.quiz-opt__text > span');
+    setStrike(Boolean(text) && text.getClientRects().length === 1);
+  }, [feedback]);
+  const finishMarks = () => {
+    for (const m of marks) m.complete();
+  };
   return (
-    <article className="quiz-q" aria-labelledby="quiz-q-text">
+    <article className="quiz-q" aria-labelledby="quiz-q-text" onPointerDown={feedback ? finishMarks : undefined}>
       <p className="flashcard__kicker">{questionLead(q)}</p>
       {tf ? (
         <h2 id="quiz-q-text" className="quiz-q__ask" tabIndex={-1} ref={headingRef}>
@@ -40,9 +58,10 @@ export default function QuizQuestion({ question: q, feedback, onAnswer, busy }) 
         </h2>
       )}
 
-      <div className={`quiz-opts${tf ? ' quiz-opts--tf' : ''}`} role="group" aria-labelledby="quiz-q-text">
+      <div className={`quiz-opts${tf ? ' quiz-opts--tf' : ''}`} role="group" aria-labelledby="quiz-q-text" ref={optsRef}>
         {q.choices.map((choice, i) => {
           const state = optionState(i, feedback);
+          const chosen = feedback?.chosen_index === i;
           return (
             <button
               key={i}
@@ -52,16 +71,22 @@ export default function QuizQuestion({ question: q, feedback, onAnswer, busy }) 
               disabled={busy || Boolean(feedback)}
               aria-keyshortcuts={String(i + 1)}
             >
-              <kbd className="quiz-opt__key" aria-hidden="true">{i + 1}</kbd>
+              <kbd className="quiz-opt__key" aria-hidden="true">
+                {i + 1}
+                {chosen && <PenLoop className="pen-loop" w={40} h={34} duration={LOOP_MS} track={marks} />}
+              </kbd>
               <span className="quiz-opt__text">
-                <span>{yesNo(q, choice)}</span>
+                <span>
+                  {yesNo(q, choice)}
+                  {state === 'wrong' && strike && <PenStrike duration={MARK_MS} delay={MARK_DELAY_MS} track={marks} />}
+                </span>
               </span>
               {/* a fixed slot, so marking the answer never changes the option's height */}
               <span className="quiz-opt__mark" aria-hidden="true">
-                {state === 'right' && <CheckIcon size={18} />}
+                {state === 'right' && <PenTick className="pen-tick" duration={MARK_MS} delay={MARK_DELAY_MS} track={marks} />}
                 {state === 'wrong' && <CloseIcon size={18} />}
               </span>
-              {state === 'right' && <span className="visually-hidden">{feedback.chosen_index === i ? 'Your answer, right' : 'Right answer'}</span>}
+              {state === 'right' && <span className="visually-hidden">{chosen ? 'Your answer, right' : 'Right answer'}</span>}
               {state === 'wrong' && <span className="visually-hidden">Your answer, not right</span>}
             </button>
           );

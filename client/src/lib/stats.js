@@ -47,3 +47,10 @@ export function cardsLine({ reviewed, good_easy_pct: goodEasy }) {
   if (!reviewed) return 'No cards answered yet';
   return `${reviewed} ${reviewed === 1 ? 'card' : 'cards'}, ${pct(goodEasy)} Good or Easy`;
 }
+
+// The coloured pieces of one day's bar: only activities with time that day, as a share of `scale` (the busiest day).
+// Never a piece for 0 or a missing value, so nothing ever writes a stray "0" into the bar.
+export function daySegments(row, scale) {
+  const most = Number(scale) > 0 ? Number(scale) : 1;
+  return ACTIVITIES.filter(({ key }) => Number(row[key]) > 0).map(({ key, color }) => ({ key, color, width: `${(row[key] / most) * 100}%` }));
+}

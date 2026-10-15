@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Paper motion proposals</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..800&family=Literata:ital,opsz,wght@0,7..72,400..800;1,7..72,400..700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="../../client/src/styles/tokens.css" />
+    <link rel="stylesheet" href="../shared/board.css" />
+    <link rel="stylesheet" href="motion.css" />
+  </head>
+  <body class="board">
+    <header class="board__head">
+      <h1>Paper motion: proposals</h1>
+      <p>
+        Step 1, static demo. Nothing in <code>client/</code> or <code>server/</code> changed. Every frame is a 380px phone page drawn with the app's live tokens; the box under it shows what the research
+        clock would record (students never see that box). Tap any animation to skip it. Pick by ID (F1, Q2…) and I'll build those in Step 2.
+      </p>
+      <nav><a href="#rule">The timing rule</a><a href="#flashcards">Flashcards</a><a href="#quiz">Mock Quiz</a><a href="#review">Review</a><a href="#stats">Stats and loading</a><a href="#cut">Cut</a></nav>
+      <div class="board__tools">
+        <fieldset class="tool-group">
+          <legend>Motion</legend>
+          <label><input type="radio" name="motion" value="device" checked /> Device</label>
+          <label><input type="radio" name="motion" value="full" /> Full</label>
+          <label><input type="radio" name="motion" value="reduce" /> Reduced</label>
+        </fieldset>
+        <fieldset class="tool-group">
+          <legend>Theme</legend>
+          <label><input type="radio" name="theme" value="light" checked /> Light</label>
+          <label><input type="radio" name="theme" value="dark" /> Dark</label>
+        </fieldset>
+        <span class="motion-state" id="motion-state" aria-live="polite"></span>
+      </div>
+    </header>
+
+    <section class="notes" id="rule">
+      <h2>The timing rule, and what today's code gets wrong</h2>
+      <p>
+        An answer's <code>time_ms</code> starts when the question or card is <strong>on screen and usable</strong>: after its entrance has finished, after a skip, or at the first tap or key, whichever comes first. It
+        pauses while a flashcard turns over. Marks that play after an answer belong to the answer that was already saved, and the next question's clock never waits for them. With reduced motion the
+        same rule holds (the shorter fades are left out too), so a student's motion setting never changes their numbers.
+      </p>
+      <h3>Found while reading the code</h3>
+      <ul>
+        <li>
+          <strong>Mock Quiz</strong> (<code>QuizRunScreen.jsx</code>): the clock starts when Next is pressed, but <code>AnimatePresence mode="wait"</code> first plays the old question's 180 ms exit (the new question is
+          not on the page yet) and then a 180 ms fade-in from transparent. Every question after the first carries about <strong>360 ms of animation</strong> in its <code>time_ms</code>; the first carries its 180 ms
+          fade-in. Keys 1–4 also work during the exit, on a question that isn't shown yet. Frame Q0 shows it side by side.
+        </li>
+        <li><strong>Flashcards</strong> (<code>StudyScreen.jsx</code>, <code>FlipCard.jsx</code>): the clock starts before the card's 180 ms fade-in, and the 420 ms flip is counted too.</li>
+        <li>The shuffle itself is fine: the quiz's clocks start when it ends or is skipped. It runs 1200 ms, twice the budget below.</li>
+        <li>Outside the budget (only fixed where a proposal touches them): Quick check animates <code>height</code>, the tab marker animates <code>background-size</code>, the loading shimmer repaints a gradient forever.</li>
+      </ul>
+      <p>
+        Q0 and the answer clock ship in Step 2 whatever you pick. The export codebook gets one line for <code>time_ms</code> in <code>quiz_answers</code> and <code>flashcard_reviews</code>, so answers before and after
+        the fix can be told apart.
+      </p>
+
+      <h3>The proposals</h3>
+      <table>
+        <thead>
+          <tr><th>ID</th><th>Where</th><th>Length</th><th>Says</th><th>Cost on a budget Android phone</th><th>Clock</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>F1</td><td>Flashcards, deck start (moved from the quiz)</td><td>600 ms, one riffle</td><td>Your deck is out, here's the first card</td><td>5 card layers, transform; z-order changes at the midpoint (a restack, no layout)</td><td>Starts when it ends or is skipped</td></tr>
+          <tr><td>F2</td><td>Flashcards, Show answer</td><td>420 ms (as today)</td><td>The card turned over, like paper</td><td>One 3D layer plus one fold-shadow layer (opacity)</td><td>Paused for the turn</td></tr>
+          <tr><td>F3</td><td>Flashcards, after an answer that brings the card back today (minutes)</td><td>260 ms</td><td>It went back into the deck</td><td>One layer behind the next card, transform + opacity</td><td>Next card's clock starts at once: it's on top</td></tr>
+          <tr><td>F4</td><td>Flashcards, after an answer that sends the card away for days; deck finished</td><td>300 ms; 200 ms square-up</td><td>Done for today, the pile is growing</td><td>One layer behind the next card; pile of 4 tiny cards in the margin</td><td>Same as F3</td></tr>
+          <tr><td>Q0</td><td>Mock Quiz, Next question</td><td>0 ms</td><td>(timing fix) the question is there at once</td><td>Less than today</td><td>Starts at first paint</td></tr>
+          <tr><td>Q1</td><td>Mock Quiz, start (replaces the shuffle)</td><td>420 ms</td><td>The test sheet is handed to you</td><td>One layer, transform + opacity</td><td>Starts when it ends or is skipped</td></tr>
+          <tr><td>Q2</td><td>Mock Quiz, after an answer is saved</td><td>260 ms loop, then 180 ms tick or strike</td><td>You circled this; the teacher marked it</td><td>SVG stroke-dashoffset on two short paths; strike is scaleX</td><td>Plays after the answer is saved; Next is never held</td></tr>
+          <tr><td>Q3</td><td>Mock Quiz, progress</td><td>150 ms per bubble</td><td>An answer sheet filling in</td><td>Up to 10 dots, scale</td><td>None</td></tr>
+          <tr><td>Q4</td><td>Mock Quiz, results</td><td>500 ms</td><td>Your score, written and circled like a grade</td><td>One SVG path</td><td>None (quiz finished)</td></tr>
+          <tr><td>R1</td><td>Review, key terms, first time each scrolls into view</td><td>380 ms, stagger capped at 280 ms</td><td>These words matter</td><td>2 transform layers per term while it plays; IntersectionObserver</td><td>None</td></tr>
+          <tr><td>R2</td><td>Review, quick check, Show answer</td><td>280 ms</td><td>Lifting the card you hid the answer under</td><td>One layer; the answer's space is held under the card, so nothing below jumps (today animates height)</td><td>None</td></tr>
+          <tr><td>S1</td><td>Stats, day bars, once per open</td><td>300 ms, 40 ms stagger, 540 ms total</td><td>The week, written in</td><td>7 layers, scaleX</td><td>None</td></tr>
+          <tr><td>S2</td><td>Waiting for a rewrite (replaces the shimmer)</td><td>520 ms per line, loops, stops off screen</td><td>Something is being written for you</td><td>Cheaper than today: one transform per line instead of repainting a gradient every frame</td><td>None</td></tr>
+        </tbody>
+      </table>
+      <p>Colours: only existing tokens. Right is <code>--ok</code>, wrong <code>--danger</code>, the student's pen and the grade <code>--accent</code>. Nothing is red. No new radius.</p>
+    </section>
+
+    <!-- ===================================================================================================== -->
+    <section class="screen-row" id="flashcards" aria-labelledby="f1-h">
+      <h2 id="f1-h"><span class="pid">F1</span> The deck comes out</h2>
+      <dl class="spec">
+        <dt>Where</dt><dd>The flashcard study screen, every time a deck starts with a card to show (not on undo, not when the deck is done or empty). The quiz no longer shuffles.</dd>
+        <dt>Length</dt><dd>600 ms: the deck splits once and riffles back. The original 1200 ms (two riffles) is beside it for comparison; it breaks the budget.</dd>
+        <dt>Says</dt><dd>"Getting your deck out." The order is not random (learning cards, then due, then new), so it never says "Shuffling".</dd>
+        <dt>Skip</dt><dd>Tap it, or Enter / Space / Escape when it has focus. Reduced motion: the deck fades in and out (150 ms each).</dd>
+      </dl>
+      <div class="frames">
+        <figure class="frame">
+          <figcaption>Proposed · 600 ms</figcaption>
+          <div class="phone"><div class="page page--short" data-demo="deckout" data-ms="600"></div></div>
+          <div class="frame-tools"><button type="button" data-replay>Start the deck</button></div>
+          <div class="clock" data-clock></div>
+        </figure>
+        <figure class="frame">
+          <figcaption>Original length · 1200 ms</figcaption>
+          <div class="phone"><div class="page page--short" data-demo="deckout" data-ms="1200"></div></div>
+          <div class="frame-tools"><button type="button" data-replay>Start the deck</button></div>
+          <div class="clock" data-clock></div>
+        </figure>
+      </div>
+    </section>
+
+    <section class="screen-row" aria-labelledby="f2-h">
+      <h2 id="f2-h"><span class="pid">F2 F3 F4</span> A flashcard sitting</h2>
+      <dl class="spec">
+        <dt>F2 paper flip</dt><dd>Today's 420 ms turn, plus a 4 px lift and a fold shadow that darkens the card as it stands on its edge. Off: today's flip.</dd>
+        <dt>F3 back into the deck</dt><dd>When the button you press brings the card back today (its interval is in minutes: Again, and Good on a new card), the card drops and slides under the deck's two edges.</dd>
+        <dt>F4 the done pile</dt><dd>When it goes away for days, it slides out from under the next card onto a small pile in the margin, and the count goes up. When the deck is finished the pile squares up. Undo takes it back off.</dd>
+        <dt>Either way</dt><dd>The answered card moves <em>behind</em> the next one, so the next card is readable from the first frame and its clock starts at once. The next card's 180 ms fade-in goes.</dd>
+      </dl>
+      <div class="frames">
+        <figure class="frame">
+          <figcaption>Five cards · Plate tectonics</figcaption>
+          <div class="phone"><div class="page page--margin page--scroll" data-demo="sitting"></div></div>
+          <div class="frame-tools">
+            <label><input type="checkbox" data-opt="f2" checked /> F2</label>
+            <label><input type="checkbox" data-opt="f3" checked /> F3</label>
+            <label><input type="checkbox" data-opt="f4" checked /> F4</label>
+            <button type="button" data-replay>Start again</button>
+          </div>
+          <div class="clock" data-clock></div>
+        </figure>
+      </div>
+    </section>
+
+    <!-- ===================================================================================================== -->
+    <section class="screen-row" id="quiz" aria-labelledby="q0-h">
+      <h2 id="q0-h"><span class="pid">Q0</span> Next question, today and fixed</h2>
+      <dl class="spec">
+        <dt>Today</dt><dd>The clock starts when you press Next; the old question fades out (180 ms) and the new one fades in (180 ms). The log shows when the question could first be read.</dd>
+        <dt>Fixed</dt><dd>The next question replaces the last one at once and its clock starts at its first paint. Ships whatever else you pick.</dd>
+      </dl>
+      <div class="frames">
+        <figure class="frame">
+          <figcaption>Today</figcaption>
+          <div class="phone"><div class="page page--margin page--short" data-demo="q0" data-variant="today"></div></div>
+          <div class="frame-tools"><button type="button" data-replay>Start again</button></div>
+          <div class="clock" data-clock></div>
+        </figure>
+        <figure class="frame">
+          <figcaption>Fixed</figcaption>
+          <div class="phone"><div class="page page--margin page--short" data-demo="q0" data-variant="fixed"></div></div>
+          <div class="frame-tools"><button type="button" data-replay>Start again</button></div>
+          <div class="clock" data-clock></div>
+        </figure>
+      </div>
+    </section>
+
+    <section class="screen-row" aria-labelledby="q1-h">
+      <h2 id="q1-h"><span class="pid">Q1 Q2 Q3 Q4</span> A mock quiz on exam paper</h2>
+      <dl class="spec">
+        <dt>Q1 sheet handed out</dt><dd>After "Getting your quiz ready", the test sheet slides up 32 px into place (420 ms). Tap to skip. Off: it just appears.</dd>
+        <dt>Q2 marked in pen</dt><dd>Once the answer is saved: a pen loop round the number you chose (260 ms, pen blue), then the teacher's mark: a tick on the right answer, a line through a wrong choice (180 ms). Next works the whole time. A Yes / No question gets the loop round the Yes or No it was given. Off: today's check and cross icons.</dd>
+        <dt>Q3 answer sheet</dt><dd>One bubble per question instead of the bar; a bubble fills when its answer is saved. Never coloured right or wrong mid-quiz. Off: today's bar.</dd>
+        <dt>Q4 the grade</dt><dd>The score written large and circled in pen on the results (500 ms). Off: today's plain number.</dd>
+      </dl>
+      <div class="frames">
+        <figure class="frame">
+          <figcaption>Three questions · Plate tectonics</figcaption>
+          <div class="phone"><div class="page page--margin page--scroll" data-demo="quiz"></div></div>
+          <div class="frame-tools">
+            <label><input type="checkbox" data-opt="q1" checked /> Q1</label>
+            <label><input type="checkbox" data-opt="q2" checked /> Q2</label>
+            <label><input type="checkbox" data-opt="q3" checked /> Q3</label>
+            <label><input type="checkbox" data-opt="q4" checked /> Q4</label>
+            <button type="button" data-replay>Start again</button>
+          </div>
+          <div class="clock" data-clock></div>
+        </figure>
+      </div>
+    </section>
+
+    <!-- ===================================================================================================== -->
+    <section class="screen-row" id="review" aria-labelledby="r1-h">
+      <h2 id="r1-h"><span class="pid">R1</span> Key terms marked as you reach them</h2>
+      <dl class="spec">
+        <dt>Where</dt><dd>The key terms list, the first time each term scrolls into view on a visit. Scroll inside the phone.</dd>
+        <dt>How</dt><dd>The marker slides in under the word (380 ms). It moves a bar with <code>transform</code> inside a clip, not <code>background-size</code>; at night it carries a dark copy of the word so the word never vanishes on the bright marker. A term that wraps onto two lines gets the mark without the slide.</dd>
+        <dt>Weakest of the set</dt><dd>Twelve terms is a lot of motion on one page. Reduced motion: the terms are simply marked.</dd>
+      </dl>
+      <div class="frames">
+        <figure class="frame">
+          <figcaption>Key terms</figcaption>
+          <div class="phone"><div class="page page--scroll" data-demo="terms"></div></div>
+          <div class="frame-tools"><button type="button" data-replay>Replay</button></div>
+        </figure>
+      </div>
+    </section>
+
+    <section class="screen-row" aria-labelledby="r2-h">
+      <h2 id="r2-h"><span class="pid">R2</span> Quick check: lift the cover card</h2>
+      <dl class="spec">
+        <dt>Where</dt><dd>The quick check after a section. The answer waits under an index card, like covering an answer with a card while you study; tapping it (or Show answer on a keyboard) slides it off (280 ms).</dd>
+        <dt>Why not "written in ink"</dt><dd>Writing out several lines of text needs <code>clip-path</code> or per-letter animation; neither fits the budget.</dd>
+        <dt>Bonus</dt><dd>The answer's space is there from the start, so nothing below the question jumps. Today the answer grows open with a <code>height</code> animation. Reduced motion: the card fades away.</dd>
+      </dl>
+      <div class="frames">
+        <figure class="frame">
+          <figcaption>Today</figcaption>
+          <div class="phone"><div class="page page--short" data-demo="check" data-variant="today"></div></div>
+          <div class="frame-tools"><button type="button" data-replay>Start again</button></div>
+        </figure>
+        <figure class="frame">
+          <figcaption>Proposed</figcaption>
+          <div class="phone"><div class="page page--short" data-demo="check" data-variant="cover"></div></div>
+          <div class="frame-tools"><button type="button" data-replay>Start again</button></div>
+        </figure>
+      </div>
+    </section>
+
+    <!-- ===================================================================================================== -->
+    <section class="screen-row" id="stats" aria-labelledby="s1-h">
+      <h2 id="s1-h"><span class="pid">S1</span> The week, inked in</h2>
+      <dl class="spec">
+        <dt>Where</dt><dd>Stats, the day bars, once each time Stats opens (here: when the frame scrolls into view).</dd>
+        <dt>How</dt><dd>Each bar draws from the left like a pen stroke (<code>scaleX</code>, 300 ms), one day after another, 40 ms apart: 540 ms in all. The times are written from the start, so nothing waits on it.</dd>
+      </dl>
+      <div class="frames">
+        <figure class="frame">
+          <figcaption>Stats · this week</figcaption>
+          <div class="phone"><div class="page page--margin page--short" data-demo="week"></div></div>
+          <div class="frame-tools"><button type="button" data-replay>Replay</button></div>
+        </figure>
+      </div>
+    </section>
+
+    <section class="screen-row" aria-labelledby="s2-h">
+      <h2 id="s2-h"><span class="pid">S2</span> Waiting on ruled lines</h2>
+      <dl class="spec">
+        <dt>Where</dt><dd>Explain simpler / Filipino-Taglish while the AI writes (today's grey shimmer); could also replace the quiz's spinner and "Getting your cards…".</dd>
+        <dt>How</dt><dd>Blank ruled lines; a line of ink is drawn across each in turn (520 ms each), then they clear and start again. It stops while off screen. Reduced motion: plain ruled lines and the label.</dd>
+      </dl>
+      <div class="frames">
+        <figure class="frame">
+          <figcaption>Today · shimmer</figcaption>
+          <div class="phone"><div class="page page--short" data-demo="loading" data-variant="shimmer"></div></div>
+        </figure>
+        <figure class="frame">
+          <figcaption>Proposed · ruled lines</figcaption>
+          <div class="phone"><div class="page page--short" data-demo="loading" data-variant="rules"></div></div>
+        </figure>
+      </div>
+    </section>
+
+    <section class="notes" id="cut">
+      <h2>Cut</h2>
+      <ul class="cut">
+        <li><strong>A page turn between Review sections</strong>: it slows reading, and every Next would animate.</li>
+        <li><strong>Stamps, confetti, "New best" bursts</strong>: off the journal world, and gamified hype (PRODUCT.md, principle 3).</li>
+        <li><strong>Right / wrong colours in the answer-sheet bubbles</strong>: a scoreboard in the middle of a quiz.</li>
+        <li><strong>Quick-check answer written out in ink</strong>: needs <code>clip-path</code> on several lines of text; R2 does the job within the budget.</li>
+        <li><strong>A separate "pile squares up" moment</strong>: folded into F4 as its last 200 ms.</li>
+      </ul>
+    </section>
+
+    <script src="motion.js"></script>
+  </body>
+</html>

@@ -92,6 +92,7 @@
   display: flex;
   gap: 2px;
   height: 12px;
+  transform-origin: left center; /* inked in from the left as Stats opens */
 }
 .days__bar i {
   display: block;

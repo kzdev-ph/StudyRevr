@@ -10,15 +10,29 @@ const WORKING = {
   filipino: 'Translating this section to Filipino/Taglish…',
 };
 
+const RULES = 5;
+
+// While a rewrite is being made: ruled lines being written on, one after another (a slow loop that stops while it is
+// off screen; blank rules with reduced motion).
 function Skeleton({ label }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return undefined;
+    const io = new IntersectionObserver(([entry]) => el.classList.toggle('is-off', !entry.isIntersecting));
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
   return (
-    <div className="skeleton" role="status" aria-live="polite">
+    <div className="skeleton" role="status" aria-live="polite" ref={ref}>
       <p className="skeleton__label">{label}</p>
-      <span className="skeleton__line" />
-      <span className="skeleton__line" />
-      <span className="skeleton__line skeleton__line--short" />
-      <span className="skeleton__line" />
-      <span className="skeleton__line skeleton__line--short" />
+      <div className="rules" aria-hidden="true">
+        {Array.from({ length: RULES }, (_, k) => (
+          <span key={k} className="rules__line">
+            <span className="rules__ink" />
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

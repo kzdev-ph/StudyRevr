@@ -88,3 +88,11 @@ export function sessionRecap(ratings, activeMs) {
   const goodEasy = ratings.filter((r) => r >= 3).length;
   return { cards: ratings.length, timeMs: Math.max(0, activeMs), goodEasyPct: ratings.length ? Math.round((goodEasy / ratings.length) * 100) : null };
 }
+
+// Where an answered card goes on screen, from the button that was pressed ({ minutes } or { days }, from the
+// scheduler's preview): back under the deck when it comes back within the day (Again, a learning step), onto the done
+// pile when it waits a day or more. Read before the answer is sent: the next card brings new buttons.
+export function comesBackToday(button) {
+  if (!button || button.days !== undefined) return false;
+  return Number(button.minutes) < 1440;
+}

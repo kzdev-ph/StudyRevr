@@ -77,3 +77,9 @@ export function lessonQuizLine(row) {
 
 // Milliseconds a timer has run, from `startedAt` (performance.now() style) to `now`, never negative.
 export const elapsed = (startedAt, now) => Math.max(0, Math.round(now - startedAt));
+
+// The answer sheet at the top of a quiz: one bubble per question, 'done' (answered), 'now' (open) or 'todo'.
+// `answered`: how many questions have an answer; `index`: the question on screen.
+export function bubbleStates(total, answered, index) {
+  return Array.from({ length: Math.max(0, total) }, (_, k) => (k < answered ? 'done' : k === index ? 'now' : 'todo'));
+}

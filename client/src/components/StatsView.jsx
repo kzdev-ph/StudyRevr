@@ -1,6 +1,8 @@
+import { useLayoutEffect, useRef } from 'react';
+import { animate, useReducedMotion } from 'motion/react';
 import { prettyTitle } from '../lib/format.js';
 import { paths } from '../lib/router.js';
-import { ACTIVITIES, cardsLine, mostActiveDay, pct, studyTime, weekRows } from '../lib/stats.js';
+import { ACTIVITIES, cardsLine, daySegments, mostActiveDay, pct, studyTime, weekRows } from '../lib/stats.js';
 
 function Swatch({ color, activity }) {
   return <span className={activity ? `swatch swatch--${activity}` : 'swatch'} style={{ '--swatch': color }} aria-hidden="true" />;
@@ -19,9 +21,35 @@ function Percent({ value }) {
   return pct(value);
 }
 
+const INK = { duration: 0.3, ease: [0.16, 1, 0.3, 1] };
+const INK_STAGGER_S = 0.04;
+
+// The week inked in, once each time Stats opens: each day's bar drawn from the left (scaleX), a day after the other.
+// A tap finishes it; reduced motion shows the bars at once.
+function useInkedBars(listRef, reduce) {
+  const runs = useRef([]);
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (!list || reduce) return undefined;
+    runs.current = [...list.querySelectorAll('.days__bar')].map((bar, k) => {
+      bar.style.transform = 'scaleX(0)'; // waiting for its turn
+      return animate(bar, { scaleX: [0, 1] }, { ...INK, delay: k * INK_STAGGER_S });
+    });
+    return () => {
+      for (const r of runs.current) r.stop();
+      runs.current = [];
+    };
+  }, [listRef, reduce]);
+  return () => {
+    for (const r of runs.current) r.complete();
+  };
+}
+
 // Study time this week, written out: one sentence with the total, the three parts, then one ruled line per day (the
 // day in the margin, a bar in the activity colours, the time written at the end), with a table view.
 function Week({ week, own }) {
+  const listRef = useRef(null);
+  const finishInk = useInkedBars(listRef, useReducedMotion());
   const rows = weekRows(week.days);
   const { totals } = week;
   const empty = totals.total_ms === 0;
@@ -58,12 +86,14 @@ function Week({ week, own }) {
               </div>
             ))}
           </dl>
-          <ul className="days" aria-label="Study time per day">
+          <ul className="days" aria-label="Study time per day" ref={listRef} onPointerDown={finishInk}>
             {rows.map((r) => (
               <li key={r.date} className={`days__row${r.total > 0 && r.total === most ? ' days__row--peak' : ''}`}>
                 <span className="days__day">{r.day}</span>
                 <span className="days__bar" aria-hidden="true">
-                  {ACTIVITIES.map((a) => (r[a.key] > 0 ? <i key={a.key} data-activity={a.key} style={{ width: `${(r[a.key] / scale) * 100}%`, backgroundColor: a.color }} /> : null))}
+                  {daySegments(r, scale).map((s) => (
+                    <i key={s.key} data-activity={s.key} style={{ width: s.width, backgroundColor: s.color }} />
+                  ))}
                 </span>
                 <span className="days__time">{r.total > 0 ? studyTime(r.total * 60_000) : <span className="muted">–<span className="visually-hidden">none</span></span>}</span>
               </li>
