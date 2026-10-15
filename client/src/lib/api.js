@@ -85,6 +85,8 @@ const quietly = (promise) => promise.catch(() => null);
 
 export const api = {
   listLessons: (signal) => request('/lessons', { signal }),
+  // admin's list: the same rows plus the quiz-answers and leak counts (quiz_options, leaks), behind the PIN
+  listLessonsWithCounts: (signal) => request('/lessons?counts=1', { signal, admin: true }),
   getLesson: (id, signal) => request(`/lessons/${id}`, { signal }),
   getStatus: (id, signal) => request(`/lessons/${id}/status`, { signal }),
   // admin only: upload, retry, delete, make cards
@@ -97,6 +99,9 @@ export const api = {
   // makes the AI wrong answers for the quiz (the retry for that step, and for lessons made before it existed)
   makeQuizOptions: (id) => request(`/lessons/${id}/quiz-options`, { method: 'POST', admin: true }),
   deleteLesson: (id) => request(`/lessons/${id}`, { method: 'DELETE', admin: true }),
+  // flashcards and quiz questions that give their answer away, and writing one card again (only before participants study it)
+  lessonLeaks: (id) => request(`/admin/lessons/${id}/leaks`, { admin: true }),
+  regenerateCard: (id) => request(`/admin/flashcards/${id}/regenerate`, { method: 'POST', admin: true }),
   // makes the shared Explain simpler and Filipino/Taglish versions of every section ahead of study day
   prepareVersions: (id) => request(`/lessons/${id}/section-versions`, { method: 'POST', admin: true }),
   simplifySection: (id) => request(`/sections/${id}/simplify`, { method: 'POST' }),

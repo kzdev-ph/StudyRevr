@@ -130,7 +130,7 @@ Do NOT include:
 - everyday words, slide or section titles, and anything the lesson does not explain well enough to define. If the lesson only names or titles a term and never says what it means, leave that term out: never define a term from your own knowledge.
 For each term:
 - "term": 1 to 4 words, written as the lesson writes it.
-- "definition": 1 or 2 plain sentences that say what the term IS (its meaning, what it does or how it works), using only what the lesson says. Never just list examples, and do not repeat the term as its own definition.
+- "definition": 1 or 2 plain sentences that say what the term IS (its meaning, what it does or how it works), using only what the lesson says. Never just list examples, and never use the term itself or a form of it in the definition (a student is shown the definition and must name the term).
 - "evidence": one sentence or phrase copied EXACTLY, word for word, from the lesson text (at most 25 words) that defines or explains the term. Copy it character for character: do not paraphrase, do not shorten with "...", do not join pieces from different places, and never use a title or heading as evidence. If you cannot find such a quote in the lesson, leave the term out.
 Give about ${targetTerms} terms (at most ${maxTerms}), most important first. Do not stop at the few most basic concepts, but never pad the list with examples or list items just to reach that number: fewer is better than weak ones. Reply {"terms":[]} if the text defines no real concepts.
 
@@ -177,8 +177,9 @@ export function flashcardsPrompt({ text, review, keyTerms = [], index, total, ta
   const system = `${LESSON_RULES}
 
 Task: write flashcards that help a student remember the important ideas of this lesson. A flashcard is a question on the front and a short answer on the back that the student must recall from memory.
-- Each card tests ONE idea the lesson explains: a concept, a purpose, a cause and effect, a process step, a characteristic, a rule, or a comparison. Prefer "why", "how" and "what is the difference" questions to yes/no questions.
-- "question": one clear question, at most 20 words, that makes sense without seeing the lesson. Do not give the answer away in the question.
+- Each card tests ONE idea the lesson explains: a concept, a purpose, a cause and effect, a process step, a characteristic, a rule, or a comparison. Ask "why", "how", "what" and "what is the difference" questions. Never a yes/no question and never an either/or question ("Is it A or B?", "...ba...?", "...o hindi?").
+- "question": one clear question, at most 20 words, that makes sense without seeing the lesson. The question must not give the answer away: it must not contain the answer or its key words, and must not use a word that already means the answer (do not ask "Why is language called dynamic?" when the answer is "because it changes").
+- The answer must say something the question does not: never just repeat the question's words as a statement.
 - "answer": short enough to recall from memory: at most 25 words, one sentence or a short phrase. Say only what the lesson says.
 - "evidence": one sentence or phrase copied EXACTLY, word for word, from the lesson text (at most 25 words) that supports the answer. Copy it character for character: do not paraphrase, do not shorten with "...", do not join pieces from different places, and never use a title or heading as evidence. If you cannot find such a quote, leave the card out.
 - No trivia: never ask about slide titles, slide or page numbers, the author, the teacher, the school, or the date of the presentation, unless the lesson itself teaches them as content.
@@ -202,28 +203,76 @@ Reply with this JSON shape:
 }
 
 // Wrong answer options for multiple-choice quiz questions made from concept flashcards. `cards`: [{ n, question,
-// answer, evidence }], where `evidence` is the verbatim lesson quote the card was checked against. The wrong answers
-// must be believable but wrong according to the lesson, and look like the right one so length and style give nothing
-// away.
+// answer, evidence, words?, language?, keep?, rejected?, problems? }], where `evidence` is the verbatim lesson quote the
+// card was checked against, `words` the right answer's length and `language` its language ('en' | 'fil'). The
+// follow-up call also passes `keep` (wrong answers that passed the checks), `rejected` ([{ text, why }]) and
+// `problems` (why the set still gave the answer away). The wrong answers must be believable but wrong according to the
+// lesson, and look like the right one so length, wording and tone give nothing away (checked in code: quiz/leaks.js).
 export function distractorsPrompt({ cards, keyTerms = [] }) {
   const system = `You help a teacher write a multiple-choice quiz from their lesson.
 
 Rules:
 1. Use ONLY the lesson content you are given: each card's question, its correct answer and a quote copied from the lesson. Do not use outside knowledge or add facts, names, dates or numbers that are not in it.
 2. A quote may come from the teacher's spoken notes for a slide (written after a line "${NOTES_LABEL}" in the lesson). Treat it as lesson content that explains that slide, not as a separate topic.
-3. Write in the language of the lesson (English, Filipino or Taglish).
+3. Write each wrong answer in the language of that card's correct answer (English, Filipino or Taglish).
 4. Reply with ONE JSON object and nothing else: no markdown, no code fences, no commentary.
 
-Task: for each card, write 3 wrong answers to its question.
-- Each wrong answer must be clearly wrong according to the lesson, but believable to a student who has not studied: reuse ideas and words from the lesson (other cards, the key terms), mix up causes and effects, swap related ideas, or reverse a relationship.
-- Make each wrong answer similar in length and style to the correct answer: same kind of phrase, same grammar, about the same number of words. Length, wording or tone must not give the right answer away.
-- Never a correct or partly correct answer, never a reworded copy of the correct answer, and the 3 must differ from each other.
+Task: for each card, write 3 wrong answers to its question. A student who has not studied must not be able to pick the right answer from how the options look.
+- Each wrong answer must directly answer THIS question and be the same kind of thing it asks for (a time or condition for "Kailan…/When…", a cause for "Bakit…/Why…", a list of the same category for "Anong uri…/What kinds…"), clearly wrong according to the lesson but believable: a related item of the same kind swapped in (another period, another field, another influence, another group, a cause given as the effect).
+- Never use another card's correct answer, copied or reworded, as a wrong answer: it plainly answers that other question, so a student matches it away.
+- Stay on the subject of the question: each wrong answer is about the same thing the question asks about, built from the lesson's own ideas. Never switch to an unrelated topic (food, buildings, prices, jobs, population) and never copy the whole question into a wrong answer: either one is ruled out at a glance.
+- Same tone and polarity as the correct answer. If the correct answer is a positive statement, every wrong answer is a positive statement too: no negations ("not", "never", "no", "hindi", "wala", "walang"), no opposites, no version that hides, prevents, limits, removes or makes harder what the correct answer says. An option that sounds negative or absurd is ruled out at a glance.
+- Make each wrong answer similar in length and style to the correct answer: same kind of phrase, same grammar, about the same number of words (each card says how many). If the correct answer is a full sentence, so is each wrong answer; if it is a short phrase or a list, so is each wrong answer.
+- If the correct answer starts with or repeats words from the question (such as "Ginagamit ito" or "Because"), let the wrong answers do the same, so the right one is not the only option that echoes the question. Do not start all 3 wrong answers with the same words unless the correct answer starts that way too.
+- Never a correct or partly correct answer, never a reworded copy of the correct answer, and the 3 must differ from each other in substance, not just one word.
 - No "all of the above", "none of the above", jokes or obviously silly options.${
     keyTerms.length ? `\n- The lesson's key terms: ${keyTerms.join('; ')}.` : ''
+  }${
+    cards.some((c) => c.rejected || c.problems)
+      ? `\n- Some cards were asked before and their wrong answers gave the right one away. For those, the card lists the rejected answers and why: write 3 new wrong answers that avoid those problems. The card's "Kept" answers (if any) passed and may be reused.`
+      : ''
   }
 
 Reply with this JSON shape, one item per card, using the card's number as "n":
 {"items":[{"n":1,"wrong":["...","...","..."]}]}`;
-  const list = cards.map((c) => `[${c.n}] Question: ${c.question}\n    Correct answer: ${c.answer}\n    From the lesson: "${c.evidence ?? ''}"`).join('\n');
+  const languageName = { en: 'English', fil: 'Filipino' };
+  const list = cards
+    .map((c) => {
+      const lines = [`[${c.n}] Question: ${c.question}`, `    Correct answer: ${c.answer}`, `    From the lesson: "${c.evidence ?? ''}"`];
+      if (c.words) lines.push(`    Write each wrong answer in about ${c.words} words${languageName[c.language] ? `, in ${languageName[c.language]}` : ''}.`);
+      if (c.keep?.length) lines.push(`    Kept: ${c.keep.map((k) => `"${k}"`).join('; ')}`);
+      if (c.rejected?.length) lines.push(`    Rejected: ${c.rejected.map((r) => `"${r.text}" (${r.why})`).join('; ')}`);
+      if (c.problems?.length) lines.push(`    Problem with the set: ${c.problems.join('; ')}`);
+      return lines.join('\n');
+    })
+    .join('\n');
   return { system, user: `<cards>\n${list}\n</cards>` };
+}
+
+// One flashcard written again because it gives its answer away (admin "Regenerate this card"). `card`: { kind, front,
+// back, evidence }; `problems`: why it was flagged (quiz/leaks.js details); `text`: the part of the lesson around its
+// evidence quote; `others`: the lesson's other cards' answers, which the new question must not contain. A concept card
+// gets a new question, answer and evidence; a term card keeps its term and gets a new definition.
+export function regenerateCardPrompt({ card, problems = [], text, others = [] }) {
+  const term = card.kind === 'term';
+  const system = `${LESSON_RULES}
+
+Task: a flashcard from this lesson gives its own answer away, so a student can answer it without having studied. Write it again.
+${
+  term
+    ? `- It is a term card: the student sees the definition and must name the term "${card.front}". Write a new "definition": 1 or 2 plain sentences that say what the term is, using only what the lesson says. Never use the term itself or a form of any of its words in the definition.`
+    : `- "question": one clear question, at most 20 words, about the same idea. It must not contain the answer or its key words, must not use a word that already means the answer, and must not be a yes/no or either/or question.
+- "answer": at most 25 words, saying something the question does not; never just the question's words as a statement.
+- "evidence": one sentence or phrase copied EXACTLY, word for word, from <lesson_text> (at most 25 words) that supports the answer.${
+        others.length ? `\n- The question must not contain any of these answers from other cards: ${others.map((o) => `"${o}"`).join('; ')}.` : ''
+      }`
+}
+
+Reply with this JSON shape:
+${term ? '{"definition":"..."}' : '{"question":"...","answer":"...","evidence":"..."}'}`;
+  const old = term ? `Term: ${card.front}\nOld definition: ${card.back}` : `Old question: ${card.front}\nOld answer: ${card.back}`;
+  return {
+    system,
+    user: `<card>\n${old}\nFrom the lesson: "${card.evidence ?? ''}"\nWhat gives it away: ${problems.join('; ') || 'the wording'}\n</card>\n\n${lessonText(text)}`,
+  };
 }

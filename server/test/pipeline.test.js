@@ -42,7 +42,7 @@ function fakeAi({ fail } = {}) {
         value = { key_points: [`Point ${n}a.`, `Point ${n}b.`] };
       } else if (label.startsWith('the quiz answer options')) {
         const numbers = [...user.matchAll(/^\[(\d+)\] Question:/gm)].map((m) => Number(m[1]));
-        value = { items: numbers.map((n) => ({ n, wrong: ['Wrong one.', 'Wrong two.', 'Wrong three.'] })) };
+        value = { items: numbers.map((n) => ({ n, wrong: ['Plants make more starch.', 'Cells store some water.', 'Light warms the leaves.'] })) };
       } else if (label.startsWith('the flashcards')) {
         value = { cards: [{ question: `What does call ${n} ask?`, answer: 'Something from the lesson.', evidence: quoteFromPrompt(user, 8) }] };
       } else {

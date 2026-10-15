@@ -43,7 +43,7 @@ export function createApp(db, config, { ai, runner, clock = () => new Date(), ra
   const requireAdmin = createAdminGuard({ pin: config.adminPin, clock: () => clock().getTime() });
 
   app.get('/api/health', (_req, res) => res.json({ ok: true, admin: Boolean(config.adminPin) }));
-  app.use('/api/admin', adminRouter({ db, clock, requireAdmin }));
+  app.use('/api/admin', adminRouter({ db, ai, clock, requireAdmin }));
   app.use('/api', participantsRouter({ db }));
   app.use('/api', sessionsRouter({ db, clock }));
   app.use('/api', statsRouter({ db, clock }));

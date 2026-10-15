@@ -14,6 +14,7 @@
     "test": "npm test -w server && npm test -w client",
     "pipeline": "npm run pipeline -w server --",
     "study": "npm run build -w client && npm run start -w server",
+    "quiz:check": "npm run quiz:check -w server --",
     "participant:delete": "npm run participant:delete -w server --",
     "restore": "npm run restore -w server --"
   },

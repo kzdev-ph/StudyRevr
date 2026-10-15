@@ -17,7 +17,7 @@ describe('quiz API', () => {
   let now;
   let ai;
 
-  const start = async (reply = (cards) => ({ items: cards.map((n) => ({ n, wrong: [`Wrong ${n}a`, `Wrong ${n}b`, `Wrong ${n}c`] })) })) => {
+  const start = async (reply = (cards) => ({ items: cards.map((n) => ({ n, wrong: [`Alpha topic ${n}`, `Beta topic ${n}`, `Gamma topic ${n}`] })) })) => {
     ai = {
       calls: [],
       async generateJSON({ schema, label, user }) {
@@ -38,11 +38,11 @@ describe('quiz API', () => {
   const later = (ms) => { now = new Date(Date.parse(now) + ms).toISOString(); };
 
   const addLesson = (title, status = 'ready') =>
-    Number(db.prepare("INSERT INTO lessons (title, filename, raw_text, word_count, status) VALUES (?, ?, 'text', 200, ?)").run(title, `${title}.pptx`, status).lastInsertRowid);
+    Number(db.prepare("INSERT INTO lessons (title, filename, raw_text, word_count, status) VALUES (?, ?, 'The topic: alpha, beta and gamma.', 200, ?)").run(title, `${title}.pptx`, status).lastInsertRowid);
   const addCards = (lessonId, n, kind = 'concept') => {
     const insert = db.prepare("INSERT INTO flashcards (lesson_id, kind, front, back, evidence, position) VALUES (?, ?, ?, ?, ?, ?)");
     return Array.from({ length: n }, (_, i) =>
-      Number(insert.run(lessonId, kind, kind === 'term' ? `Term ${i + 1}` : `Question ${i + 1}?`, `Answer ${kind} ${i + 1}.`, `quote ${kind} ${i + 1}`, i + 1).lastInsertRowid),
+      Number(insert.run(lessonId, kind, kind === 'term' ? `Term ${i + 1}` : `Question ${i + 1} about the topic?`, `Topic ${kind} n${i + 1}.`, `quote ${kind} ${i + 1}`, i + 1).lastInsertRowid),
     );
   };
   const flashcardState = () => db.prepare('SELECT id, state, ease, interval, due_at, reps, lapses, step FROM flashcards ORDER BY id').all();
@@ -207,7 +207,7 @@ describe('quiz API', () => {
     const gate = new Promise((resolve) => { release = resolve; });
     await start(async (ns) => {
       await gate;
-      return { items: ns.map((n) => ({ n, wrong: ['x', 'y', 'z'] })) };
+      return { items: ns.map((n) => ({ n, wrong: [`Alpha topic ${n}`, `Beta topic ${n}`, `Gamma topic ${n}`] })) };
     });
     const id = addLesson('Inquiry');
     addCards(id, 5);

@@ -82,12 +82,17 @@ export async function startStudyApp({ now = '2026-10-05T04:00:00.000Z', adminPin
 }
 
 // Test data straight into the database: a ready lesson with `n` concept flashcards. -> { lessonId, cards: [ids] }
+// Every card is about "the topic", and so are the fake wrong answers, so the quiz's leak checks (quiz/leaks.js) let
+// them through.
+const ANSWER_WORDS = 'rivers mountains forests deserts islands valleys oceans glaciers meadows canyons volcanoes beaches lakes plains swamps caves reefs dunes cliffs bays'.split(' ');
+const SEED_TEXT = 'The topic of this lesson: alpha, beta and gamma, with a right and a wrong answer.';
 export function seedLesson(db, { title = 'Inquiry', n = 4, created = '2026-10-01T00:00:00.000Z' } = {}) {
   const lessonId = Number(
-    db.prepare("INSERT INTO lessons (title, filename, raw_text, word_count, status, created_at) VALUES (?, ?, 'text', 200, 'ready', ?)").run(title, `${title}.pptx`, created).lastInsertRowid,
+    db.prepare("INSERT INTO lessons (title, filename, raw_text, word_count, status, created_at) VALUES (?, ?, ?, 200, 'ready', ?)").run(title, `${title}.pptx`, SEED_TEXT, created).lastInsertRowid,
   );
   const insert = db.prepare("INSERT INTO flashcards (lesson_id, kind, front, back, evidence, position) VALUES (?, 'concept', ?, ?, 'quote from the lesson', ?)");
-  const cards = Array.from({ length: n }, (_, i) => Number(insert.run(lessonId, `Q${lessonId}.${i + 1}?`, `Answer ${i + 1} of ${title}.`, i + 1).lastInsertRowid));
+  // each answer has words of its own: two answers that differ only in a number are one answer to the leak checks
+  const cards = Array.from({ length: n }, (_, i) => Number(insert.run(lessonId, `Q${lessonId}.${i + 1}: what is said about the topic?`, `Topic answer ${i + 1} of ${title}: ${ANSWER_WORDS[(2 * i) % ANSWER_WORDS.length]} ${ANSWER_WORDS[(2 * i + 1) % ANSWER_WORDS.length]}.`, i + 1).lastInsertRowid));
   db.prepare("INSERT INTO sections (lesson_id, position, title, content) VALUES (?, 0, 'One', 'c'), (?, 1, 'Two', 'c')").run(lessonId, lessonId);
   return { lessonId, cards };
 }

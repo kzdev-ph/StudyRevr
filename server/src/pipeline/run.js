@@ -138,10 +138,11 @@ export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUN
       },
     },
     quiz_options: {
-      // Concept cards still without wrong answers; none (or no concept cards) means nothing to do.
-      saved: () => cardsNeedingDistractors(db, lessonId).length === 0,
+      // Concept cards still without wrong answers, or whose saved ones give the answer away (quiz/leaks.js); none (or
+      // no concept cards) means nothing to do.
+      saved: () => cardsNeedingDistractors(db, lessonId, { includeFailing: true }).length === 0,
       async run() {
-        const { error } = await ensureDistractors({ db, ai, lessonId, concurrency, log, onProgress: progress });
+        const { error } = await ensureDistractors({ db, ai, lessonId, includeFailing: true, concurrency, log, onProgress: progress });
         // batches that worked are saved, so a retry only asks for the rest
         if (error) throw new HttpError(502, `The quiz answer options couldn’t be made: ${error}`);
       },

@@ -25,6 +25,10 @@ const parseId = (value, what) => {
 const lessonCards = (db, lessonId) =>
   db.prepare('SELECT id, kind, front, back, evidence FROM flashcards WHERE lesson_id = ? ORDER BY position, id').all(lessonId);
 const keyTermNames = (db, lessonId) => db.prepare('SELECT term FROM key_terms WHERE lesson_id = ? ORDER BY id').all(lessonId).map((t) => t.term);
+const lessonText = (db, lessonId) => db.prepare('SELECT raw_text FROM lessons WHERE id = ?').get(lessonId)?.raw_text ?? '';
+// What the quiz builder needs besides the cards: saved wrong answers, other key terms and the lesson text (for the
+// leak checks that skip questions giving their answer away; see quiz/leaks.js).
+const buildOptions = (db, lessonId) => ({ distractors: loadDistractors(db, lessonId), extraTerms: keyTermNames(db, lessonId), lessonText: lessonText(db, lessonId) });
 
 // Mock quiz: questions built from the lesson's flashcards, graded and logged one answer at a time. Mounted at /api.
 // Attempts are per participant (X-Participant): each sees and answers only their own.
@@ -59,7 +63,7 @@ export function quizRouter({ db, ai, clock = () => new Date(), random = Math.ran
           status: lesson.status,
           cards: cards.length,
           making_cards: job?.stage === 'flashcards' && ['queued', 'running'].includes(job.status),
-          questions: Math.min(QUIZ_LENGTH, usableCount(cards, { extraTerms: keyTermNames(db, lesson.id) })),
+          questions: Math.min(QUIZ_LENGTH, usableCount(cards, buildOptions(db, lesson.id))),
           attempts: s?.attempts ?? 0,
           best: s?.best ?? null,
           last_taken_at: s?.last_taken_at ?? null,
@@ -114,7 +118,7 @@ export function quizRouter({ db, ai, clock = () => new Date(), random = Math.ran
         // another start may have finished while the wrong answers were being made
         const raced = findOpenAttempt(db, lesson.id, clock(), participantId);
         if (raced) return res.json(resumed(raced));
-        questions = buildQuiz({ cards, distractors: loadDistractors(db, lesson.id), extraTerms: keyTermNames(db, lesson.id), random });
+        questions = buildQuiz({ cards, ...buildOptions(db, lesson.id), random });
         if (!questions.length) throw new HttpError(409, NEEDS_TWO);
         const notes = [];
         if (questions.length < QUIZ_LENGTH) notes.push(`This lesson supports ${questions.length} ${questions.length === 1 ? 'question' : 'questions'}.`);

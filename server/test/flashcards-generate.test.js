@@ -153,6 +153,23 @@ describe('concept cards (mocked AI)', () => {
     assert.deepEqual(drops.map((d) => d.reason), ['answer too long to recall', 'no evidence quote', 'no evidence quote', 'evidence is only the term or a title']);
   });
 
+  it('drops cards that give their own answer away (English and Filipino), before the evidence check', async () => {
+    const [chunk] = chunkLesson(LESSON);
+    const ai = fakeAi(() => ({
+      cards: [
+        concept('Why does random sampling reduce bias in the results?', 'It reduces bias in the results.', 'It reduces bias in the results of the study.'), // g
+        concept('Is a hypothesis testable?', 'Yes, data can prove it wrong.', 'a good hypothesis can be proven wrong by data'), // i
+        concept('Nagbabago ba ang wika?', 'Oo, kasabay ng kultura.', 'x'), // i (Filipino)
+        concept('Paano nagbabago ang wika sa kultura?', 'Nagbabago ang wika sa kultura.', 'x'), // g / k (Filipino)
+        concept('Why sample at random?', 'It reduces bias.', 'It reduces bias in the results of the study.'),
+      ],
+    }));
+    const drops = [];
+    const cards = await generateConceptCards({ ai, chunks: [chunk], target: 5, onDrop: (d) => drops.push(d) });
+    assert.deepEqual(cards.map((c) => c.front), ['Why sample at random?']);
+    assert.deepEqual(drops.map((d) => /^gives its answer away \((\w):/.exec(d.reason)?.[1]), ['g', 'i', 'i', 'g']);
+  });
+
   it('asks each chunk for its share of the target, by length', async () => {
     const ai = fakeAi(() => ({ cards: [] }));
     await generateConceptCards({ ai, chunks, target: 12 });
@@ -199,6 +216,21 @@ describe('the whole set', () => {
     assert.match(user, /<review>|<lesson_text>/);
   });
 
+  it('drops a concept card whose question holds another card’s answer', async () => {
+    const chunks = chunkLesson(LESSON);
+    const ai = fakeAi(() => ({
+      cards: [
+        concept('What does random sampling reduce?', 'Bias in the results of the study.', 'It reduces bias in the results of the study.'),
+        concept('How does sampling lower bias in the results of the study?', 'Every member gets an equal chance.', 'Random sampling gives every member of the population an equal chance to be chosen.'),
+        concept('Why must a hypothesis be testable?', 'So data can prove it wrong.', 'a good hypothesis can be proven wrong by data'),
+      ],
+    }));
+    const drops = [];
+    const cards = await generateFlashcards({ ai, chunks, lessonText: LESSON, wordCount: 300, maxCards: 30, onDrop: (d) => drops.push(d) });
+    assert.deepEqual(cards.map((c) => c.front), ['What does random sampling reduce?', 'Why must a hypothesis be testable?']);
+    assert.match(drops.find((d) => d.front.startsWith('How does sampling')).reason, /gives another card's answer away/);
+  });
+
   it('term cards take at most half, unless there are too few concept cards to fill the set', async () => {
     const chunks = chunkLesson(LESSON);
     const names = ['Ant', 'Bee', 'Cat', 'Dog', 'Eel', 'Fox', 'Gnu', 'Hen'];
@@ -232,6 +264,9 @@ describe('flashcards prompt', () => {
     assert.match(system, /never ask about slide titles, slide or page numbers, the author/);
     assert.match(system, /Give about 7 cards/);
     assert.match(system, /already have their own "term -> definition" cards: Hypothesis/);
+    assert.match(system, /Never a yes\/no question and never an either\/or question/);
+    assert.match(system, /must not contain the answer or its key words/);
+    assert.match(system, /never just repeat the question's words/);
     assert.match(user, /^This is part 1 of 2 of the lesson\.\n\n<lesson_text>\nSlide text\n<\/lesson_text>$/);
   });
 

@@ -29,7 +29,7 @@ function LessonsSection({ participant }) {
 
   const load = useCallback(async (signal) => {
     try {
-      setLessons((await api.listLessons(signal)).lessons);
+      setLessons((await api.listLessonsWithCounts(signal)).lessons);
     } catch (err) {
       if (err.name !== 'AbortError') setProblem(err.message);
     }
@@ -107,7 +107,7 @@ function LessonsSection({ participant }) {
       {lessons?.length > 0 && (
         <ul className="lessons">
           {lessons.map((lesson) => (
-            <LessonRow key={lesson.id} lesson={lesson} onDelete={remove} onMakeQuizOptions={makeQuizOptions} onPrepareVersions={prepareVersions} />
+            <LessonRow key={lesson.id} lesson={lesson} onDelete={remove} onMakeQuizOptions={makeQuizOptions} onPrepareVersions={prepareVersions} onCardsChanged={load} />
           ))}
         </ul>
       )}

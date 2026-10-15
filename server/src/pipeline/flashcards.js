@@ -2,16 +2,19 @@ import { z } from 'zod';
 import { estimateTokens } from '../ai/chunk.js';
 import { mapLimit } from '../ai/pool.js';
 import { flashcardsPrompt } from '../ai/prompts.js';
+import { cardLeaks } from '../quiz/leaks.js';
 import { checkEvidence, comparable } from './evidence.js';
 import { singular } from './terms.js';
 
 // Flashcards for one lesson: "term -> definition" cards made straight from the (already grounded) key terms, plus
 // "question -> answer" concept cards the AI writes per chunk of lesson text. Every card keeps a verbatim evidence
-// quote from the lesson, checked in code the same way as key terms; a card that fails is dropped and reported.
+// quote from the lesson, checked in code the same way as key terms; a card that fails is dropped and reported. So is
+// a concept card that gives its own answer away (rules g, i, k in quiz/leaks.js: the question holds the answer, a
+// yes/no or either/or question, the answer only restates the question) or another card's (rule j).
 
 export const ANSWER_WORDS = 25; // what the prompt asks for
-const MAX_ANSWER_WORDS = 40; // past this a "card" is a paragraph, not something to recall
-const MAX_QUESTION_WORDS = 40;
+export const MAX_ANSWER_WORDS = 40; // past this a "card" is a paragraph, not something to recall
+export const MAX_QUESTION_WORDS = 40;
 const WORDS_PER_CARD = 50;
 const MIN_CARDS = 5;
 const EXTRA = 1.25; // ask for a few more concept cards than needed: some are dropped or merged
@@ -121,10 +124,13 @@ function reviewFor(chunk, sections, single) {
   return estimateTokens(text) <= Math.max(600, chunk.tokens / 2) ? text : mine.map((s) => `- ${s.title}`).join('\n');
 }
 
+// The first of rules g, i, k a concept card breaks, or undefined.
+const givesAnswerAway = (card) => cardLeaks({ kind: 'concept', ...card }).find((p) => ['g', 'i', 'k'].includes(p.rule));
+
 const partLabel = (i, n) => `the flashcards${n > 1 ? ` (part ${i + 1} of ${n})` : ''}`;
 
 // One AI call per chunk (in parallel, up to `concurrency`), each asked for its share of `target` cards by length.
-// -> concept cards in lesson order; each one passed the evidence and length checks against its own chunk.
+// -> concept cards in lesson order; each one passed the evidence, length and leak checks against its own chunk.
 export async function generateConceptCards({ ai, chunks, sections = [], keyTerms = [], target, concurrency = 1, onProgress = () => {}, onDrop = () => {} }) {
   if (target <= 0 || !chunks.length) {
     onProgress({ done: 0, total: 0 });
@@ -155,8 +161,10 @@ export async function generateConceptCards({ ai, chunks, sections = [], keyTerms
     const cards = [];
     for (const c of out.cards) {
       const reject = (reason) => onDrop({ front: c.question, reason });
+      const leak = givesAnswerAway({ front: c.question, back: c.answer });
       if (wordList(c.answer).length > MAX_ANSWER_WORDS) reject('answer too long to recall');
       else if (wordList(c.question).length > MAX_QUESTION_WORDS) reject('question too long');
+      else if (leak) reject(`gives its answer away (${leak.rule}: ${leak.detail})`);
       else {
         const check = checkEvidence({ term: c.question, evidence: c.evidence, sourceKey });
         if (check.ok) cards.push({ kind: 'concept', front: c.question, back: c.answer, evidence: check.evidence });
@@ -201,7 +209,13 @@ export async function generateFlashcards({ ai, chunks, lessonText, keyTerms = []
   const { kept, dropped } = dedupeCards([...terms, ...concepts]);
   for (const { card, duplicateOf } of dropped) onDrop({ front: card.front, reason: `duplicate of "${duplicateOf.front}"` });
   const keptTerms = kept.filter((c) => c.kind === 'term');
-  const keptConcepts = kept.filter((c) => c.kind === 'concept');
+  // a question that holds another card's answer gives that card away (rule j in quiz/leaks.js)
+  const keptConcepts = kept.filter((c) => {
+    if (c.kind !== 'concept') return false;
+    const leak = cardLeaks(c, kept).find((p) => p.rule === 'j');
+    if (leak) onDrop({ front: c.front, reason: `gives another card's answer away (${leak.detail})` });
+    return !leak;
+  });
   // fill the target: terms up to their share, concepts next, then more terms if concepts ran short
   const useTerms = Math.min(keptTerms.length, Math.max(termShare, target - keptConcepts.length));
   const useConcepts = Math.min(keptConcepts.length, target - useTerms);

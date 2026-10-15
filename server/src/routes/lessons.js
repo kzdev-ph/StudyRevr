@@ -6,6 +6,8 @@ import { assertSignature, createUpload, fileExtension } from '../middleware/uplo
 import { extractText } from '../services/extract.js';
 import { getJobStatus, queueJob } from '../pipeline/jobs.js';
 import { cardsNeedingDistractors } from '../quiz/distractors.js';
+import { CARD_LEAK_RULES, cardLeaks } from '../quiz/leaks.js';
+import { hasRecords, participantRecords } from '../services/lesson-records.js';
 import { missingVersions, versionCounts } from '../services/prepare-versions.js';
 import { parseFilipino, parseSimple } from '../services/section-versions.js';
 import { getBoolSetting } from '../services/settings.js';
@@ -95,20 +97,23 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin) {
     });
   });
 
-  // `quiz_options`: concept cards still without AI wrong answers (`missing`) and, when the last job was making them,
-  // its `status` (queued | running | done | failed) and `error`. Admin uses it to show progress and a retry button.
-  // `section_versions`: the shared Explain simpler / Filipino-Taglish versions still missing (`missing` of `total`, two
-  // per section) and, when the last job was making them ("Prepare"), its `status`, `error` and `progress`.
-  router.get('/', (_req, res) => {
-    const missing = new Map(
-      db
-        .prepare(
-          `SELECT f.lesson_id, COUNT(*) AS missing FROM flashcards f LEFT JOIN quiz_distractors d ON d.flashcard_id = f.id
-           WHERE f.kind = 'concept' AND d.flashcard_id IS NULL GROUP BY f.lesson_id`,
-        )
-        .all()
-        .map((r) => [r.lesson_id, r.missing]),
-    );
+  // `quiz_options`: concept cards still without AI wrong answers (`missing`), those whose saved ones give the answer
+  // away (`weak`, see quiz/leaks.js; the quiz asks them as Yes/No or leaves them out until remade) and, when the last
+  // job was making them, its `status` (queued | running | done | failed) and `error`. Admin uses it to show progress
+  // and a retry button. `leaks.cards`: flashcards that give their answer away (rules g-k), listed by
+  // GET /api/admin/lessons/:id/leaks. Both run the leak checks over every card, so they are only sent to admin's list
+  // (`?counts=1`, behind the PIN), not to the students' list. `section_versions`: the shared Explain simpler /
+  // Filipino-Taglish versions still missing (`missing` of `total`, two per section) and, when the last job was making
+  // them ("Prepare"), its `status`, `error` and `progress`.
+  const quizOptionCounts = (lessonId) => {
+    const missing = cardsNeedingDistractors(db, lessonId).length;
+    return { missing, weak: cardsNeedingDistractors(db, lessonId, { includeFailing: true }).length - missing };
+  };
+  const leakyCards = (lessonId) => {
+    const cards = db.prepare('SELECT id, kind, front, back FROM flashcards WHERE lesson_id = ?').all(lessonId);
+    return cards.filter((c) => cardLeaks(c, cards).some((p) => CARD_LEAK_RULES.includes(p.rule))).length;
+  };
+  const listLessons = (res, counts) => {
     const versions = versionCounts(db);
     const lessons = db.prepare(`SELECT ${SUMMARY_COLUMNS} FROM lessons ORDER BY created_at DESC, id DESC`).all();
     res.json({
@@ -118,7 +123,10 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin) {
         const preparing = job?.stage === 'section_versions';
         return {
           ...lesson,
-          quiz_options: { missing: missing.get(lesson.id) ?? 0, status: own ? job.status : null, error: own ? job.error : null },
+          ...(counts && {
+            quiz_options: { ...quizOptionCounts(lesson.id), status: own ? job.status : null, error: own ? job.error : null },
+            leaks: { cards: leakyCards(lesson.id) },
+          }),
           section_versions: {
             ...(versions.get(lesson.id) ?? { missing: 0, total: 0 }),
             status: preparing ? job.status : null,
@@ -128,6 +136,11 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin) {
         };
       }),
     });
+  };
+  // ?counts=1 (admin's list) goes through the PIN check, lockout included
+  router.get('/', (req, res, next) => {
+    if (req.query.counts !== '1') return listLessons(res, false);
+    return requireAdmin(req, res, (err) => (err ? next(err) : listLessons(res, true)));
   });
 
   // review_progress is the participant's own, or null when no participant is sent (the admin's lesson list)
@@ -201,7 +214,8 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin) {
   });
 
   // Makes the AI wrong answers for the quiz: the retry for a failed quiz_options stage, and the way to fill them in
-  // for a lesson made before that stage existed. The lesson stays readable while it runs.
+  // for a lesson made before that stage existed, and the way to remake saved ones that give the answer away. The
+  // lesson stays readable while it runs.
   router.post('/:id/quiz-options', requireAdmin, (req, res) => {
     const id = parseId(req);
     const lesson = db.prepare('SELECT status FROM lessons WHERE id = ?').get(id);
@@ -210,7 +224,7 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin) {
     if (lesson.status === 'failed') throw new HttpError(409, 'Retry this lesson first; its quiz answer options are made when it finishes.');
     const { job } = getJobStatus(db, id);
     if (job && ['queued', 'running'].includes(job.status)) throw new HttpError(409, 'This lesson is already being worked on.');
-    if (!cardsNeedingDistractors(db, id).length) throw new HttpError(409, 'This lesson has no flashcards that still need quiz answer options.');
+    if (!cardsNeedingDistractors(db, id, { includeFailing: true }).length) throw new HttpError(409, 'This lesson has no flashcards that still need quiz answer options.');
     db.transaction(() => queueJob(db, id, { stage: 'quiz_options', keepLesson: true }))();
     runner.enqueue(id);
     res.status(202).json(getJobStatus(db, id));
@@ -232,26 +246,13 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin) {
     res.status(202).json(getJobStatus(db, id));
   });
 
-  // What other participants have recorded on a lesson (P00, the researcher's test data, doesn't count). Cards, quiz
-  // attempts and their answers are deleted with the lesson; study sessions and events stay but lose their lesson.
-  const participantRecords = (lessonId) => {
-    const count = (from) => db.prepare(`SELECT COUNT(*) AS n FROM ${from} AND p.code <> 'P00'`).get(lessonId).n;
-    return {
-      flashcard_answers: count('flashcard_reviews r JOIN flashcards f ON f.id = r.flashcard_id JOIN participants p ON p.id = r.participant_id WHERE f.lesson_id = ?'),
-      quiz_attempts: count('quiz_attempts a JOIN participants p ON p.id = a.participant_id WHERE a.lesson_id = ?'),
-      quiz_answers: count('quiz_answers qa JOIN quiz_attempts a ON a.id = qa.attempt_id JOIN participants p ON p.id = a.participant_id WHERE a.lesson_id = ?'),
-      sessions: count('study_sessions s JOIN participants p ON p.id = s.participant_id WHERE s.lesson_id = ?'),
-      events: count('events e JOIN participants p ON p.id = e.participant_id WHERE e.lesson_id = ?'),
-    };
-  };
-
   // A lesson that participants have studied can't be deleted: it would take their answers and quiz attempts with it
   // and cut their sessions off from the lesson, which the research export needs.
   router.delete('/:id', requireAdmin, (req, res) => {
     const id = parseId(req);
     if (!db.prepare('SELECT 1 FROM lessons WHERE id = ?').get(id)) throw new HttpError(404, 'Lesson not found.');
-    const records = participantRecords(id);
-    if (Object.values(records).some((n) => n > 0)) {
+    const records = participantRecords(db, id);
+    if (hasRecords(records)) {
       const removed = [
         records.flashcard_answers && plural(records.flashcard_answers, 'flashcard answer'),
         records.quiz_attempts && `${plural(records.quiz_attempts, 'quiz attempt')} (${plural(records.quiz_answers, 'quiz answer')})`,

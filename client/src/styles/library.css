@@ -127,6 +127,31 @@
   font-size: 0.875rem;
   overflow-wrap: anywhere;
 }
+/* admin: the cards that give their answer away, one row each */
+.lesson__leaks {
+  flex: 1 0 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lesson__leaks .lesson__extra {
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.lesson__leak-card {
+  flex: 1 1 14rem;
+  color: var(--ink-2);
+  font-size: 0.875rem;
+}
+.lesson__leak-card p {
+  margin: 0;
+}
+.lesson__leak-card p + p {
+  margin-top: 2px;
+}
+.lesson__leak-error {
+  color: var(--danger);
+}
 .lesson__extra--failed {
   margin-bottom: 12px;
   padding: 10px 12px;

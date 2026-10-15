@@ -25,6 +25,12 @@ describe('quizOptionsNotice (admin lesson row)', () => {
     assert.equal(n.state, 'missing');
     assert.equal(n.action, 'Make quiz answers');
   });
+  it('offers to remake the answer options that are kept from students (asked as Yes/No or left out)', () => {
+    const n = quizOptionsNotice(lesson({ missing: 0, weak: 2, status: 'done', error: null }));
+    assert.deepEqual([n.state, n.title, n.action], ['missing', '2 quiz questions are skipped or changed to keep answers hidden.', 'Remake quiz answers']);
+    assert.equal(quizOptionsNotice(lesson({ missing: 0, weak: 1, status: null })).title, '1 quiz question is skipped or changed to keep answers hidden.');
+    assert.equal(quizOptionsNotice(lesson({ missing: 0, weak: 1, status: 'failed', error: 'x' })).action, 'Retry quiz answers');
+  });
   it('stays quiet while the lesson itself is processing or failed', () => {
     assert.equal(quizOptionsNotice(lesson({ missing: 4, status: 'failed', error: 'x' }, 'processing')), null);
     assert.equal(quizOptionsNotice(lesson({ missing: 4, status: 'failed', error: 'x' }, 'failed')), null);

@@ -9,6 +9,7 @@
     "start": "node src/index.js",
     "test": "node --import ./test/setup.js --test --test-timeout=10000 \"test/**/*.test.js\"",
     "pipeline": "node scripts/run-pipeline.js",
+    "quiz:check": "node scripts/quiz-check.js",
     "participant:delete": "node scripts/delete-participant.js",
     "restore": "node scripts/restore.js"
   },
