@@ -1,8 +1,8 @@
 /* Mock Quiz tab: a test sheet with a question, its options and feedback, and the results. The question is written on
    the page; its options are ruled lines with their keys (1-4) in the margin. Right answers use ok and the
-   highlighter, wrong ones danger, always with an icon and a word (the word is read out on the option and shown in the
+   highlighter, wrong ones quiet ink (nothing is red), always with an icon and a word (the word is read out on the option and shown in the
    feedback below, so the option itself never changes size when it is marked). Once saved, an answer is marked in pen:
-   a loop round the chosen number (accent), a tick on the right answer (ok), a line through a wrong one (danger). */
+   a loop round the chosen number (accent), a tick on the right answer (ok), a line through a wrong one (ink-2). */
 
 .quiz-counter {
   color: var(--ink-2);
@@ -85,7 +85,7 @@
   top: 0.72em;
   height: 2px;
   border-radius: 1px;
-  background: var(--danger);
+  background: var(--ink-2);
   rotate: -1.5deg;
   transform-origin: left center;
   pointer-events: none;
@@ -215,7 +215,7 @@
 .quiz-opt--wrong .quiz-opt__text,
 .quiz-opt--wrong .quiz-opt__mark,
 .quiz-opt--wrong .quiz-opt__key {
-  color: var(--danger);
+  color: var(--ink-2);
 }
 .quiz-opt--other {
   opacity: 0.6;
@@ -245,7 +245,7 @@
   border-color: var(--ok);
 }
 .quiz-opts--tf .quiz-opt--wrong {
-  border-color: var(--danger);
+  border-color: var(--ink-2);
 }
 
 .quiz-feedback {
@@ -266,7 +266,7 @@
   color: var(--ok);
 }
 .quiz-feedback--wrong .quiz-feedback__verdict {
-  color: var(--danger);
+  color: var(--ink-2);
 }
 .quiz-feedback__answer {
   font-family: var(--font-read);
@@ -347,7 +347,7 @@
   font-weight: 700;
 }
 .quiz-missed__yours {
-  color: var(--danger);
+  color: var(--ink-2);
 }
 .quiz-missed__right {
   color: var(--ok);

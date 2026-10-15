@@ -368,18 +368,32 @@
 .flashcard__face--back {
   transform: rotateY(180deg);
 }
-/* the fold shadow while the card turns, darkest when it stands on its edge (the --card-shadow ink, so it darkens the
-   card in both themes) */
+/* the fold shadow while the card turns, darkest when it stands on its edge. It darkens the card in both themes, so it uses
+   the dark ink in light and the desk (the darkest surface) in dark, switched the way tokens.css switches themes. */
 .flashcard__shade {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: linear-gradient(90deg, transparent, rgb(28 29 34));
+  background: linear-gradient(90deg, transparent, var(--ink));
   opacity: 0;
   pointer-events: none;
 }
 .flashcard__shade--back {
-  background: linear-gradient(270deg, transparent, rgb(28 29 34));
+  background: linear-gradient(270deg, transparent, var(--ink));
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .flashcard__shade {
+    background: linear-gradient(90deg, transparent, var(--desk));
+  }
+  :root:not([data-theme='light']) .flashcard__shade--back {
+    background: linear-gradient(270deg, transparent, var(--desk));
+  }
+}
+:root[data-theme='dark'] .flashcard__shade {
+  background: linear-gradient(90deg, transparent, var(--desk));
+}
+:root[data-theme='dark'] .flashcard__shade--back {
+  background: linear-gradient(270deg, transparent, var(--desk));
 }
 .flashcard--flat {
   display: grid;
@@ -528,10 +542,10 @@
   font-variant-numeric: tabular-nums;
 }
 .rate__btn--again {
-  border-color: var(--danger);
+  border-color: var(--learn);
 }
 .rate__btn--again .rate__name {
-  color: var(--danger);
+  color: var(--learn);
 }
 .rate__btn--hard {
   border-color: var(--ink-2);
@@ -549,7 +563,7 @@
   color: var(--accent);
 }
 .rate__btn--again:not(:disabled):hover {
-  background: var(--danger-wash);
+  background: var(--warn-wash);
 }
 .rate__btn--hard:not(:disabled):hover {
   background: var(--paper);

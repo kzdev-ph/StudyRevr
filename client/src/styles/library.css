@@ -198,8 +198,8 @@
   color: var(--accent);
 }
 .chip--failed {
-  background: var(--danger-wash);
-  color: var(--danger);
+  background: var(--warn-wash);
+  color: var(--warn);
 }
 
 /* processing */
@@ -261,8 +261,8 @@
   color: var(--paper);
 }
 .step--failed .step__mark {
-  background: var(--danger);
-  border-color: var(--danger);
+  background: var(--ink);
+  border-color: var(--ink);
   color: var(--paper);
 }
 

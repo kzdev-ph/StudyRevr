@@ -66,7 +66,7 @@
   color: var(--ink-2);
 }
 .field__input[aria-invalid='true'] {
-  border-color: var(--danger);
+  border-color: var(--ink);
 }
 
 .header__end {

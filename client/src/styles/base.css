@@ -274,13 +274,14 @@ p .link-btn {
   border: 1px solid;
   font-size: 0.9375rem;
 }
+/* not red: a heavy ink outline and the alert icon set an error apart from the quiet info notice and the amber warning */
 .notice--error {
-  background: var(--danger-wash);
-  border-color: var(--danger);
+  background: var(--sheet);
+  border-color: var(--ink);
   color: var(--ink);
 }
 .notice--error .notice__icon {
-  color: var(--danger);
+  color: var(--ink);
 }
 .notice--warn {
   background: var(--warn-wash);
