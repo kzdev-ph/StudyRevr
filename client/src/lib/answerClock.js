@@ -3,9 +3,12 @@
 //
 // The rule: the clock starts when the question or card is on screen and usable (its entrance has finished or was
 // skipped, the first frame showing it was painted, or the student's first tap or key, whichever comes first), pauses
-// while a flashcard turns over, and stops at the answer. Animation is never counted, with motion on or reduced, so a
-// student's motion setting never changes their numbers. Marks that play after an answer belong to the old question
-// and never touch the next clock.
+// while a flashcard turns over and while the app is hidden (a locked phone, another app, another tab), and stops at the
+// answer. Animation is never counted, with motion on or reduced, so a student's motion setting never changes their
+// numbers. Marks that play after an answer belong to the old question and never touch the next clock.
+//
+// The clock runs only while no pause reason is held ('flip' and 'hidden' are independent: the card finishing its turn
+// while the app is hidden does not start it).
 //
 //   idle -> show() -> waiting -> usable(token) | input() -> running <-> paused (pause / resume) -> stop() -> stopped
 export function createAnswerClock(now) {
@@ -13,8 +16,13 @@ export function createAnswerClock(now) {
   let token = 0;
   let acc = 0; // ms counted before the current run
   let since = 0; // when the current run began
+  const holds = new Set(); // why it is paused
 
   const run = () => {
+    if (holds.size) {
+      state = 'paused';
+      return;
+    }
     state = 'running';
     since = now();
   };
@@ -25,10 +33,12 @@ export function createAnswerClock(now) {
       return state;
     },
     // A new question or card is going on screen. Returns its token: a late "usable" signal for an earlier one (the
-    // last frame of a question already answered, a paint scheduled before Next) is ignored.
+    // last frame of a question already answered, a paint scheduled before Next) is ignored. The previous card's turn
+    // is over with it; a hidden app stays hidden.
     show() {
       token += 1;
       acc = 0;
+      holds.delete('flip');
       state = 'waiting';
       return token;
     },
@@ -42,12 +52,14 @@ export function createAnswerClock(now) {
     input() {
       if (state === 'waiting') run();
     },
-    pause() {
+    pause(reason = 'flip') {
+      holds.add(reason);
       if (state !== 'running') return;
       acc += now() - since;
       state = 'paused';
     },
-    resume() {
+    resume(reason = 'flip') {
+      holds.delete(reason);
       if (state === 'paused') run();
     },
     read,

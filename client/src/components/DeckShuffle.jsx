@@ -5,6 +5,7 @@ import { riffleFrames, shufflePlan } from '../lib/paper.js';
 const FADE_MS = 450;
 const CARDS = 5;
 const STAGGER_S = 0.03;
+const OWN_KEYS = new Set(['A', 'BUTTON', 'SUMMARY', 'INPUT', 'SELECT', 'TEXTAREA']); // a focused control keeps Enter / Space
 
 // The deck coming out as a flashcard deck starts: the cards split left and right and riffle back into one pile, 3 or
 // 4 times (picked at random each time: 1.8 or 2.4 s). The order of the cards is already set by the scheduler
@@ -15,6 +16,7 @@ export default function DeckShuffle({ onDone }) {
   const reduce = useReducedMotion();
   const [plan] = useState(() => shufflePlan());
   const done = useRef(false);
+  const box = useRef(null);
   const finish = useRef(onDone);
   finish.current = onDone;
 
@@ -29,11 +31,18 @@ export default function DeckShuffle({ onDone }) {
     return () => clearTimeout(timer);
   }, [reduce, plan]);
 
-  // Enter, Space or Escape skip it too, so it is not a touch-only shortcut
+  // The deck holds focus while it is out, so a keyboard or screen reader user is on it rather than on the page behind.
+  useEffect(() => {
+    box.current?.focus({ preventScroll: true });
+  }, []);
+
+  // Enter, Space or Escape skip it too, so it is not a touch-only shortcut. A held key, and Enter / Space on a focused
+  // link or button (the back link), are left alone.
   useEffect(() => {
     const onKey = (event) => {
-      if (event.ctrlKey || event.metaKey || event.altKey) return;
-      if (event.key === 'Enter' || event.key === ' ' || event.key === 'Escape') {
+      if (event.ctrlKey || event.metaKey || event.altKey || event.repeat) return;
+      const own = OWN_KEYS.has(event.target?.tagName);
+      if (event.key === 'Escape' || (!own && (event.key === 'Enter' || event.key === ' '))) {
         event.preventDefault();
         end();
       }
@@ -43,7 +52,7 @@ export default function DeckShuffle({ onDone }) {
   }, []);
 
   return (
-    <div className="shuffle" onClick={end}>
+    <div className="shuffle" onClick={end} tabIndex={-1} ref={box}>
       <div className="shuffle__deck" aria-hidden="true">
         {Array.from({ length: CARDS }, (_, i) => {
           const f = riffleFrames(i, CARDS, plan.riffles);
@@ -61,7 +70,8 @@ export default function DeckShuffle({ onDone }) {
           );
         })}
       </div>
-      <p className="shuffle__text" role="status">
+      {/* read out by the study screen's live region (aria-hidden here, so it is not read twice) */}
+      <p className="shuffle__text" aria-hidden="true">
         Getting your deck out
       </p>
       <p className="muted" aria-hidden="true">

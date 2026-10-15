@@ -190,6 +190,97 @@ describe('answer clock', () => {
   });
 });
 
+describe('answer clock and a hidden app', () => {
+  it('pauses while the app is hidden and carries on when it is back', () => {
+    const t = fake();
+    const clock = createAnswerClock(t.now);
+    clock.usable(clock.show());
+    t.at(2000);
+    clock.pause('hidden'); // the phone locks
+    t.at(602000); // ten minutes later
+    clock.resume('hidden');
+    t.at(603000);
+    assert.equal(clock.stop(), 3000);
+  });
+
+  it('a card that finishes turning while the app is hidden does not start the clock', () => {
+    const t = fake();
+    const clock = createAnswerClock(t.now);
+    clock.usable(clock.show());
+    t.at(1000);
+    clock.pause('flip');
+    t.at(1100);
+    clock.pause('hidden');
+    t.at(1500);
+    clock.resume('flip'); // the turn ends in the background
+    assert.equal(clock.state, 'paused');
+    t.at(60000);
+    clock.resume('hidden');
+    t.at(60800);
+    assert.equal(clock.stop(), 1800); // 1000 before the turn + 800 after coming back
+  });
+
+  it('coming back during a turn does not end the turn pause', () => {
+    const t = fake();
+    const clock = createAnswerClock(t.now);
+    clock.usable(clock.show());
+    t.at(1000);
+    clock.pause('flip');
+    clock.pause('hidden');
+    t.at(5000);
+    clock.resume('hidden'); // visible again, the turn is still going
+    assert.equal(clock.state, 'paused');
+    t.at(5300);
+    clock.resume('flip');
+    t.at(6300);
+    assert.equal(clock.stop(), 2000);
+  });
+
+  it('an entrance that ends while the app is hidden starts counting only when it is back', () => {
+    const t = fake();
+    const clock = createAnswerClock(t.now);
+    const token = clock.show();
+    clock.pause('hidden');
+    t.at(500);
+    clock.usable(token);
+    assert.equal(clock.state, 'paused');
+    t.at(10500);
+    clock.resume('hidden');
+    t.at(11500);
+    assert.equal(clock.stop(), 1000);
+  });
+
+  it('a hidden app stays hidden for the next card, a finished turn does not carry over', () => {
+    const t = fake();
+    const clock = createAnswerClock(t.now);
+    clock.usable(clock.show());
+    clock.pause('flip');
+    clock.stop();
+    const next = clock.show(); // the old card's turn is over with it
+    clock.usable(next);
+    t.at(1000);
+    assert.equal(clock.state, 'running');
+    clock.pause('hidden');
+    clock.stop();
+    clock.show();
+    assert.equal(clock.state, 'waiting');
+  });
+
+  it('a failed save while hidden reopens paused', () => {
+    const t = fake();
+    const clock = createAnswerClock(t.now);
+    clock.usable(clock.show());
+    t.at(1000);
+    clock.stop();
+    clock.pause('hidden');
+    clock.reopen();
+    assert.equal(clock.state, 'paused');
+    clock.resume('hidden');
+    t.at(2000);
+    assert.equal(clock.stop(), 2000);
+  });
+});
+
 describe('deck shuffle plan', () => {
   it('3 or 4 riffles of about 600 ms, 1.8 to 2.4 s in all', () => {
     assert.deepEqual(shufflePlan(() => 0.2), { riffles: 3, ms: 3 * RIFFLE_MS });

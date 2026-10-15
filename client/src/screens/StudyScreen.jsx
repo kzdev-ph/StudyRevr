@@ -8,7 +8,7 @@ import { Counts } from './FlashcardsScreen.jsx';
 import { useAnswerClock } from '../hooks/useAnswerClock.js';
 import { useStudySession } from '../hooks/useStudySession.js';
 import { api } from '../lib/api.js';
-import { comesBackToday, describeNextDue, keyAction, RATINGS, sessionRecap, spellInterval } from '../lib/flashcards.js';
+import { canRate, comesBackToday, describeNextDue, keyAction, RATINGS, sessionRecap, spellInterval } from '../lib/flashcards.js';
 import { prettyTitle } from '../lib/format.js';
 import { formatDuration } from '../lib/quiz.js';
 import { paths } from '../lib/router.js';
@@ -16,6 +16,8 @@ import { paths } from '../lib/router.js';
 const REFRESH_WITHIN_MS = 60 * 60 * 1000; // a card due within the hour is picked up without a reload
 const HINT_KEY = 'studyrevr.answered'; // answers on this device, so the button hint only shows to a new student
 const HINT_UNTIL = 10;
+const DECK_OUT = 'Getting your deck out';
+const TURN_FALLBACK_MS = 1500; // the turn should end in ~0.4 s; if its end is never reported, ratings open anyway
 const OUT = [0.16, 1, 0.3, 1];
 const IN_OUT = [0.4, 0, 0.2, 1];
 const PILE_SHOWN = 4; // card edges drawn on the done pile, however many it holds
@@ -49,7 +51,9 @@ function Pile({ count, squared = false, bump = 0, cardsRef }) {
   const reduce = useReducedMotion();
   const n = useRef(null);
   useLayoutEffect(() => {
-    if (bump > 0 && !reduce && n.current) animate(n.current, { scale: [1.3, 1] }, { duration: 0.2, ease: OUT });
+    if (bump === 0 || reduce || !n.current) return undefined;
+    const run = animate(n.current, { scale: [1.3, 1] }, { duration: 0.2, ease: OUT });
+    return () => run.complete();
   }, [bump, reduce]);
   const shown = Math.min(PILE_SHOWN, count);
   return (
@@ -128,6 +132,7 @@ export default function StudyScreen({ deck }) {
   const [state, setState] = useState(null); // the server's study state: { deck, counts, total, card, next_due_at }
   const [error, setError] = useState(null);
   const [revealed, setRevealed] = useState(false);
+  const [turned, setTurned] = useState(false); // the answer side has finished turning: only then can the card be rated
   const [busy, setBusy] = useState(false);
   const [undoStack, setUndoStack] = useState([]); // { id, rating, dest } answered in this session, newest last
   const [answered, setAnswered] = useState(0);
@@ -154,6 +159,7 @@ export default function StudyScreen({ deck }) {
     (next, { opening = false } = {}) => {
       setState((prev) => ({ ...next, deck: next.deck ?? prev?.deck }));
       setRevealed(false);
+      setTurned(false);
       if (opening) show();
       else showAtPaint();
       focusAfter.current = 'show';
@@ -193,11 +199,23 @@ export default function StudyScreen({ deck }) {
   }, [state, load]);
 
   useEffect(() => {
+    if (shuffling) return; // the deck coming out holds focus itself; this waits for the first card
     // no Show answer button means the deck is done: focus its heading rather than letting focus drop to the page
     if (focusAfter.current === 'show') (showButton.current ?? doneHeading.current)?.focus({ preventScroll: true });
     if (focusAfter.current === 'rate') ratingGroup.current?.focus({ preventScroll: true });
     focusAfter.current = null;
   });
+
+  // "Getting your deck out" is read by the live region that is always on the page. It is set a moment after the deck
+  // appears: text that is already in a live region when it is inserted is often not read.
+  useEffect(() => {
+    if (!shuffling) {
+      setAnnounce((a) => (a === DECK_OUT ? '' : a));
+      return undefined;
+    }
+    const timer = setTimeout(() => setAnnounce(DECK_OUT), 150);
+    return () => clearTimeout(timer);
+  }, [shuffling]);
 
   // The deck is out (or skipped): the first card is on top.
   const shuffled = useCallback(() => {
@@ -208,16 +226,25 @@ export default function StudyScreen({ deck }) {
 
   // Show answer: the card turns over, and the clock waits until the answer side is fully shown (FlipCard's onTurned).
   const reveal = useCallback(() => {
+    if (revealed) return;
     clock.input();
-    clock.pause();
+    clock.pause('flip');
     setRevealed(true);
     focusAfter.current = 'rate';
+  }, [clock, revealed]);
+  const onTurned = useCallback(() => {
+    clock.resume('flip');
+    setTurned(true);
   }, [clock]);
-  const turned = useCallback(() => clock.resume(), [clock]);
+  useEffect(() => {
+    if (!revealed || turned) return undefined;
+    const timer = setTimeout(onTurned, TURN_FALLBACK_MS);
+    return () => clearTimeout(timer);
+  }, [revealed, turned, onTurned]);
 
   const rate = useCallback(
     async (rating) => {
-      if (!state?.card || busy) return;
+      if (!state?.card || busy || !canRate({ revealed, turned })) return;
       // where the card goes on screen, from the button pressed (the next card brings new buttons)
       const dest = comesBackToday(state.card.buttons.find((b) => b.rating === rating)) ? 'deck' : 'pile';
       setBusy(true);
@@ -247,7 +274,7 @@ export default function StudyScreen({ deck }) {
         setBusy(false);
       }
     },
-    [state, busy, deck, take, load, clock, reduce],
+    [state, busy, revealed, turned, deck, take, load, clock, reduce],
   );
 
   const undo = useCallback(async () => {
@@ -276,8 +303,8 @@ export default function StudyScreen({ deck }) {
 
   useEffect(() => {
     const onKey = (event) => {
-      if (shuffling) return; // DeckShuffle takes Enter / Space / Escape to skip
-      const action = keyAction(event, { revealed });
+      if (shuffling || event.repeat) return; // DeckShuffle takes Enter / Space / Escape to skip; a held key does nothing
+      const action = keyAction(event, { revealed, ready: canRate({ revealed, turned }) });
       if (!action) return;
       event.preventDefault();
       if (action === 'undo') undo();
@@ -287,7 +314,7 @@ export default function StudyScreen({ deck }) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [shuffling, revealed, busy, state, undo, reveal, rate]);
+  }, [shuffling, revealed, turned, busy, state, undo, reveal, rate]);
 
   const landed = useCallback(() => {
     if (ghost?.dest === 'pile' && !ghost.reverse) setBump((b) => b + 1);
@@ -340,7 +367,7 @@ export default function StudyScreen({ deck }) {
             <Pile count={piled} bump={bump} cardsRef={pileRef} />
             {ghost && <Ghost key={ghost.id} dest={ghost.dest} reverse={ghost.reverse} deskRef={deskRef} pileRef={pileRef} onDone={landed} />}
             <div className="study-desk__card">
-              <FlipCard key={`${card.id}-${answered}-${undoStack.length}`} card={card} revealed={revealed} onReveal={reveal} onTurned={turned} showLesson={deck === 'all'} />
+              <FlipCard key={`${card.id}-${answered}-${undoStack.length}`} card={card} revealed={revealed} onReveal={reveal} onTurned={onTurned} showLesson={deck === 'all'} />
             </div>
           </div>
 
@@ -354,7 +381,7 @@ export default function StudyScreen({ deck }) {
                   {card.buttons.map((b) => {
                     const { name, tone } = RATINGS[b.rating - 1];
                     return (
-                      <button key={b.rating} type="button" className={`rate__btn rate__btn--${tone}`} onClick={() => rate(b.rating)} disabled={busy} aria-label={`${name}, next in ${spellInterval(b.label)}`}>
+                      <button key={b.rating} type="button" className={`rate__btn rate__btn--${tone}`} onClick={() => rate(b.rating)} disabled={busy} aria-disabled={turned ? undefined : true} aria-label={`${name}, next in ${spellInterval(b.label)}`}>
                         <span className="rate__name">{name}</span>
                         <span className="rate__ivl">{b.label}</span>
                         <kbd className="rate__key" aria-hidden="true">{b.rating}</kbd>
