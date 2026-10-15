@@ -68,6 +68,10 @@ quiz_answers.csv - one row per question of each attempt above
   true/false questions are shown to students as a Yes/No question ("Does this describe [term]?" for a term card, "Is
   this the right answer to [question]?" for a concept card, with the statement under it), but they are stored and
   exported as true/false: choices, chosen_answer and right_answer say True or False (Yes = True, No = False).
+  question, statement  as the student saw them. For a term card, the definition in question (multiple choice) or
+                    statement (true/false) is stored masked: where a definition names its term (or a form of it),
+                    the term is written as ___, so the definition doesn't give the term away. The flashcard itself
+                    is unchanged.
   chosen_answer, right_answer, correct (1/0; blank if not answered), time_ms on the question
 
 events.csv - self-monitoring events

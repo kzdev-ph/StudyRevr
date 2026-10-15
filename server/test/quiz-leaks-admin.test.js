@@ -127,6 +127,24 @@ describe('admin: cards that give their answer away', () => {
     assert.match(ai.calls[0].system, /term card: the student sees the definition and must name the term "Wikang Filipino"/);
   });
 
+  it('refuses a new definition that isn’t from the lesson, and a new card that repeats another card', async () => {
+    ai.reply = { definition: 'A national tongue spoken by every citizen across the archipelago.' };
+    const outside = await call('POST', `/api/admin/flashcards/${term}/regenerate`);
+    assert.equal(outside.status, 422);
+    assert.match(outside.body.error.message, /words that aren’t in the lesson/);
+
+    ai.reply = { definition: 'Upang mas madaling maipaliwanag ang mga konsepto.' };
+    const sameAsCard = await call('POST', `/api/admin/flashcards/${term}/regenerate`);
+    assert.equal(sameAsCard.status, 422);
+    assert.match(sameAsCard.body.error.message, /repeats another card \("Paano ginagamit/);
+
+    ai.reply = { question: 'Ano ang layunin ng paggamit ng Filipino sa pagtuturo?', answer: 'Upang mas madaling maipaliwanag ang mga konsepto.', evidence: 'upang mas madaling maipaliwanag ang mga konsepto' };
+    const twin = await call('POST', `/api/admin/flashcards/${leaky}/regenerate`);
+    assert.equal(twin.status, 422);
+    assert.match(twin.body.error.message, /repeats another card/);
+    assert.equal(t.db.prepare('SELECT front FROM flashcards WHERE id = ?').get(leaky).front, 'Bakit nagbabago ang wika kasabay ng pamumuhay at kultura?', 'unchanged');
+  });
+
   it('refuses a new card whose quote isn’t in the lesson', async () => {
     ai.reply = { question: 'Ano ang katangian ng wika?', answer: 'Sumasabay ito sa pamumuhay ng tao.', evidence: 'a quote that is nowhere in the lesson text' };
     const res = await call('POST', `/api/admin/flashcards/${leaky}/regenerate`);

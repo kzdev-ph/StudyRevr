@@ -3,13 +3,15 @@ import { regenerateCardPrompt } from '../ai/prompts.js';
 import { HttpError } from '../middleware/errors.js';
 import { getJobStatus } from '../pipeline/jobs.js';
 import { checkEvidence, comparable } from '../pipeline/evidence.js';
-import { MAX_ANSWER_WORDS, MAX_QUESTION_WORDS, shortDefinition } from '../pipeline/flashcards.js';
-import { cardLeaks } from '../quiz/leaks.js';
+import { isDuplicate, MAX_ANSWER_WORDS, MAX_QUESTION_WORDS, shortDefinition } from '../pipeline/flashcards.js';
+import { cardLeaks, lessonWords, wordStems } from '../quiz/leaks.js';
 import { hasRecords, participantRecords } from './lesson-records.js';
 
 // Admin "Regenerate this card": one AI call writes a flashcard again when it gives its answer away (quiz/leaks.js).
 // Only while no participant other than P00 has records on the lesson (their answers would no longer match the card)
-// and no job is running on it; both are checked again when the new card is saved.
+// and no job is running on it; both are checked again when the new card is saved. The new card is checked like
+// generation (length, a concept card's quote in the lesson, a term card's definition mostly in the lesson's words),
+// must not repeat another card, and must not give its answer away.
 // The card is updated in place (same id, so earlier quiz_answers rows still point to it; P00's schedule is kept) and
 // its saved quiz wrong answers are deleted, to be made again by admin's "Make quiz answers".
 
@@ -17,6 +19,7 @@ const conceptReply = z.object({ question: z.string().min(1), answer: z.string().
 const termReply = z.object({ definition: z.string().min(1) });
 const LEAK_RULES = ['g', 'h', 'i', 'j', 'k'];
 const CONTEXT_CHARS = 12000;
+const LESSON_SHARE = 0.5; // share of a new definition's content words that must be lesson words
 const wordCount = (s) => (String(s).match(/\S+/g) ?? []).length;
 
 // The lesson block that holds the evidence quote with one block on each side, or the start of the lesson.
@@ -68,6 +71,17 @@ export async function regenerateCard({ db, ai, cardId, log = console }) {
     if (!check.ok) throw refuse(`The new card's quote from the lesson didn't check out (${check.reason}).`);
     next = { ...card, front: reply.question.trim(), back: reply.answer.trim(), evidence: check.evidence };
   }
+  if (term) {
+    // a definition has no quote of its own: most of its words must come from the lesson
+    const own = wordStems(next.back);
+    const inLesson = lessonWords(lesson.raw_text);
+    const held = own.filter((forms) => forms.some((s) => inLesson.holds(s))).length;
+    if (!own.length || held / own.length < LESSON_SHARE) throw refuse('The new definition uses words that aren’t in the lesson.');
+  }
+  // only what is new is compared: a term card keeps its term and quote, so only its definition
+  const sameBack = (o) => isDuplicate({ front: next.back, back: '' }, { front: o.back, back: '' });
+  const twin = others.find((o) => sameBack(o) || (!term && isDuplicate(next, o)));
+  if (twin) throw refuse(`The new card repeats another card ("${twin.front}").`);
   const leaks = cardLeaks(next, others).filter((p) => LEAK_RULES.includes(p.rule));
   if (leaks.length) throw refuse(`The new card still gives its answer away (${leaks.map((p) => `${p.rule}: ${p.detail}`).join('; ')}).`);
 
