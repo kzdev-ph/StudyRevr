@@ -16,9 +16,20 @@ function Grade({ score, total }) {
   const ref = useRef(null);
   const [box, setBox] = useState(null);
   const marks = useRef(new Set()).current;
+  // sized to the number's own box, again whenever that box changes (text size, window width)
   useLayoutEffect(() => {
     const el = ref.current;
-    if (el) setBox({ w: Math.round(el.offsetWidth + 24), h: Math.round(el.offsetHeight + 16) });
+    if (!el) return undefined;
+    const size = () => {
+      const w = Math.round(el.offsetWidth + 24);
+      const h = Math.round(el.offsetHeight + 16);
+      setBox((b) => (b && b.w === w && b.h === h ? b : { w, h }));
+    };
+    size();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(size);
+    ro.observe(el);
+    return () => ro.disconnect();
   }, [score, total]);
   return (
     <span className="quiz-score__n" aria-hidden="true" ref={ref} onPointerDown={() => marks.forEach((m) => m.complete())}>

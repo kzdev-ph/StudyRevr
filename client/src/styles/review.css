@@ -258,6 +258,12 @@
 .is-off .rules__ink {
   animation-play-state: paused;
 }
+/* still going after ~10 s: the loop stops, the rules stay written on, and the page says it is still working */
+.is-long .rules__ink {
+  animation: none;
+  transform: scaleX(1);
+  opacity: 0.6;
+}
 @keyframes rule-ink {
   0% {
     transform: scaleX(0);

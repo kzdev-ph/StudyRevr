@@ -6,6 +6,8 @@ import { paths } from '../lib/router.js';
 const EVIDENCE_MAX = 200;
 const MARK = { duration: 0.38, ease: [0.16, 1, 0.3, 1] };
 const STAGGER_MS = 70;
+const SEEN = 0.6; // a term counts as in view when this much of it is
+const WAIT_MS = 2000; // a term only partly in view this long just shows its marker
 const STAGGER_MAX = 4; // terms that come into view together share a short stagger, never more than 280 ms
 
 // The highlighter drawn under each term once, as it comes into view: the marker slides in from the left inside a clip
@@ -20,13 +22,32 @@ function useMarkerOnView(listRef, reduce) {
     const names = [...list.querySelectorAll('.term__name')].filter((el) => el.querySelector('.term__wipe') && oneLine(el));
     for (const el of names) el.classList.add('term__name--wipe');
     const runs = new Set();
+    const waits = new Map(); // a term that is on screen but never fully: its marker shows after WAIT_MS
     let batch = 0;
     let batchTimer;
     const io = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
-          if (!entry.isIntersecting) continue;
           const el = entry.target;
+          if (!entry.isIntersecting) {
+            clearTimeout(waits.get(el));
+            waits.delete(el);
+            continue;
+          }
+          if (entry.intersectionRatio < SEEN) {
+            if (!waits.has(el)) {
+              waits.set(
+                el,
+                setTimeout(() => {
+                  io.unobserve(el);
+                  el.classList.remove('term__name--wipe');
+                }, WAIT_MS),
+              );
+            }
+            continue;
+          }
+          clearTimeout(waits.get(el));
+          waits.delete(el);
           io.unobserve(el);
           const delay = (Math.min(batch, STAGGER_MAX) * STAGGER_MS) / 1000;
           batch += 1;
@@ -39,12 +60,13 @@ function useMarkerOnView(listRef, reduce) {
           a.then(() => el.classList.remove('term__name--wipe'));
         }
       },
-      { threshold: 1 },
+      { threshold: [0, SEEN] },
     );
     for (const el of names) io.observe(el);
     return () => {
       io.disconnect();
       clearTimeout(batchTimer);
+      for (const t of waits.values()) clearTimeout(t);
       for (const r of runs) r.stop();
       for (const el of names) el.classList.remove('term__name--wipe');
     };

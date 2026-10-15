@@ -56,6 +56,7 @@ export default function QuizRunScreen({ lessonId }) {
   const [startError, setStartError] = useState(null); // { message, final }: final when trying again can't help (409)
   const [slow, setSlow] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [refocus, setRefocus] = useState(0); // bumped after a failed save: the question takes focus back
   const pending = useRef(false); // set at once on a press, before `busy` renders, so a double press or tap sends one request
   const [notice, setNotice] = useState(null);
   const { clock, show, showAtPaint } = useAnswerClock(); // the open question's time_ms
@@ -199,6 +200,7 @@ export default function QuizRunScreen({ lessonId }) {
       } catch (err) {
         clock.reopen(); // still on this question: its time carries on
         setError(`Your answer wasn’t saved. ${err.message} Choose an option to try again.`);
+        setRefocus((n) => n + 1);
       } finally {
         pending.current = false;
         setBusy(false);
@@ -257,7 +259,7 @@ export default function QuizRunScreen({ lessonId }) {
         </a>
         <div className="study-head__text">
           <h1 className="study-head__title">{title}</h1>
-          {counter && <p className="quiz-counter">{counter}</p>}
+          {counter && <p className="quiz-counter" id="quiz-counter">{counter}</p>}
         </div>
       </header>
 
@@ -297,7 +299,7 @@ export default function QuizRunScreen({ lessonId }) {
       {question && (phase === 'question' || phase === 'feedback') && (
         <div className="quiz-paper" ref={sheetRef} onPointerDown={handout !== null ? skipHandout : undefined} style={handout !== null ? { opacity: 0 } : undefined}>
           <AnswerSheet total={total} answered={index + (feedback ? 1 : 0)} index={index} />
-          <QuizQuestion key={`${quiz.attempt.id}-${index}`} question={question} feedback={feedback} onAnswer={answer} busy={busy} />
+          <QuizQuestion key={`${quiz.attempt.id}-${index}`} question={question} feedback={feedback} onAnswer={answer} busy={busy} refocus={refocus} />
         </div>
       )}
 

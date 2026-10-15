@@ -31,12 +31,15 @@ function useInkedBars(listRef, reduce) {
   useLayoutEffect(() => {
     const list = listRef.current;
     if (!list || reduce) return undefined;
-    runs.current = [...list.querySelectorAll('.days__bar')].map((bar, k) => {
+    const bars = [...list.querySelectorAll('.days__bar')];
+    runs.current = bars.map((bar, k) => {
       bar.style.transform = 'scaleX(0)'; // waiting for its turn
       return animate(bar, { scaleX: [0, 1] }, { ...INK, delay: k * INK_STAGGER_S });
     });
     return () => {
-      for (const r of runs.current) r.stop();
+      // never leave a bar half drawn or waiting at zero: finish, then give the style back to the stylesheet
+      for (const r of runs.current) r.complete();
+      for (const bar of bars) bar.style.transform = '';
       runs.current = [];
     };
   }, [listRef, reduce]);

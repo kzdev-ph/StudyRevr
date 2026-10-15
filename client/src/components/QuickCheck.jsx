@@ -26,6 +26,15 @@ function Question({ question, answer }) {
     focusAnswer.current = false;
   }, [revealed]);
 
+  // the cover's slide, so leaving the page (or starting over) ends it instead of letting it set state afterwards
+  const liftRun = useRef(null);
+  const endLift = () => {
+    const run = liftRun.current;
+    liftRun.current = null;
+    run?.stop();
+  };
+  useEffect(() => endLift, []);
+
   const lift = () => {
     if (revealed) return;
     focusAnswer.current = true;
@@ -35,10 +44,16 @@ function Question({ question, answer }) {
     const run = reduce
       ? animate(el, { opacity: [1, 0] }, FADE)
       : animate(el, { x: ['0%', '30%', '70%'], rotate: [0, 2, 5], opacity: [1, 1, 0] }, { ...LIFT, times: [0, 0.55, 1] });
-    run.then(() => setCovered(false));
+    liftRun.current = run;
+    run.then(() => {
+      if (liftRun.current !== run) return;
+      liftRun.current = null;
+      setCovered(false);
+    });
   };
 
   const reset = () => {
+    endLift();
     setRevealed(false);
     setCovered(true);
     setResult(null);

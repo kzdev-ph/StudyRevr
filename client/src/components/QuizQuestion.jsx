@@ -23,16 +23,18 @@ function optionState(i, feedback) {
 // reads it and the keyboard starts from it. Once the answer is saved it is marked like a test paper: a pen loop round
 // the number chosen, a tick on the right answer, a line through a wrong one. The marks never hold anything up (Next
 // works at once) and a tap finishes them.
-export default function QuizQuestion({ question: q, feedback, onAnswer, busy }) {
+export default function QuizQuestion({ question: q, feedback, onAnswer, busy, refocus = 0 }) {
   const tf = q.type === 'tf';
   const ask = tf ? yesNoAsk(q) : null;
   const headingRef = useRef(null);
   const optsRef = useRef(null);
   const marks = useRef(new Set()).current;
   const [strike, setStrike] = useState(false); // only through a wrong answer on one line: a long one keeps its cross
+  // when the question appears, and again when `refocus` changes (an answer that could not be saved: the option that had
+  // focus was disabled while it was sent, so focus would otherwise be lost)
   useEffect(() => {
     headingRef.current?.focus();
-  }, []);
+  }, [refocus]);
   useLayoutEffect(() => {
     if (!feedback || feedback.correct) return;
     const text = optsRef.current?.children[feedback.chosen_index]?.querySelector('.quiz-opt__text > span');
@@ -42,7 +44,7 @@ export default function QuizQuestion({ question: q, feedback, onAnswer, busy }) 
     for (const m of marks) m.complete();
   };
   return (
-    <article className="quiz-q" aria-labelledby="quiz-q-text" onPointerDown={feedback ? finishMarks : undefined}>
+    <article className="quiz-q" aria-labelledby="quiz-q-text" aria-describedby="quiz-counter" onPointerDown={feedback ? finishMarks : undefined}>
       <p className="flashcard__kicker">{questionLead(q)}</p>
       {tf ? (
         <h2 id="quiz-q-text" className="quiz-q__ask" tabIndex={-1} ref={headingRef}>
