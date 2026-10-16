@@ -1,8 +1,10 @@
 import { chunkLesson, DEFAULT_CHUNK_TOKENS } from '../ai/chunk.js';
+import { AiError } from '../ai/client.js';
 import { HttpError } from '../middleware/errors.js';
 import { flashcardsMax } from '../flashcards/config.js';
 import { cardsNeedingDistractors, ensureDistractors } from '../quiz/distractors.js';
 import { prepareVersions, missingVersions } from '../services/prepare-versions.js';
+import { logLessonEvent } from '../services/student-upload.js';
 import { getSetting } from '../services/settings.js';
 import { generateFlashcards } from './flashcards.js';
 import { generateKeyPoints, generateKeyTerms, generateSections } from './generate.js';
@@ -11,6 +13,7 @@ import { ON_DEMAND_STAGES, STAGES } from './jobs.js';
 class LessonGone extends Error {}
 
 const NO_TEXT = "This file has no readable text, so there's nothing to summarize. Try a text-based version of the lesson.";
+const NO_TEXT_ERROR = new HttpError(422, NO_TEXT);
 
 const parseNumbers = (json) => {
   try {
@@ -31,8 +34,10 @@ const count = (db, table, lessonId) => db.prepare(`SELECT COUNT(*) AS c FROM ${t
 // event })` is told when each stage starts and ends ('start' | 'end'), e.g. for a timeline in the pipeline script.
 // `madeBy` ({ provider, model }, the admin Default) is recorded with the section versions the "Prepare" step makes.
 // A job queued at an on-demand stage (ON_DEMAND_STAGES) runs only that stage.
-export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUNK_TOKENS, concurrency = 1, keyTermsMax = 12, madeBy = null, log = console, onStage = () => {} }) {
-  const lesson = db.prepare('SELECT id, raw_text, word_count, status, source_kind, source_numbers, source_total FROM lessons WHERE id = ?').get(lessonId);
+export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUNK_TOKENS, concurrency = 1, keyTermsMax = 12, madeBy = null, log = console, clock = () => new Date(), onStage = () => {} }) {
+  const lesson = db
+    .prepare('SELECT id, title, raw_text, word_count, status, source_kind, source_numbers, source_total, origin, owner_participant_id FROM lessons WHERE id = ?')
+    .get(lessonId);
   if (!lesson) return;
   const job = db.prepare('SELECT id, stage FROM jobs WHERE lesson_id = ? ORDER BY id DESC LIMIT 1').get(lessonId);
   if (!job) return;
@@ -163,7 +168,7 @@ export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUN
     // Numbers are only used when there is one per block; otherwise the lesson is chunked without source labels.
     const numbers = parseNumbers(lesson.source_numbers);
     const chunks = chunkLesson(lesson.raw_text, { maxTokens: chunkTokens, numbers: numbers ?? undefined });
-    if (!chunks.length) throw new HttpError(422, NO_TEXT);
+    if (!chunks.length) throw NO_TEXT_ERROR;
     for (stage of onDemand ? [job.stage] : STAGES.slice(Math.max(0, STAGES.indexOf(job.stage)))) {
       if (stages[stage].saved()) continue;
       begin(stage);
@@ -183,7 +188,16 @@ export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUN
       // The review and cards are complete by the quiz_options stage, so its failure leaves the lesson ready; the job
       // keeps the error for admin to retry, and the quiz makes the missing options when first started.
       if (stage === 'quiz_options' || onDemand) db.prepare(`UPDATE lessons SET status = 'ready', error = NULL WHERE id = ?`).run(lessonId);
-      else if (!wasReady) db.prepare(`UPDATE lessons SET status = 'failed', error = ? WHERE id = ?`).run(message, lessonId);
+      else if (!wasReady) {
+        // error_kind says whether the message is about the file ('content': students see it) or about the AI / the server
+        // (students see a plain line instead, see routes/lessons.js)
+        const kind = err === NO_TEXT_ERROR ? 'content' : err instanceof AiError ? 'ai' : 'other';
+        db.prepare(`UPDATE lessons SET status = 'failed', error = ?, error_kind = ? WHERE id = ?`).run(message, kind, lessonId);
+        // a student's upload that fails is logged (lesson_events), so the researcher can see how often processing fails
+        if (lesson.origin === 'student' && lesson.owner_participant_id !== null) {
+          logLessonEvent(db, { participantId: lesson.owner_participant_id, type: 'lesson_upload_failed', lessonId, title: lesson.title, detail: `processing:${stage}`, now: clock() });
+        }
+      }
     } catch (inner) {
       if (!(inner instanceof LessonGone)) throw inner;
     }

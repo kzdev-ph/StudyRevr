@@ -27,30 +27,69 @@ General
   at that day to compare. A quiz's duration_ms likewise starts when its first question can be answered (before, it
   included that question's 0.2 s fade-in), and there is no longer a fade between questions in it.
 
+Lessons from students (only if the researcher turned student uploads on)
+- A lesson is the teacher's (origin admin) or an upload by a student (origin student). A student's upload is private
+  to that student until the researcher shares it with everyone (one way, it cannot be undone).
+- The original files students upload are never kept: the app reads the text from the file and keeps only that text.
+- A student's upload is titled after the file the student chose, which can hold a name. In every file of this export it is
+  therefore called "Student upload <lesson_id>" (lesson_title, title, the L<id> list below), and lesson_events.csv keeps
+  only the file's extension, never its name. The teacher's lessons keep their real titles.
+- Lesson text, flashcards and quizzes for an upload are made by the same pipeline and the same app AI as the teacher's
+  lessons (never the student's own AI key). Study activity on uploads is exported in the same files as the rest
+  (lesson_id tells which lesson; see lessons.csv for where each came from).
+
 summary.csv - one row per participant; columns grouped by SDL dimension
+  Main measures count the teacher's lessons only (origin admin). Student uploads, shared or not, are left out of them.
+  Every measure marked (+all) has a twin with the same name plus _all, right after it, that counts every lesson:
+  the teacher's, students' shared uploads and students' private uploads. Study on the "All lessons" flashcard deck
+  has no single lesson, so it counts in both. The same measure with and without _all differs only by student uploads.
+  The per-lesson columns (retention_quiz_first_pct_L<id>) cover the teacher's lessons and shared uploads; a private
+  upload has no column (its quizzes still count in the _all measures and in quiz_attempts.csv).
   Planning (study planning and time management)
-    planning_days_active            study days with active session time, a flashcard answer or a quiz answer
-    planning_total_sessions         sessions with any active time
-    planning_reading_min / _flashcards_min / _quiz_min / _total_min   active minutes per activity (reading = Review tab)
-    planning_first_study_date, planning_last_study_date               first and last of those study days
-    planning_reviews_on_time        due flashcard reviews done on their due day (see due_reviews.csv)
-    planning_reviews_late           due reviews done on a later day
-    planning_reviews_still_overdue  due reviews not done yet whose due day is over
-    planning_avg_days_late          mean days late over late reviews only (blank if none)
-    planning_on_time_rate           on_time / (on_time + late + still_overdue), 0-1; blank if nothing was due.
+    planning_days_active (+all)     study days with active session time, a flashcard answer or a quiz answer
+    planning_total_sessions (+all)  sessions with any active time
+    planning_reading_min / _flashcards_min / _quiz_min / _total_min (each +all)   active minutes per activity (reading = Review tab)
+    planning_first_study_date, planning_last_study_date (each +all)   first and last of those study days
+    planning_reviews_on_time (+all) due flashcard reviews done on their due day (see due_reviews.csv)
+    planning_reviews_late (+all)    due reviews done on a later day
+    planning_reviews_still_overdue (+all)  due reviews not done yet whose due day is over
+    planning_avg_days_late (+all)   mean days late over late reviews only (blank if none)
+    planning_on_time_rate (+all)    on_time / (on_time + late + still_overdue), 0-1; blank if nothing was due.
                                     The three counts are separate columns so the rate can be recalculated.
   Retention (memory retention and concept mastery)
-    retention_cards_reviewed        flashcard answers given (undone answers are not counted)
-    retention_good_easy_pct         % of those answered Good or Easy
-    retention_quiz_first_pct_mean   mean of the per-lesson first-attempt scores below
+    retention_cards_reviewed (+all) flashcard answers given (undone answers are not counted)
+    retention_good_easy_pct (+all)  % of those answered Good or Easy
+    retention_quiz_first_pct_mean (+all)  mean of the per-lesson first-attempt scores (over the lessons that measure counts)
     retention_quiz_first_pct_L<id>  score (%) of the first finished quiz on lesson <id>; blank if none finished.
 ${lessons.map((l) => `                                    L${l.id} = ${l.title}`).join('\n') || '                                    (no lessons)'}
   Self-monitoring (self-monitoring and evaluation)
-    self_monitoring_stats_views             times the Stats tab was opened
-    self_monitoring_quiz_retakes            quiz retakes started
-    self_monitoring_review_flashcards_taps  taps on "Review these flashcards" after a quiz
-    self_monitoring_simplify_taps           taps on a section's "Explain simpler"
-    self_monitoring_translate_taps          taps on a section's "Filipino/Taglish"
+    self_monitoring_stats_views             times the Stats tab was opened (not tied to a lesson: no _all twin)
+    self_monitoring_quiz_retakes (+all)     quiz retakes started
+    self_monitoring_review_flashcards_taps (+all)  taps on "Review these flashcards" after a quiz
+    self_monitoring_simplify_taps (+all)    taps on a section's "Explain simpler"
+    self_monitoring_translate_taps (+all)   taps on a section's "Filipino/Taglish"
+
+lessons.csv - one row per lesson, with where it came from
+  origin    admin (the teacher's lesson, everyone's) | student (uploaded by a student)
+  shared    for student uploads: 1 once the researcher shared it with everyone, 0 while it is private to its owner;
+            blank for the teacher's lessons.  shared_at is when.
+  owner     the uploader's code; blank for the teacher's lessons and when the uploader was withdrawn (a shared lesson
+            stays after its owner is deleted; origin stays student)
+  status    ready | processing | failed;  word_count, source_kind (slide | page | paragraph), created_at (UTC)
+  P00's private uploads are left out unless P00 is included (one the researcher shared stays, because other
+  participants' rows point to it).  title is "Student upload <lesson_id>" for an upload.
+
+lesson_events.csv - what happened to students' uploads, one row per event
+  type    lesson_uploaded | lesson_upload_failed | lesson_deleted_by_student | lesson_shared
+  actor   student | admin (lesson_shared is done by the researcher; participant is the lesson's owner)
+  detail  lesson_uploaded: the file's extension only (.docx, .pptx or .pdf), never its name.  lesson_upload_failed: too_large | wrong_type | bad_signature (not a real
+          docx/pptx/pdf) | wrong_content (a zip that is not a Word or PowerPoint file) | unreadable | no_text (nothing to
+          read), or processing:<stage> when the AI pipeline failed on the lesson (stage: sections, key_points,
+          key_terms, flashcards, quiz_options) or processing:interrupted when the server stopped while it was being
+          prepared.
+  lesson_id and lesson_title stay even after the lesson is deleted. A refused upload (switch off, daily limit) is not
+  an upload and is not listed. The daily limit counts lesson_uploaded rows per study_date, so deleting a lesson does
+  not give the upload back.
 
 sessions.csv - one row per study session
   activity      reading (Review tab) | flashcards | quiz;  lesson_id blank = the "All lessons" flashcard deck

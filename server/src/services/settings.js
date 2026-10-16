@@ -118,24 +118,51 @@ export function saveAiSettings(db, input, envAi = {}) {
 }
 
 // The app settings admin changes besides the AI provider (GET / PUT /api/settings).
-//   flashcard_new_per_day  new flashcards a participant is shown per study day (scheduler default 20)
-//   allow_student_keys     students may use their own AI key for Explain simpler and Filipino/Taglish (default off)
+//   flashcard_new_per_day     new flashcards a participant is shown per study day (scheduler default 20)
+//   allow_student_keys        students may use their own AI key for Explain simpler and Filipino/Taglish (default off)
+//   allow_student_uploads     students may upload their own lessons (default off)
+//   student_uploads_per_day   uploads per student per study day (default 2)
+export const DEFAULT_UPLOADS_PER_DAY = 2;
 export const appSettingsBody = z.strictObject({
   flashcard_new_per_day: z.number().int().min(0).max(9999).optional(),
   allow_student_keys: z.boolean().optional(),
+  allow_student_uploads: z.boolean().optional(),
+  student_uploads_per_day: z.number().int().min(0).max(20).optional(),
 });
+
+// Uploads each student may make per study day (0 is allowed: nobody can).
+export function uploadsPerDay(db) {
+  const n = Number(getSetting(db, 'student_uploads_per_day'));
+  return getSetting(db, 'student_uploads_per_day') !== '' && Number.isInteger(n) && n >= 0 ? n : DEFAULT_UPLOADS_PER_DAY;
+}
+
+export const studentUploadsAllowed = (db) => getBoolSetting(db, 'allow_student_uploads', false);
 
 export function describeAppSettings(db, { newPerDay }) {
   return {
     flashcard_new_per_day: newPerDay,
     allow_student_keys: getBoolSetting(db, 'allow_student_keys', false),
     student_keys_saved: db.prepare('SELECT COUNT(*) AS n FROM participant_ai_keys').get().n,
+    allow_student_uploads: studentUploadsAllowed(db),
+    student_uploads_per_day: uploadsPerDay(db),
   };
 }
 
-export function saveAppSettings(db, input) {
+// Saves what was sent. Returns the settings that really changed, [{ key, value }], so the route can log each one in
+// admin_events (a save that changes nothing logs nothing).
+export function saveAppSettings(db, input, current = null) {
+  const before = current ?? { ...describeAppSettings(db, { newPerDay: undefined }) };
+  const changed = [];
+  const put = (key, value, was) => {
+    if (value === undefined) return;
+    setSetting(db, key, String(value));
+    if (was === undefined || String(was) !== String(value)) changed.push({ key, value: String(value) });
+  };
   db.transaction(() => {
-    if (input.flashcard_new_per_day !== undefined) setSetting(db, 'flashcard_new_per_day', String(input.flashcard_new_per_day));
-    if (input.allow_student_keys !== undefined) setSetting(db, 'allow_student_keys', String(input.allow_student_keys));
+    put('flashcard_new_per_day', input.flashcard_new_per_day, before.flashcard_new_per_day);
+    put('allow_student_keys', input.allow_student_keys, before.allow_student_keys);
+    put('allow_student_uploads', input.allow_student_uploads, before.allow_student_uploads);
+    put('student_uploads_per_day', input.student_uploads_per_day, before.student_uploads_per_day);
   })();
+  return changed;
 }

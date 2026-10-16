@@ -14,25 +14,43 @@ export function createAdminGuard({ pin, clock = Date.now } = {}) {
   const expected = pin ? digest(pin) : null;
   const failures = new Map(); // address -> { count, lockedUntil }
 
-  return function requireAdmin(req, _res, next) {
-    if (!expected) return next(new HttpError(403, 'Admin is turned off. Set ADMIN_PIN in .env and restart the server.', { code: 'admin_off' }));
+  // The PIN check shared by requireAdmin and isAdmin: -> 'ok' | 'off' | { error }. Wrong PINs count toward the lockout
+  // either way, so a route that only asks "is this the admin?" can't be used to guess the PIN around the lockout.
+  function check(req) {
+    if (!expected) return { error: new HttpError(403, 'Admin is turned off. Set ADMIN_PIN in .env and restart the server.', { code: 'admin_off' }) };
     const who = req.ip ?? 'unknown';
     const now = clock();
     const record = failures.get(who);
     if (record?.lockedUntil > now) {
       const seconds = Math.ceil((record.lockedUntil - now) / 1000);
-      return next(new HttpError(429, `Too many wrong PINs. Try again in ${seconds} s.`, { code: 'admin_locked' }));
+      return { error: new HttpError(429, `Too many wrong PINs. Try again in ${seconds} s.`, { code: 'admin_locked' }) };
     }
     const given = req.get(ADMIN_HEADER);
     // compare fixed-length digests, so the time taken says nothing about the PIN
     if (given && timingSafeEqual(digest(given), expected)) {
       failures.delete(who);
-      return next();
+      return 'ok';
     }
     if (given) {
       const count = (record && !(record.lockedUntil > 0) ? record.count : 0) + 1;
       failures.set(who, count >= MAX_TRIES ? { count: 0, lockedUntil: now + LOCK_MS } : { count, lockedUntil: 0 });
     }
-    return next(new HttpError(401, given ? 'That PIN is not right.' : 'Enter the admin PIN.', { code: 'admin_pin' }));
+    return { error: new HttpError(401, given ? 'That PIN is not right.' : 'Enter the admin PIN.', { code: 'admin_pin' }) };
+  }
+
+  function requireAdmin(req, _res, next) {
+    const result = check(req);
+    return result === 'ok' ? next() : next(result.error);
+  }
+
+  // For routes that students and admin both use (lessons): true with the right PIN, false with no PIN header (or admin
+  // off), and the same 401 / 429 as requireAdmin for a wrong PIN or a locked address.
+  requireAdmin.isAdmin = (req) => {
+    if (!req.get(ADMIN_HEADER)) return false;
+    const result = check(req);
+    if (result === 'ok') return true;
+    if (result.error.extra?.code === 'admin_off') return false;
+    throw result.error;
   };
+  return requireAdmin;
 }

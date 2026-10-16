@@ -15,9 +15,11 @@ const CARD_FROM = `flashcards f JOIN lessons l ON l.id = f.lesson_id
 const SCHEDULING = ['state', 'step', 'ease', 'interval', 'due_at', 'reps', 'lapses'];
 
 // New cards come in lesson order (oldest lesson first), then in the order they were made.
-export function deckCards(db, lessonId = null, participantId) {
+// `visible` is the SQL condition for the lessons the caller may see (visibleSql in services/lesson-access.js, over the
+// alias `l`), so "All lessons" never holds a card from another student's private lesson.
+export function deckCards(db, lessonId = null, participantId, visible = '1 = 1') {
   return db
-    .prepare(`SELECT ${CARD_COLUMNS} FROM ${CARD_FROM} WHERE (@lessonId IS NULL OR f.lesson_id = @lessonId) ORDER BY l.created_at, l.id, f.position, f.id`)
+    .prepare(`SELECT ${CARD_COLUMNS} FROM ${CARD_FROM} WHERE (@lessonId IS NULL OR f.lesson_id = @lessonId) AND ${visible} ORDER BY l.created_at, l.id, f.position, f.id`)
     .all({ lessonId, participantId });
 }
 
@@ -49,8 +51,8 @@ export function cardView(card, queue, { now, config }) {
 
 // The study screen's state for a deck: counts, the card to show (or none) and, when there is none, when the next
 // one is due. `showFirst` puts that card up next whatever the queue says (Undo brings the undone card back).
-export function studyState(db, { participantId, lessonId = null, now, config, showFirst } = {}) {
-  const cards = deckCards(db, lessonId, participantId);
+export function studyState(db, { participantId, lessonId = null, now, config, showFirst, visible } = {}) {
+  const cards = deckCards(db, lessonId, participantId, visible);
   const { start } = studyDay(now, config);
   const q = buildQueue(cards, { now, config, doneToday: doneToday(db, start, participantId) });
   let { card, queue } = q;

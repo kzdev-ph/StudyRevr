@@ -8,6 +8,7 @@ import { useSyncExternalStore } from 'react';
 //   #/quiz                    quizzes (one row per lesson);  #/quiz/12  take the quiz on lesson 12
 //   #/stats  #/settings
 //   #/admin                   researcher admin (PIN);  #/admin/participants/P03  that participant's stats
+//   #/admin/lessons/12        admin's read-only preview of lesson 12 (a student's private upload too)
 
 const LESSON_VIEWS = ['sections', 'points', 'terms'];
 const TABS = ['flashcards', 'quiz', 'stats', 'settings'];
@@ -20,7 +21,9 @@ export function parseRoute(hash) {
   }
   if (first === 'quiz' && /^\d+$/.test(second ?? '')) return { name: 'quizRun', lessonId: Number(second) };
   if (first === 'admin') {
-    return second === 'participants' && /^P\d{1,3}$/i.test(third ?? '') ? { name: 'adminParticipant', code: third.toUpperCase() } : { name: 'admin' };
+    if (second === 'participants' && /^P\d{1,3}$/i.test(third ?? '')) return { name: 'adminParticipant', code: third.toUpperCase() };
+    if (second === 'lessons' && /^\d+$/.test(third ?? '')) return { name: 'adminLesson', lessonId: Number(third) };
+    return { name: 'admin' };
   }
   if (TABS.includes(first)) return { name: first };
   if (first === 'review' && /^\d+$/.test(second ?? '')) {
@@ -37,7 +40,11 @@ export const paths = {
   quiz: (lessonId) => `#/quiz/${lessonId}`,
   admin: () => '#/admin',
   adminParticipant: (code) => `#/admin/participants/${code}`,
+  adminLesson: (id) => `#/admin/lessons/${id}`,
 };
+
+// The admin screens, the only ones that keep the PIN: leaving them locks admin again (App.jsx).
+export const isAdminRoute = (route) => route.name === 'admin' || route.name === 'adminParticipant' || route.name === 'adminLesson';
 
 export const navigate = (to) => {
   window.location.hash = to;
@@ -52,7 +59,7 @@ export const useRoute = () => parseRoute(useSyncExternalStore(subscribe, () => w
 
 // Which bottom tab a route belongs to (Settings and admin have no tab).
 export const tabOf = (route) => {
-  if (route.name === 'admin' || route.name === 'adminParticipant') return null;
+  if (isAdminRoute(route)) return null;
   if (route.name === 'library' || route.name === 'lesson') return 'review';
   if (route.name === 'study') return 'flashcards';
   return route.name === 'quizRun' ? 'quiz' : route.name;

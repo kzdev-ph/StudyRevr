@@ -1,5 +1,12 @@
-import { getDocumentProxy, extractText as extractPdfPages } from 'unpdf';
+import { getDocumentProxy } from 'unpdf';
+import { HttpError } from '../middleware/errors.js';
 import { normalizeText } from './text.js';
+
+// The most time a PDF may take to read. A page count or a content stream built to be slow could otherwise keep the server
+// busy for minutes (pdf.js runs in this thread). The budget is checked between pages, and the loop yields to the event
+// loop after each one, so other requests are answered meanwhile; a single page that never ends can't be interrupted.
+export const PDF_BUDGET_MS = 60_000;
+const yieldToLoop = () => new Promise((resolve) => setImmediate(resolve));
 
 // ---- Header/footer removal ------------------------------------------------------------------
 // Short lines are compared with digits masked so "Page 3" and "Page 4" match; longer lines must match
@@ -94,10 +101,38 @@ export function reflowPdfPagesNumbered(pages) {
 
 // Returns { text, pageCount, numbers }. Pages are separated by a blank line; each line in a page is one paragraph.
 // numbers[k] is the page number of the k-th block.
-export async function extractPdf(buffer) {
-  const pdf = await getDocumentProxy(new Uint8Array(buffer));
-  const { text } = await extractPdfPages(pdf, { mergePages: false });
-  const pages = stripRepeatedLines(text.map((p) => normalizeText(p).replace(/\n{2,}/g, '\n')));
-  const blocks = reflowPdfPagesNumbered(pages);
-  return { text: blocks.map((b) => b.text).join('\n\n'), pageCount: text.length, numbers: blocks.map((b) => b.page) };
+// Over `budgetMs` it throws HttpError(422, ...) and the document is destroyed.
+export async function extractPdf(buffer, { budgetMs = PDF_BUDGET_MS } = {}) {
+  const started = Date.now();
+  const tooSlow = () => new HttpError(422, 'This PDF took too long to read, so it can’t be processed. Try a smaller or simpler version.', { code: 'unreadable' });
+  const checkBudget = () => {
+    if (Date.now() - started > budgetMs) throw tooSlow();
+  };
+  let pdf;
+  let timer;
+  const work = (async () => {
+    pdf = await getDocumentProxy(new Uint8Array(buffer));
+    checkBudget();
+    const text = [];
+    // one page at a time (the text unpdf's extractText gives per page: items in order, a line break where pdf.js saw one)
+    for (let n = 1; n <= pdf.numPages; n += 1) {
+      const content = await (await pdf.getPage(n)).getTextContent();
+      text.push(content.items.filter((item) => item.str != null).map((item) => item.str + (item.hasEOL ? '\n' : '')).join(''));
+      checkBudget();
+      await yieldToLoop();
+    }
+    const pages = stripRepeatedLines(text.map((p) => normalizeText(p).replace(/\n{2,}/g, '\n')));
+    const blocks = reflowPdfPagesNumbered(pages);
+    return { text: blocks.map((b) => b.text).join('\n\n'), pageCount: text.length, numbers: blocks.map((b) => b.page) };
+  })();
+  work.catch(() => {}); // if the timer wins, a later failure of the abandoned work is not an unhandled rejection
+  const limit = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(tooSlow()), budgetMs);
+  });
+  try {
+    return await Promise.race([work, limit]);
+  } finally {
+    clearTimeout(timer);
+    pdf?.destroy?.()?.catch?.(() => {});
+  }
 }

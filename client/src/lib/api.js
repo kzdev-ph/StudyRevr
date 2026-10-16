@@ -11,8 +11,10 @@ export class ApiError extends Error {
 
 const UNREACHABLE = "Can't reach the StudyRevr server. Make sure it is running, then try again.";
 
-// Every request says which participant is studying (X-Participant) and, once admin is unlocked, carries the PIN.
-// `as` sends a given participant code instead of the current one (a session's last report after Switch participant).
+// Every request says which participant is studying (X-Participant). Only admin calls (`admin: true`) carry the PIN, so
+// a student using a tab where admin was unlocked is still just a student: no private uploads, no owner codes, no
+// teacher uploads. `as` sends a given participant code instead of the current one (a session's last report after
+// Switch participant).
 function headersFor(body, { admin = false, as = null } = {}) {
   const headers = {};
   if (body !== undefined) headers['content-type'] = 'application/json';
@@ -87,18 +89,25 @@ export const api = {
   listLessons: (signal) => request('/lessons', { signal }),
   // admin's list: the same rows plus the quiz-answers and leak counts (quiz_options, leaks), behind the PIN
   listLessonsWithCounts: (signal) => request('/lessons?counts=1', { signal, admin: true }),
-  getLesson: (id, signal) => request(`/lessons/${id}`, { signal }),
+  // { admin: true }: admin's read-only preview of a lesson (a student's private upload is a 404 without the PIN)
+  getLesson: (id, signal, { admin = false } = {}) => request(`/lessons/${id}`, { signal, admin }),
   getStatus: (id, signal) => request(`/lessons/${id}/status`, { signal }),
-  // admin only: upload, retry, delete, make cards
-  uploadLesson: (file) => {
+  // upload: with { admin: true } (the PIN) a teacher's lesson, without it a student's own (when admin allows it)
+  uploadLesson: (file, { admin = false } = {}) => {
     const form = new FormData();
     form.append('file', file);
-    return request('/lessons', { method: 'POST', form, admin: true });
+    return request('/lessons', { method: 'POST', form, admin });
   },
-  retryLesson: (id) => request(`/lessons/${id}/retry`, { method: 'POST', admin: true }),
+  // the student's uploads: { allowed, per_day, used_today, left_today, max_mb }
+  myUploads: (signal) => request('/my-uploads', { signal }),
+  // admin: make a student's private upload visible to everyone (one way)
+  shareLesson: (id) => request(`/lessons/${id}/share`, { method: 'POST', admin: true }),
+  // admin ({ admin: true }), or the student for their own failed upload (a retry doesn't use up an upload)
+  retryLesson: (id, { admin = false } = {}) => request(`/lessons/${id}/retry`, { method: 'POST', admin }),
   // makes the AI wrong answers for the quiz (the retry for that step, and for lessons made before it existed)
   makeQuizOptions: (id) => request(`/lessons/${id}/quiz-options`, { method: 'POST', admin: true }),
-  deleteLesson: (id) => request(`/lessons/${id}`, { method: 'DELETE', admin: true }),
+  // admin ({ admin: true }), or a student deleting their own upload before they have studied it
+  deleteLesson: (id, { admin = false } = {}) => request(`/lessons/${id}`, { method: 'DELETE', admin }),
   // flashcards and quiz questions that give their answer away, and writing one card again (only before participants study it)
   lessonLeaks: (id) => request(`/admin/lessons/${id}/leaks`, { admin: true }),
   regenerateCard: (id) => request(`/admin/flashcards/${id}/regenerate`, { method: 'POST', admin: true }),
@@ -139,7 +148,7 @@ export const api = {
   saveMyKey: ({ provider, model, apiKey }) => request('/my-ai/key', { method: 'POST', body: { provider, model, apiKey } }),
   removeMyKey: () => request('/my-ai/key', { method: 'DELETE' }),
 
-  // admin (the PIN header is added once admin is unlocked)
+  // admin (`admin: true` adds the PIN header once admin is unlocked)
   unlockAdmin: (pin) =>
     fetch('/api/admin/unlock', { method: 'POST', headers: { 'x-admin-pin': pin } }).then(
       async (res) => {

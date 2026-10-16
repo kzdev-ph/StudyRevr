@@ -1,5 +1,6 @@
 import { nextStudyDay, studyDate, studyWeek } from './days.js';
 import { dueReviews, planningTotals, round } from './planning.js';
+import { EXPORT_TITLE } from '../export/titles.js';
 
 // What the Stats tab shows for one participant, and the per-participant research summary (admin table and
 // summary.csv). Times come from study_sessions' active time; every day is a 04:00 Asia/Manila study day.
@@ -111,28 +112,43 @@ const EVENT_COLUMN = {
 
 export const lessonColumn = (lessonId) => `retention_quiz_first_pct_L${lessonId}`;
 
-// The columns of summary.csv, in order, for these lessons.
-export const summaryColumns = (lessons) => [
-  'participant',
+// Student uploads (Phase 7B) are kept out of the main measures: those count only the teacher's lessons (origin
+// 'admin'). Every lesson-dependent measure has an `_all` twin right after it that counts every lesson, students'
+// shared and private uploads included. Sessions on the "All lessons" deck (no lesson) count in both. Stats views are not
+// tied to a lesson, so they have no twin. The per-lesson quiz columns cover the teacher's lessons and shared uploads.
+const TWINNED = new Set([
   ...PLANNING_COLUMNS,
   'retention_cards_reviewed',
   'retention_good_easy_pct',
   'retention_quiz_first_pct_mean',
+  ...SELF_MONITORING_COLUMNS.filter((c) => c !== 'self_monitoring_stats_views'),
+]);
+export const allColumn = (column) => `${column}_all`;
+const withTwins = (columns) => columns.flatMap((c) => (TWINNED.has(c) ? [c, allColumn(c)] : [c]));
+
+// The columns of summary.csv, in order, for these lessons.
+export const summaryColumns = (lessons) => [
+  'participant',
+  ...withTwins(PLANNING_COLUMNS),
+  ...withTwins(['retention_cards_reviewed', 'retention_good_easy_pct', 'retention_quiz_first_pct_mean']),
   ...lessons.map((l) => lessonColumn(l.id)),
-  ...SELF_MONITORING_COLUMNS,
+  ...withTwins(SELF_MONITORING_COLUMNS),
 ];
 
-// One participant's summary row, columns grouped by SDL dimension (planning, retention, self-monitoring).
-export function summaryRow(db, participant, { now, config, lessons }) {
-  const sessions = sessionsOf(db, participant.id);
-  const reviews = reviewsOf(db, participant.id);
-  const attempts = attemptsOf(db, participant.id);
+// The measures of one participant over the lessons `keep(lessonId)` accepts (no lesson id: always kept).
+function measures(db, participant, { now, config, lessonOfCard, keep }) {
+  const kept = (lessonId) => lessonId === null || lessonId === undefined || keep(lessonId);
+  const sessions = sessionsOf(db, participant.id).filter((s) => kept(s.lesson_id));
+  const reviews = reviewsOf(db, participant.id).filter((r) => kept(lessonOfCard.get(r.flashcard_id)));
+  const progress = progressOf(db, participant.id).filter((r) => kept(lessonOfCard.get(r.flashcard_id)));
+  const attempts = attemptsOf(db, participant.id).filter((a) => kept(a.lesson_id));
   const answeredAt = db
     .prepare(
-      `SELECT q.answered_at FROM quiz_answers q JOIN quiz_attempts a ON a.id = q.attempt_id
+      `SELECT q.answered_at, a.lesson_id FROM quiz_answers q JOIN quiz_attempts a ON a.id = q.attempt_id
        WHERE a.participant_id = ? AND q.answered_at IS NOT NULL`,
     )
     .all(participant.id)
+    .filter((r) => kept(r.lesson_id))
     .map((r) => r.answered_at);
 
   const active = sessions.filter((s) => s.active_ms > 0);
@@ -144,15 +160,11 @@ export function summaryRow(db, participant, { now, config, lessons }) {
     ...answeredAt.map((t) => studyDate(t, config)),
   ]);
   const dates = [...studyDays].sort();
-  const plan = planningTotals(dueReviews(reviews, progressOf(db, participant.id), { now, config }));
+  const plan = planningTotals(dueReviews(reviews, progress, { now, config }));
 
   const cards = cardTotals(reviews);
-  const scores = quizScores(attempts);
-  const firsts = scores.map((s) => s.first_pct);
-  const events = db.prepare('SELECT type, COUNT(*) AS n FROM events WHERE participant_id = ? GROUP BY type').all(participant.id);
-
-  const row = {
-    participant: participant.code,
+  const firsts = quizScores(attempts).map((s) => s.first_pct);
+  const out = {
     planning_days_active: studyDays.size,
     planning_total_sessions: active.length,
     planning_reading_min: minutes(activeMs.reading),
@@ -170,17 +182,43 @@ export function summaryRow(db, participant, { now, config, lessons }) {
     retention_good_easy_pct: cards.good_easy_pct,
     retention_quiz_first_pct_mean: firsts.length ? round(firsts.reduce((a, b) => a + b, 0) / firsts.length, 1) : null,
   };
+  for (const c of SELF_MONITORING_COLUMNS) out[c] = 0;
+  const events = db.prepare('SELECT type, lesson_id FROM events WHERE participant_id = ?').all(participant.id);
+  for (const e of events) if (kept(e.lesson_id)) out[EVENT_COLUMN[e.type]] += 1;
+  return { out, attempts };
+}
+
+// One participant's summary row, columns grouped by SDL dimension (planning, retention, self-monitoring). `lessons` are
+// the per-lesson quiz columns.
+export function summaryRow(db, participant, { now, config, lessons }) {
+  const lessonOfCard = new Map(db.prepare('SELECT id, lesson_id FROM flashcards').all().map((f) => [f.id, f.lesson_id]));
+  const origins = new Map(db.prepare('SELECT id, origin FROM lessons').all().map((l) => [l.id, l.origin]));
+  const teacher = measures(db, participant, { now, config, lessonOfCard, keep: (id) => origins.get(id) === 'admin' });
+  const everything = measures(db, participant, { now, config, lessonOfCard, keep: () => true });
+
+  const row = { participant: participant.code };
+  for (const c of summaryColumns([]).slice(1)) {
+    if (!TWINNED.has(c) && !c.endsWith('_all')) row[c] = teacher.out[c];
+  }
+  for (const c of TWINNED) {
+    row[c] = teacher.out[c];
+    row[allColumn(c)] = everything.out[c];
+  }
+  const scores = quizScores(everything.attempts);
   for (const l of lessons) row[lessonColumn(l.id)] = scores.find((s) => s.lesson_id === l.id)?.first_pct ?? null;
-  for (const c of SELF_MONITORING_COLUMNS) row[c] = 0;
-  for (const e of events) row[EVENT_COLUMN[e.type]] = e.n;
-  return row;
+  // key order follows the column list
+  return Object.fromEntries(summaryColumns(lessons).map((c) => [c, row[c] ?? null]));
 }
 
 // Participants in code order; P00 (the researcher's test data) only when asked for.
 export const listParticipants = (db, { includeP00 = false } = {}) =>
   db.prepare(`SELECT id, code, created_at FROM participants ${includeP00 ? '' : "WHERE code <> 'P00'"} ORDER BY code`).all();
 
-export const listLessons = (db) => db.prepare('SELECT id, title FROM lessons ORDER BY id').all();
+// The lessons that get a column of their own in summary.csv: the teacher's and the student uploads admin shared
+// `forExport`: a student's upload is named by its generic export title (see EXPORT_TITLE); admin's screens (the participants
+// table) get the real one.
+export const listLessons = (db, { forExport = false } = {}) =>
+  db.prepare(`SELECT l.id, ${forExport ? EXPORT_TITLE : 'l.title'} AS title FROM lessons l WHERE l.origin = ? OR l.shared_at IS NOT NULL ORDER BY l.id`).all('admin');
 
 export function summaryTable(db, { now, config, includeP00 = false }) {
   const lessons = listLessons(db);

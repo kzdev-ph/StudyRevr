@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { CardsIcon, CheckIcon, RetryIcon } from '../components/Icons.jsx';
+import { CardsIcon, CheckIcon } from '../components/Icons.jsx';
 import Notice from '../components/Notice.jsx';
-import { useAdminPin } from '../lib/admin.js';
 import { api } from '../lib/api.js';
 import { COUNTS, describeCounts, describeNextDue, studyMinutes, totalDue } from '../lib/flashcards.js';
 import { prettyTitle } from '../lib/format.js';
@@ -44,7 +43,7 @@ function MarginCount({ counts, total }) {
 }
 
 // The right-hand side of a lesson row: Start, or why there is nothing to start yet.
-function DeckAction({ deck, onMake, making, admin }) {
+function DeckAction({ deck }) {
   if (deck.status === 'processing') {
     return (
       <span className="chip chip--busy">
@@ -52,14 +51,8 @@ function DeckAction({ deck, onMake, making, admin }) {
       </span>
     );
   }
-  if (deck.status === 'failed') {
-    if (!admin) return <span className="deck__total">Not ready yet</span>;
-    return (
-      <a className="btn btn--quiet" href={paths.lesson(deck.lesson_id)}>
-        Open lesson to retry
-      </a>
-    );
-  }
+  // a lesson that failed is retried by the teacher from admin's lesson list
+  if (deck.status === 'failed') return <span className="deck__total">Not ready yet</span>;
   if (deck.job && deck.job.status !== 'failed') {
     return (
       <span className="chip chip--busy">
@@ -67,16 +60,8 @@ function DeckAction({ deck, onMake, making, admin }) {
       </span>
     );
   }
-  if (!deck.total) {
-    // making cards calls the AI, so only the researcher (admin) can start it
-    if (!admin) return <span className="deck__total">Cards aren’t ready yet</span>;
-    return (
-      <button type="button" className="btn btn--quiet" onClick={() => onMake(deck.lesson_id)} disabled={making}>
-        {deck.job?.status === 'failed' ? <RetryIcon size={18} /> : null}
-        {deck.job?.status === 'failed' ? 'Try again' : 'Make cards'}
-      </button>
-    );
-  }
+  // cards are made by the teacher from admin's lesson list (it calls the AI)
+  if (!deck.total) return <span className="deck__total">Cards aren’t ready yet</span>;
   // Same rule as the All lessons deck: Start when there is something to study, Open when there is not.
   const ready = totalDue(deck.counts) > 0;
   return (
@@ -89,9 +74,6 @@ function DeckAction({ deck, onMake, making, admin }) {
 export default function FlashcardsScreen() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
-  const [makeError, setMakeError] = useState(null);
-  const [making, setMaking] = useState(null); // lesson id while its request is in flight
-  const admin = Boolean(useAdminPin());
 
   const load = useCallback(async (signal) => {
     try {
@@ -115,19 +97,6 @@ export default function FlashcardsScreen() {
     const timer = setInterval(() => load(), POLL_MS);
     return () => clearInterval(timer);
   }, [busy, load]);
-
-  const make = async (lessonId) => {
-    setMakeError(null);
-    setMaking(lessonId);
-    try {
-      await api.makeFlashcards(lessonId);
-      await load();
-    } catch (err) {
-      setMakeError(err.message);
-    } finally {
-      setMaking(null);
-    }
-  };
 
   if (error && !data) {
     return (
@@ -157,7 +126,6 @@ export default function FlashcardsScreen() {
   return (
     <section className="stack">
       <h1 className="screen-title">Flashcards</h1>
-      {makeError && <Notice onDismiss={() => setMakeError(null)}>{makeError}</Notice>}
       {failures.map((d) => (
         <Notice key={d.lesson_id}>
           <strong>Cards for {prettyTitle(d.title)} weren’t made.</strong> {d.job.error}
@@ -212,7 +180,7 @@ export default function FlashcardsScreen() {
                     <span className="deck__total">{deck.status === 'ready' && !deck.job ? 'No cards yet' : ' '}</span>
                   )}
                 </div>
-                <DeckAction deck={deck} onMake={make} making={making === deck.lesson_id} admin={admin} />
+                <DeckAction deck={deck} />
               </li>
             ))}
           </ul>

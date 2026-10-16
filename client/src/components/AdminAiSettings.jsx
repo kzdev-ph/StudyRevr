@@ -182,6 +182,7 @@ function DefaultAi() {
 function StudySettings() {
   const [settings, setSettings] = useState(null);
   const [perDay, setPerDay] = useState('');
+  const [uploadsPerDay, setUploadsPerDay] = useState('');
   const [message, setMessage] = useState('');
   const [problem, setProblem] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -193,6 +194,7 @@ function StudySettings() {
       .then((data) => {
         setSettings(data);
         setPerDay(String(data.flashcard_new_per_day));
+        setUploadsPerDay(String(data.student_uploads_per_day));
       })
       .catch((err) => err.name !== 'AbortError' && setProblem(err.message));
     return () => controller.abort();
@@ -229,6 +231,9 @@ function StudySettings() {
   };
   const n = Number(perDay);
   const valid = perDay.trim() !== '' && Number.isInteger(n) && n >= 0 && n <= 9999;
+
+  const u = Number(uploadsPerDay);
+  const uploadsValid = uploadsPerDay.trim() !== '' && Number.isInteger(u) && u >= 0 && u <= 20;
 
   if (!settings) return problem ? <Notice>{problem}</Notice> : null;
   return (
@@ -306,6 +311,55 @@ function StudySettings() {
           </button>
         </div>
       )}
+      <label className="check-row">
+        <input
+          type="checkbox"
+          role="switch"
+          checked={settings.allow_student_uploads}
+          disabled={busy}
+          onChange={(e) =>
+            save(
+              { allow_student_uploads: e.target.checked },
+              e.target.checked ? 'Students can now upload their own lessons.' : 'Student uploads are off. Lessons already uploaded stay.',
+            )
+          }
+          aria-describedby="admin-uploads-note"
+        />
+        Allow students to upload lessons
+      </label>
+      <p id="admin-uploads-note" className="muted">
+        Off by default, so the study runs on your lesson. An upload is private to the student until you share it from the lesson list. Turning this off only
+        hides the Upload button; lessons already uploaded and their records stay. Uploads are prepared with the Default AI, one lesson at a time, never with a
+        student’s own key.
+      </p>
+      <form
+        className="admin-add"
+        onSubmit={(e) => {
+          e.preventDefault();
+          save({ student_uploads_per_day: u }, `Saved. Each student can upload ${u} ${u === 1 ? 'lesson' : 'lessons'} a study day.`);
+        }}
+      >
+        <label className="field">
+          <span className="field__label">Uploads per student per study day</span>
+          <input
+            className="field__input"
+            type="number"
+            inputMode="numeric"
+            min={0}
+            max={20}
+            value={uploadsPerDay}
+            onChange={(e) => setUploadsPerDay(e.target.value)}
+            aria-invalid={!uploadsValid}
+            aria-describedby="admin-uploadsperday-note"
+          />
+        </label>
+        <button type="submit" className="btn btn--primary" disabled={busy || !uploadsValid || u === settings.student_uploads_per_day}>
+          Save
+        </button>
+      </form>
+      <p id="admin-uploadsperday-note" className="muted">
+        The study day starts at 04:00. Deleting an upload doesn’t give it back. Default 2.
+      </p>
       <p role="status" className="status-ok">
         {message}
       </p>

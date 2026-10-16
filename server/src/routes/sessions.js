@@ -28,14 +28,16 @@ const eventBody = z
   });
 
 // Study sessions and self-monitoring events, both for the participant in X-Participant. Mounted at /api.
-export function sessionsRouter({ db, clock = () => new Date() }) {
+export function sessionsRouter({ db, access, clock = () => new Date() }) {
   const router = Router();
   const config = () => loadSchedulerConfig(db);
 
   router.post('/sessions', (req, res) => {
+    const viewer = access.viewerOf(req);
     const { id: participantId } = requireParticipant(db, req);
     const body = startBody.safeParse(req.body ?? {});
     if (!body.success) throw new HttpError(400, 'Send lesson_id (a lesson id, or null for All lessons) and activity (reading, flashcards or quiz).');
+    if (body.data.lesson_id !== null) access.visibleLesson(viewer, body.data.lesson_id);
     res.status(201).json({ session: startSession(db, { participantId, lessonId: body.data.lesson_id, activity: body.data.activity, now: clock(), config: config() }) });
   });
 
@@ -50,11 +52,12 @@ export function sessionsRouter({ db, clock = () => new Date() }) {
   });
 
   router.post('/events', (req, res) => {
+    const viewer = access.viewerOf(req);
     const { id: participantId } = requireParticipant(db, req);
     const body = eventBody.safeParse(req.body ?? {});
     if (!body.success) throw new HttpError(400, 'Send type (stats_view, review_flashcards_tap, section_simplify or section_translate); section events also need lesson_id and section_index.');
     const e = body.data;
-    if (e.lesson_id && !db.prepare('SELECT 1 FROM lessons WHERE id = ?').get(e.lesson_id)) throw new HttpError(404, 'Lesson not found.');
+    if (e.lesson_id) access.visibleLesson(viewer, e.lesson_id);
     const eventId = logEvent(db, {
       participantId,
       type: e.type,

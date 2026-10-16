@@ -25,7 +25,7 @@ function Block({ text, label }) {
 // the match is approximate.
 export default function SourcePanel({ section, lesson }) {
   const [all, setAll] = useState(false);
-  const { raw_text: rawText, filename, source } = lesson;
+  const { raw_text: rawText, source } = lesson;
   const kind = source?.kind;
 
   const numbered = useMemo(() => numberedBlocks(rawText, source), [rawText, source]);
@@ -43,13 +43,13 @@ export default function SourcePanel({ section, lesson }) {
   let hint;
   if (whole) {
     title = 'Everything in your file';
-    hint = `The full text taken from ${filename}.`;
+    hint = 'The full text taken from your file.';
   } else if (exact) {
     title = `From ${sourceLabel(kind, exact.map((b) => b.number)).toLowerCase()}`;
-    hint = `Exactly what this section was written from in ${filename}.`;
+    hint = 'Exactly what this section was written from in your file.';
   } else {
     title = 'From your file';
-    hint = `The parts of ${filename} this section was written from. The match is approximate.`;
+    hint = 'The parts of your file this section was written from. The match is approximate.';
   }
 
   return (

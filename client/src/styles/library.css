@@ -44,6 +44,18 @@
   color: var(--ink-2);
   font-size: 0.9375rem;
 }
+/* a student's upload zone: smaller, and says how many uploads are left today */
+.upload--compact {
+  padding: 14px 16px;
+}
+.upload--compact .upload__title {
+  font-size: 1rem;
+}
+.upload__text .upload__note {
+  margin-top: 4px;
+  color: var(--ink);
+  font-weight: 600;
+}
 
 /* ruled list of lessons, numbered in the margin like a notebook's list */
 .lessons {
@@ -110,6 +122,12 @@
   flex: none;
   color: var(--ink-2);
 }
+/* a row with its own Delete button on a phone: the title needs the width more than the chevron does */
+@media (max-width: 30rem) {
+  .lesson:has(> .icon-btn) .lesson__chevron {
+    display: none;
+  }
+}
 .lesson__extra {
   flex: 1 0 100%;
   display: flex;
@@ -160,6 +178,20 @@
 }
 .lesson__extra--failed .lesson__extra-text {
   color: var(--danger);
+}
+.lesson__extra--note {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  background: var(--accent-wash);
+}
+.lesson__extra--note .lesson__extra-text {
+  color: var(--ink);
+}
+/* a student's own confirm: ink and a plain rule, never red (red is admin's destructive buttons only) */
+.lesson--confirm.lesson--confirm-own {
+  border-color: var(--control-border);
+  background: var(--accent-wash);
 }
 .lesson--confirm {
   flex-direction: column;

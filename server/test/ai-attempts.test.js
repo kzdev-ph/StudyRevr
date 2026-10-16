@@ -128,13 +128,13 @@ describe('429 Retry-After', () => {
 });
 
 describe('client-side request limit', () => {
-  it('lets 15 requests a minute through and makes the 16th wait for the oldest to leave the window', async () => {
+  it('lets 12 of 15 requests a minute through (3 stay free for live calls) and makes the 13th wait for the oldest to leave the window', async () => {
     const client = clockedClient(scriptedFetch(OK), { ...CFG, requestsPerMinute: 15 });
-    await Promise.all(Array.from({ length: 16 }, (_, i) => client.ask(`call ${i + 1}`)));
+    await Promise.all(Array.from({ length: 13 }, (_, i) => client.ask(`call ${i + 1}`)));
     const throttles = client.events.filter((e) => e.type === 'throttle');
-    assert.deepEqual(throttles.map((e) => [e.label, e.waitMs]), [['call 16', 60_000]]);
+    assert.deepEqual(throttles.map((e) => [e.label, e.waitMs]), [['call 13', 60_000]]);
     assert.equal(client.stats.throttledMs, 60_000);
-    assert.equal(client.stats.attempts, 16);
+    assert.equal(client.stats.attempts, 13);
   });
 
   it('counts retries against the limit, and does nothing without one', async () => {

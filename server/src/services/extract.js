@@ -4,9 +4,22 @@ import { splitBlocks } from '../ai/chunk.js';
 import { extractPdf } from './pdf.js';
 import { extractPptx } from './pptx.js';
 import { countWords, normalizeText } from './text.js';
-import { assertSafeZip } from './zipguard.js';
+import { assertEntrySizes, assertSafeZip } from './zipguard.js';
 
 const UNREADABLE = "Couldn't read this file. Make sure it opens in Word, PowerPoint or a PDF viewer, then try again.";
+
+// The part that makes a zip a Word document / a PowerPoint deck. A .pptx renamed .docx (or any other zip) has the "PK"
+// signature too, so the type is checked by what the archive holds, not by its name.
+const MAIN_PART = { '.docx': 'word/document.xml', '.pptx': 'ppt/presentation.xml' };
+
+// Also the zip guard (zipguard.js): the sizes the directory declares, and then the real size of every entry.
+export async function assertDocumentPart(buffer, ext) {
+  const { names, records } = assertSafeZip(buffer);
+  await assertEntrySizes(buffer, records);
+  if (!names.has(MAIN_PART[ext])) {
+    throw new HttpError(400, `This file isn't a real ${ext} (it looks like another kind of file with the wrong name). Save it as ${ext} from ${ext === '.docx' ? 'Word' : 'PowerPoint'} and try again.`, { code: 'wrong_content' });
+  }
+}
 
 async function extractDocx(buffer) {
   const { value } = await mammoth.extractRawText({ buffer });
@@ -20,11 +33,11 @@ async function extractDocx(buffer) {
 // the k-th block of `text` (a slide or page with no text has no block, so the two differ), kind is 'slide', 'page' or
 // 'paragraph' and total how many of those the file has. source.numbers is null if the blocks can't be matched up
 // with certainty, and then nothing is claimed about where a block came from.
-export async function extractText(buffer, ext, { includeNotes = true } = {}) {
+export async function extractText(buffer, ext, { includeNotes = true, pdfBudgetMs } = {}) {
   let raw;
   let pageCount = null;
   let found = null; // { numbers, total } as the parser saw them
-  if (ext === '.docx' || ext === '.pptx') assertSafeZip(buffer); // before any parser inflates the archive
+  if (ext === '.docx' || ext === '.pptx') await assertDocumentPart(buffer, ext); // before any parser inflates the archive
   try {
     if (ext === '.docx') raw = await extractDocx(buffer);
     else if (ext === '.pptx') {
@@ -32,14 +45,15 @@ export async function extractText(buffer, ext, { includeNotes = true } = {}) {
       raw = text;
       found = { numbers, total };
     } else {
-      const { text, numbers, pageCount: pages } = await extractPdf(buffer);
+      const { text, numbers, pageCount: pages } = await extractPdf(buffer, pdfBudgetMs === undefined ? {} : { budgetMs: pdfBudgetMs });
       raw = text;
       pageCount = pages;
       found = { numbers, total: pages };
     }
   } catch (err) {
+    if (err instanceof HttpError) throw err; // a limit of ours (a PDF that took too long), with its own message
     console.error(`Extraction failed (${ext}):`, err.message);
-    throw new HttpError(422, UNREADABLE);
+    throw new HttpError(422, UNREADABLE, { code: 'unreadable' });
   }
   const text = normalizeText(raw || '');
   const blockCount = splitBlocks(text).length;

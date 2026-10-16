@@ -17,7 +17,7 @@ function useDeckSummary(lessonId) {
 
 function flashcardLine(deck) {
   if (!deck) return 'Flip, rate and remember the lesson’s cards.';
-  if (!deck.total) return 'This lesson has no cards yet; make them on the Flashcard tab.';
+  if (!deck.total) return 'This lesson has no cards yet. Your teacher can make them.';
   const n = totalDue(deck.counts);
   if (!n) return 'All caught up for today.';
   return `${n} ${n === 1 ? 'card' : 'cards'} to study, about ${studyMinutes(deck.counts)} min.`;

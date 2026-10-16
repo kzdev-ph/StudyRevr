@@ -11,17 +11,16 @@ import { lockAdmin, useAdminPin } from '../lib/admin.js';
 import { api } from '../lib/api.js';
 import { pct } from '../lib/stats.js';
 import { useParticipant } from '../lib/participant.js';
-import { navigate, paths } from '../lib/router.js';
-import { setWarning } from '../lib/warnings.js';
+import { paths } from '../lib/router.js';
 
 const POLL_MS = 3000;
 // The CSV files, named as they are in the zip.
-const FILES = ['summary', 'sessions', 'flashcard_reviews', 'due_reviews', 'quiz_attempts', 'quiz_answers', 'events', 'ai_calls'];
+const FILES = ['summary', 'sessions', 'flashcard_reviews', 'due_reviews', 'quiz_attempts', 'quiz_answers', 'events', 'ai_calls', 'lessons', 'lesson_events'];
 const RUNNING = ['queued', 'running'];
 
-// Lessons: upload, retry (on the lesson's page), delete. Students only read and study them. With a participant code
-// in use (P00 for the researcher), an upload opens the lesson's progress page; without one it stays in the list.
-function LessonsSection({ participant }) {
+// Lessons: upload, retry, delete, share. Students only read and study them. A teacher's upload stays in this list, where
+// its progress shows (admin keeps the PIN only on the admin screens, so there is no processing page to open).
+function LessonsSection() {
   const [lessons, setLessons] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [problem, setProblem] = useState(null);
@@ -41,7 +40,7 @@ function LessonsSection({ participant }) {
   }, [load]);
   // keep refreshing while a lesson is being prepared, or its quiz answers or simpler / Taglish versions are being made
   const anyProcessing = lessons?.some(
-    (l) => l.status === 'processing' || RUNNING.includes(l.quiz_options?.status) || RUNNING.includes(l.section_versions?.status),
+    (l) => l.status === 'processing' || RUNNING.includes(l.flashcards?.status) || RUNNING.includes(l.quiz_options?.status) || RUNNING.includes(l.section_versions?.status),
   );
   useEffect(() => {
     if (!anyProcessing) return undefined;
@@ -53,13 +52,9 @@ function LessonsSection({ participant }) {
     setProblem(null);
     setUploading(true);
     try {
-      const { lesson, warning } = await api.uploadLesson(file);
-      if (warning) setWarning(lesson.id, warning);
-      if (participant) navigate(paths.lesson(lesson.id));
-      else {
-        if (warning) setProblem(warning);
-        await load();
-      }
+      const { warning } = await api.uploadLesson(file, { admin: true });
+      if (warning) setProblem(warning);
+      await load();
     } catch (err) {
       setProblem(err.message);
     } finally {
@@ -69,7 +64,7 @@ function LessonsSection({ participant }) {
   const remove = async (id) => {
     setProblem(null);
     try {
-      await api.deleteLesson(id);
+      await api.deleteLesson(id, { admin: true });
       setLessons((list) => list.filter((l) => l.id !== id));
       heading.current?.focus(); // the deleted row had focus
     } catch (err) {
@@ -77,10 +72,42 @@ function LessonsSection({ participant }) {
     }
   };
 
+  // a failed lesson is made again from the step that failed (finished steps are kept)
+  const retryLesson = async (id) => {
+    setProblem(null);
+    try {
+      await api.retryLesson(id, { admin: true });
+    } catch (err) {
+      setProblem(err.message);
+    }
+    await load();
+  };
+
+  // a student's private upload becomes everyone's (one way; the row asks first)
+  const shareLesson = async (id) => {
+    setProblem(null);
+    try {
+      await api.shareLesson(id);
+    } catch (err) {
+      setProblem(err.message);
+    }
+    await load();
+  };
+
   const prepareVersions = async (id) => {
     setProblem(null);
     try {
       await api.prepareVersions(id);
+    } catch (err) {
+      setProblem(err.message);
+    }
+    await load();
+  };
+
+  const makeFlashcards = async (id) => {
+    setProblem(null);
+    try {
+      await api.makeFlashcards(id);
     } catch (err) {
       setProblem(err.message);
     }
@@ -107,7 +134,7 @@ function LessonsSection({ participant }) {
       {lessons?.length > 0 && (
         <ul className="lessons">
           {lessons.map((lesson) => (
-            <LessonRow key={lesson.id} lesson={lesson} onDelete={remove} onMakeQuizOptions={makeQuizOptions} onPrepareVersions={prepareVersions} onCardsChanged={load} />
+            <LessonRow key={lesson.id} lesson={lesson} admin onDelete={remove} onRetry={retryLesson} onShare={shareLesson} onMakeFlashcards={makeFlashcards} onMakeQuizOptions={makeQuizOptions} onPrepareVersions={prepareVersions} onCardsChanged={load} />
           ))}
         </ul>
       )}
@@ -321,7 +348,7 @@ export default function AdminScreen() {
           Lock admin
         </button>
       </div>
-      <LessonsSection participant={participant} />
+      <LessonsSection />
       <ParticipantsSection />
       <ExportSection />
       <AdminAiSettings />
