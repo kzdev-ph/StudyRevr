@@ -5,6 +5,7 @@ import { prettyTitle } from '../lib/format.js';
 import { quizOptionsNotice } from '../lib/quizOptions.js';
 import { sectionVersionsNotice } from '../lib/sectionVersions.js';
 import { paths } from '../lib/router.js';
+import { adminLessonNote, ownLessonNote, processingLine, rowActions } from '../lib/uploads.js';
 
 const formatDate = (iso) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 const formatWords = (n) => `${n.toLocaleString()} ${n === 1 ? 'word' : 'words'}`;
@@ -60,41 +61,79 @@ function LessonStep({ lesson, notice, busyText, onMake }) {
 
 // One lesson on the ruled list. With `onDelete` (admin), Delete asks first, in place, so a slip of the thumb can't
 // remove a lesson. `onMakeQuizOptions` (admin) enables the quiz-answers retry, `onPrepareVersions` (admin) the
-// "Prepare simpler and Taglish" step, `onCardsChanged` (admin) the list of cards that give their answer away.
-export default function LessonRow({ lesson, onDelete, onMakeQuizOptions, onPrepareVersions, onCardsChanged }) {
-  const [confirming, setConfirming] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+// "Prepare simpler and Taglish" step, `onCardsChanged` (admin) the list of cards that give their answer away,
+// `onShare` (admin) "Share with everyone" for a student's private upload.
+// A student's own upload (`lesson.mine`) shows who can see it and where its preparation is; `onDeleteOwn` (only while
+// the server says `can_delete`: before it is shared or studied) and `onRetry` (a failed upload) are theirs.
+export default function LessonRow({ lesson, admin = false, onDelete, onDeleteOwn, onRetry, onShare, onMakeQuizOptions, onPrepareVersions, onCardsChanged }) {
+  const [confirming, setConfirming] = useState(null); // 'delete' | 'share'
+  const [working, setWorking] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const trash = useRef(null);
+  const share = useRef(null);
   const keep = useRef(null);
-  const wasConfirming = useRef(false);
+  const was = useRef(null);
 
-  // The button that was pressed is replaced, so focus follows: to "Keep it" (the safe choice), and back to Delete.
+  // The button that was pressed is replaced, so focus follows: to "Keep it" (the safe choice), and back to the button.
   useEffect(() => {
     if (confirming) keep.current?.focus();
-    else if (wasConfirming.current) trash.current?.focus();
-    wasConfirming.current = confirming;
+    else if (was.current) (was.current === 'share' ? share : trash).current?.focus();
+    was.current = confirming;
   }, [confirming]);
 
-  const remove = async () => {
-    setDeleting(true);
-    await onDelete(lesson.id);
-    setDeleting(false);
-    setConfirming(false);
+  const actions = rowActions(lesson);
+  const canDeleteOwn = Boolean(onDeleteOwn) && actions.delete;
+  const canShare = Boolean(onShare) && lesson.origin === 'student' && !lesson.shared && lesson.status === 'ready';
+  const note = admin ? adminLessonNote(lesson) : ownLessonNote(lesson);
+  const stage = lesson.mine ? processingLine(lesson) : null;
+  const failedMine = lesson.mine && lesson.status === 'failed';
+
+  const finish = async (action) => {
+    setWorking(true);
+    await action(lesson.id);
+    setWorking(false);
+    setConfirming(null);
+  };
+  const tryAgain = async () => {
+    setRetrying(true);
+    await onRetry(lesson.id);
+    setRetrying(false);
   };
 
   if (confirming) {
+    const title = prettyTitle(lesson.title);
+    // a student's confirm is ink, never red; the red button is admin's alone
+    const sharing = confirming === 'share';
     return (
-      <li className="lesson lesson--confirm">
+      <li className={`lesson lesson--confirm${sharing || canDeleteOwn ? ' lesson--confirm-own' : ''}`}>
         <p className="lesson__ask">
-          Delete <strong>{prettyTitle(lesson.title)}</strong>? Its review, cards and quizzes go with it. This can’t be undone.
+          {sharing ? (
+            <>
+              Share <strong>{title}</strong> with every student? They will all see it in their library. This can’t be undone.
+            </>
+          ) : canDeleteOwn ? (
+            <>
+              Delete <strong>{title}</strong>? Its review, cards and quizzes go with it. You can delete it until you start studying it.
+            </>
+          ) : (
+            <>
+              Delete <strong>{title}</strong>? Its review, cards and quizzes go with it. This can’t be undone.
+            </>
+          )}
         </p>
         <div className="lesson__confirm-actions">
-          <button type="button" className="btn btn--quiet" ref={keep} onClick={() => setConfirming(false)} disabled={deleting}>
+          <button type="button" className="btn btn--quiet" ref={keep} onClick={() => setConfirming(null)} disabled={working}>
             Keep it
           </button>
-          <button type="button" className="btn btn--danger" onClick={remove} disabled={deleting}>
-            {deleting ? 'Deleting…' : 'Delete lesson'}
-          </button>
+          {sharing ? (
+            <button type="button" className="btn btn--primary" onClick={() => finish(onShare)} disabled={working}>
+              {working ? 'Sharing…' : 'Share lesson'}
+            </button>
+          ) : (
+            <button type="button" className={canDeleteOwn ? 'btn btn--primary' : 'btn btn--danger'} onClick={() => finish(canDeleteOwn ? onDeleteOwn : onDelete)} disabled={working}>
+              {working ? 'Deleting…' : 'Delete lesson'}
+            </button>
+          )}
         </div>
       </li>
     );
@@ -107,15 +146,35 @@ export default function LessonRow({ lesson, onDelete, onMakeQuizOptions, onPrepa
           <span className="lesson__title">{prettyTitle(lesson.title)}</span>
           <span className="lesson__meta">
             {formatWords(lesson.word_count)}, added {formatDate(lesson.created_at)}
+            {note ? ` · ${note}` : ''}
           </span>
+          {stage && <span className="lesson__meta" aria-live="polite">{stage}</span>}
         </span>
         <Status lesson={lesson} />
         <ChevronRight size={20} className="lesson__chevron" />
       </a>
-      {onDelete && (
-        <button type="button" className="icon-btn" ref={trash} onClick={() => setConfirming(true)} aria-label={`Delete ${prettyTitle(lesson.title)}`}>
+      {(onDelete || canDeleteOwn) && (
+        <button type="button" className="icon-btn" ref={trash} onClick={() => setConfirming('delete')} aria-label={`Delete ${prettyTitle(lesson.title)}`}>
           <TrashIcon size={20} />
         </button>
+      )}
+      {failedMine && (
+        <div className="lesson__extra lesson__extra--note" aria-live="polite">
+          <p className="lesson__extra-text">{lesson.error ?? 'Something went wrong while preparing this lesson.'}</p>
+          {actions.retry && onRetry && (
+            <button type="button" className="btn btn--primary" onClick={tryAgain} disabled={retrying}>
+              {retrying ? 'Trying again…' : 'Try again'}
+            </button>
+          )}
+        </div>
+      )}
+      {canShare && (
+        <div className="lesson__extra">
+          <p className="lesson__extra-text">Only {lesson.owner_code ?? 'the uploader'} can see this lesson.</p>
+          <button type="button" className="btn btn--quiet" ref={share} onClick={() => setConfirming('share')}>
+            Share with everyone
+          </button>
+        </div>
       )}
       {onCardsChanged && <LeakyCards lesson={lesson} onChanged={onCardsChanged} />}
       {onMakeQuizOptions && <LessonStep lesson={lesson} notice={quizOptionsNotice(lesson)} busyText="Making the quiz answers…" onMake={onMakeQuizOptions} />}

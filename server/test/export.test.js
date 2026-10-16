@@ -107,7 +107,7 @@ describe('research export', () => {
     assert.equal(res.headers.get('content-type'), 'application/zip');
     const zip = await JSZip.loadAsync(Buffer.from(await res.arrayBuffer()));
     const names = Object.keys(zip.files).sort();
-    assert.deepEqual(names, ['README.txt', 'ai_calls.csv', 'due_reviews.csv', 'events.csv', 'flashcard_reviews.csv', 'quiz_answers.csv', 'quiz_attempts.csv', 'sessions.csv', 'setting_events.csv', 'summary.csv']);
+    assert.deepEqual(names, ['README.txt', 'ai_calls.csv', 'due_reviews.csv', 'events.csv', 'flashcard_reviews.csv', 'lesson_events.csv', 'lessons.csv', 'quiz_answers.csv', 'quiz_attempts.csv', 'sessions.csv', 'setting_events.csv', 'summary.csv']);
     for (const name of names) {
       const text = await zip.file(name).async('string');
       for (const secret of [SECRET_KEY, TEST_PIN, 'gemini-secret-model', 'ai_api_key', 'sk-STUDENT-EXPORT-SECRET']) assert.ok(!text.includes(secret), `${secret} in ${name}`);
@@ -167,17 +167,20 @@ describe('research export', () => {
   it('the summary columns are grouped by SDL dimension and match hand counts', async () => {
     const text = await file('summary');
     const header = text.replace(/^﻿/, '').split('\r\n')[0].split(',');
+    // every lesson-dependent measure is followed by its _all twin (Phase 7B); here every lesson is the teacher's, so they match
+    const twin = (...cols) => cols.flatMap((c) => [c, `${c}_all`]);
     assert.deepEqual(header, [
       'participant',
-      'planning_days_active', 'planning_total_sessions', 'planning_reading_min', 'planning_flashcards_min', 'planning_quiz_min', 'planning_total_min',
-      'planning_first_study_date', 'planning_last_study_date', 'planning_reviews_on_time', 'planning_reviews_late', 'planning_reviews_still_overdue',
-      'planning_avg_days_late', 'planning_on_time_rate',
-      'retention_cards_reviewed', 'retention_good_easy_pct', 'retention_quiz_first_pct_mean', `retention_quiz_first_pct_L${lessonId}`,
-      'self_monitoring_stats_views', 'self_monitoring_quiz_retakes', 'self_monitoring_review_flashcards_taps', 'self_monitoring_simplify_taps', 'self_monitoring_translate_taps',
+      ...twin('planning_days_active', 'planning_total_sessions', 'planning_reading_min', 'planning_flashcards_min', 'planning_quiz_min', 'planning_total_min',
+        'planning_first_study_date', 'planning_last_study_date', 'planning_reviews_on_time', 'planning_reviews_late', 'planning_reviews_still_overdue',
+        'planning_avg_days_late', 'planning_on_time_rate'),
+      ...twin('retention_cards_reviewed', 'retention_good_easy_pct', 'retention_quiz_first_pct_mean'), `retention_quiz_first_pct_L${lessonId}`,
+      'self_monitoring_stats_views', ...twin('self_monitoring_quiz_retakes', 'self_monitoring_review_flashcards_taps', 'self_monitoring_simplify_taps', 'self_monitoring_translate_taps'),
     ]);
     const [p1, p2] = parseCsv(text);
     const firstPct = t.db.prepare('SELECT ROUND(100.0 * score / total, 1) p FROM quiz_attempts WHERE id = ?').get(ids.first).p;
-    assert.deepEqual(p1, {
+    const doubled = (row) => Object.fromEntries(Object.entries(row).flatMap(([k, v]) => (k === 'participant' || k.includes('_L') || k === 'self_monitoring_stats_views' ? [[k, v]] : [[k, v], [`${k}_all`, v]])));
+    assert.deepEqual(p1, doubled({
       participant: 'P01',
       planning_days_active: '2', // Oct 5 (reviews, reading) and Oct 6 (flashcards, quiz)
       planning_total_sessions: '2',
@@ -201,7 +204,7 @@ describe('research export', () => {
       self_monitoring_review_flashcards_taps: '1',
       self_monitoring_simplify_taps: '1',
       self_monitoring_translate_taps: '1',
-    });
+    }));
     assert.equal(p2.participant, 'P02');
     assert.equal(p2.planning_days_active, '0');
     assert.equal(p2.retention_cards_reviewed, '0');

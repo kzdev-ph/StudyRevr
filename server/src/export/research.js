@@ -3,7 +3,7 @@ import { RESUME_WINDOW_MS } from '../quiz/attempts.js';
 import { sessionStatus } from '../sessions/store.js';
 import { daysBetween, studyDate } from '../stats/days.js';
 import { dueReviews, reviewDue } from '../stats/planning.js';
-import { summaryTable } from '../stats/participant.js';
+import { listLessons, summaryTable } from '../stats/participant.js';
 import { toCsv } from './csv.js';
 import { CODEBOOK } from './codebook.js';
 
@@ -14,7 +14,7 @@ import { CODEBOOK } from './codebook.js';
 const RATING = { 1: 'again', 2: 'hard', 3: 'good', 4: 'easy' };
 const STATE = { 0: 'new', 1: 'learning', 2: 'review', 3: 'relearning' };
 
-export const EXPORT_FILES = ['summary', 'sessions', 'flashcard_reviews', 'due_reviews', 'quiz_attempts', 'quiz_answers', 'events', 'setting_events', 'ai_calls'];
+export const EXPORT_FILES = ['summary', 'lessons', 'sessions', 'flashcard_reviews', 'due_reviews', 'quiz_attempts', 'quiz_answers', 'events', 'lesson_events', 'setting_events', 'ai_calls'];
 
 const who = (includeP00) => (includeP00 ? '' : "AND p.code <> 'P00'");
 
@@ -167,6 +167,36 @@ function events(db, { includeP00 }) {
   );
 }
 
+// Every lesson with where it came from: admin (the teacher's) | student (an upload), whether it was shared with
+// everyone, and the uploader's code (blank for a teacher's lesson and when the uploader was withdrawn). P00's uploads
+// are left out like the rest of P00's data.
+function lessons(db, { includeP00 }) {
+  const rows = db
+    .prepare(
+      `SELECT l.*, p.code AS owner FROM lessons l LEFT JOIN participants p ON p.id = l.owner_participant_id
+       WHERE 1 = 1 ${includeP00 ? '' : "AND (p.code IS NULL OR p.code <> 'P00')"} ORDER BY l.id`,
+    )
+    .all();
+  return toCsv(
+    ['lesson_id', 'title', 'origin', 'shared', 'shared_at', 'owner', 'status', 'word_count', 'source_kind', 'created_at'],
+    rows.map((l) => ({ ...l, lesson_id: l.id, shared: l.origin === 'admin' ? null : l.shared_at !== null })),
+  );
+}
+
+// Student uploads: lesson_uploaded, lesson_upload_failed, lesson_deleted_by_student, lesson_shared (lesson_events).
+function lessonEvents(db, { includeP00 }) {
+  const rows = db
+    .prepare(
+      `SELECT p.code AS participant, e.* FROM lesson_events e JOIN participants p ON p.id = e.participant_id
+       WHERE 1 = 1 ${who(includeP00)} ORDER BY p.code, e.created_at, e.id`,
+    )
+    .all();
+  return toCsv(
+    ['participant', 'event_id', 'type', 'actor', 'lesson_id', 'lesson_title', 'detail', 'created_at', 'study_date'],
+    rows.map((e) => ({ ...e, event_id: e.id })),
+  );
+}
+
 // Settings a participant changed (setting_events): setting motion, value system | less | full.
 function settingEvents(db, { includeP00 }) {
   const rows = db
@@ -212,7 +242,7 @@ function summary(db, opts) {
   return toCsv(columns, rows);
 }
 
-const MAKERS = { summary, sessions, flashcard_reviews: flashcardReviews, due_reviews: dueReviewsCsv, quiz_attempts: quizAttempts, quiz_answers: quizAnswers, events, setting_events: settingEvents, ai_calls: aiCalls };
+const MAKERS = { summary, lessons, sessions, flashcard_reviews: flashcardReviews, due_reviews: dueReviewsCsv, quiz_attempts: quizAttempts, quiz_answers: quizAnswers, events, lesson_events: lessonEvents, setting_events: settingEvents, ai_calls: aiCalls };
 
 // One file's CSV text. opts: { now, config, includeP00 }
 export function exportCsv(db, name, opts) {
@@ -224,6 +254,6 @@ export function exportCsv(db, name, opts) {
 export async function exportZip(db, opts) {
   const zip = new JSZip();
   for (const name of EXPORT_FILES) zip.file(`${name}.csv`, `\uFEFF${exportCsv(db, name, opts)}`); // BOM: Excel reads UTF-8
-  zip.file('README.txt', CODEBOOK({ ...opts, lessons: db.prepare('SELECT id, title FROM lessons ORDER BY id').all() }));
+  zip.file('README.txt', CODEBOOK({ ...opts, lessons: listLessons(db) }));
   return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
 }

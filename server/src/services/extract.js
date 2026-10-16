@@ -8,6 +8,17 @@ import { assertSafeZip } from './zipguard.js';
 
 const UNREADABLE = "Couldn't read this file. Make sure it opens in Word, PowerPoint or a PDF viewer, then try again.";
 
+// The part that makes a zip a Word document / a PowerPoint deck. A .pptx renamed .docx (or any other zip) has the "PK"
+// signature too, so the type is checked by what the archive holds, not by its name.
+const MAIN_PART = { '.docx': 'word/document.xml', '.pptx': 'ppt/presentation.xml' };
+
+export function assertDocumentPart(buffer, ext) {
+  const { names } = assertSafeZip(buffer);
+  if (!names.has(MAIN_PART[ext])) {
+    throw new HttpError(400, `This file isn't a real ${ext} (it looks like another kind of file with the wrong name). Save it as ${ext} from ${ext === '.docx' ? 'Word' : 'PowerPoint'} and try again.`, { code: 'wrong_content' });
+  }
+}
+
 async function extractDocx(buffer) {
   const { value } = await mammoth.extractRawText({ buffer });
   return value;
@@ -24,7 +35,7 @@ export async function extractText(buffer, ext, { includeNotes = true } = {}) {
   let raw;
   let pageCount = null;
   let found = null; // { numbers, total } as the parser saw them
-  if (ext === '.docx' || ext === '.pptx') assertSafeZip(buffer); // before any parser inflates the archive
+  if (ext === '.docx' || ext === '.pptx') assertDocumentPart(buffer, ext); // before any parser inflates the archive
   try {
     if (ext === '.docx') raw = await extractDocx(buffer);
     else if (ext === '.pptx') {
@@ -39,7 +50,7 @@ export async function extractText(buffer, ext, { includeNotes = true } = {}) {
     }
   } catch (err) {
     console.error(`Extraction failed (${ext}):`, err.message);
-    throw new HttpError(422, UNREADABLE);
+    throw new HttpError(422, UNREADABLE, { code: 'unreadable' });
   }
   const text = normalizeText(raw || '');
   const blockCount = splitBlocks(text).length;

@@ -9,12 +9,14 @@ import { adminRouter } from './routes/admin.js';
 import { flashcardsRouter } from './routes/flashcards.js';
 import { lessonsRouter } from './routes/lessons.js';
 import { myAiRouter } from './routes/my-ai.js';
+import { myUploadsRouter } from './routes/my-uploads.js';
 import { participantsRouter } from './routes/participants.js';
 import { quizRouter } from './routes/quiz.js';
 import { sectionsRouter } from './routes/sections.js';
 import { sessionsRouter } from './routes/sessions.js';
 import { settingsRouter } from './routes/settings.js';
 import { statsRouter } from './routes/stats.js';
+import { createAccess } from './services/lesson-access.js';
 import { resolveAiConfig } from './services/settings.js';
 
 // `ai` and `runner` default to the real provider client and background job runner; tests inject stubs, and a fake
@@ -42,17 +44,21 @@ export function createApp(db, config, { ai, runner, clock = () => new Date(), ra
   // Admin routes (ADMIN_PIN): lesson upload / retry / delete, making cards, participant codes, AI settings, export.
   const requireAdmin = createAdminGuard({ pin: config.adminPin, clock: () => clock().getTime() });
 
+  // who may see which lesson (services/lesson-access.js); the PIN check is shared with requireAdmin
+  const access = createAccess({ db, requireAdmin });
+
   app.get('/api/health', (_req, res) => res.json({ ok: true, admin: Boolean(config.adminPin) }));
   app.use('/api/admin', adminRouter({ db, ai, clock, requireAdmin }));
   app.use('/api', participantsRouter({ db }));
-  app.use('/api', sessionsRouter({ db, clock }));
+  app.use('/api', sessionsRouter({ db, clock, access }));
   app.use('/api', statsRouter({ db, clock }));
-  app.use('/api', flashcardsRouter({ db, runner, clock, requireAdmin }));
-  app.use('/api', quizRouter({ db, ai, clock, random, tuning: () => ({ concurrency: resolveAiConfig(db, config.ai).concurrency }) }));
-  app.use('/api/lessons', lessonsRouter(db, config, runner, requireAdmin));
+  app.use('/api', flashcardsRouter({ db, runner, clock, requireAdmin, access }));
+  app.use('/api', quizRouter({ db, ai, clock, random, access, tuning: () => ({ concurrency: resolveAiConfig(db, config.ai).concurrency }) }));
+  app.use('/api/lessons', lessonsRouter(db, config, runner, requireAdmin, { access, clock }));
   app.use('/api', myAiRouter({ ai, db, config, clock }));
-  app.use('/api/sections', sectionsRouter({ ai, db, config, clock }));
-  app.use('/api/settings', requireAdmin, settingsRouter({ ai, db, config }));
+  app.use('/api', myUploadsRouter({ db, config, clock }));
+  app.use('/api/sections', sectionsRouter({ ai, db, config, clock, access }));
+  app.use('/api/settings', requireAdmin, settingsRouter({ ai, db, config, clock }));
 
   app.use('/api', notFound);
   serveClient(app, config.clientDist);

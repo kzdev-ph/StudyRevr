@@ -3,6 +3,7 @@ import { AiError } from '../ai/client.js';
 import { isProviderId, PRESETS } from '../ai/providers.js';
 import { HttpError } from '../middleware/errors.js';
 import { loadSchedulerConfig } from '../flashcards/config.js';
+import { logAdminEvent } from '../services/backup.js';
 import { aiSettingsBody, appSettingsBody, describeAiSettings, describeAppSettings, resolveAiConfig, saveAiSettings, saveAppSettings } from '../services/settings.js';
 
 // Reads a request body with the zod schema; the first problem becomes a 400 that names the field.
@@ -16,7 +17,7 @@ function parseBody(body, schema = aiSettingsBody) {
 
 // Admin settings (all behind the PIN): the app settings and the AI provider. API keys are only ever written here,
 // never returned: responses carry a `keySet` flag.
-export function settingsRouter({ ai, db, config }) {
+export function settingsRouter({ ai, db, config, clock = () => new Date() }) {
   const router = Router();
   const envAi = config.ai ?? {};
   const appSettings = () => describeAppSettings(db, loadSchedulerConfig(db));
@@ -24,7 +25,10 @@ export function settingsRouter({ ai, db, config }) {
   // New flashcards per day and whether students may use their own AI key.
   router.get('/', (_req, res) => res.json(appSettings()));
   router.put('/', (req, res) => {
-    saveAppSettings(db, parseBody(req.body, appSettingsBody));
+    const before = appSettings();
+    const changed = saveAppSettings(db, parseBody(req.body, appSettingsBody), before);
+    // each setting that really changed is written to admin_events (`setting_changed`, "key=value")
+    for (const { key, value } of changed) logAdminEvent(db, 'setting_changed', `${key}=${value}`, clock());
     res.json(appSettings());
   });
 

@@ -16,7 +16,7 @@ import { setWarning } from '../lib/warnings.js';
 
 const POLL_MS = 3000;
 // The CSV files, named as they are in the zip.
-const FILES = ['summary', 'sessions', 'flashcard_reviews', 'due_reviews', 'quiz_attempts', 'quiz_answers', 'events', 'ai_calls'];
+const FILES = ['summary', 'sessions', 'flashcard_reviews', 'due_reviews', 'quiz_attempts', 'quiz_answers', 'events', 'ai_calls', 'lessons', 'lesson_events'];
 const RUNNING = ['queued', 'running'];
 
 // Lessons: upload, retry (on the lesson's page), delete. Students only read and study them. With a participant code
@@ -77,6 +77,17 @@ function LessonsSection({ participant }) {
     }
   };
 
+  // a student's private upload becomes everyone's (one way; the row asks first)
+  const shareLesson = async (id) => {
+    setProblem(null);
+    try {
+      await api.shareLesson(id);
+    } catch (err) {
+      setProblem(err.message);
+    }
+    await load();
+  };
+
   const prepareVersions = async (id) => {
     setProblem(null);
     try {
@@ -107,7 +118,7 @@ function LessonsSection({ participant }) {
       {lessons?.length > 0 && (
         <ul className="lessons">
           {lessons.map((lesson) => (
-            <LessonRow key={lesson.id} lesson={lesson} onDelete={remove} onMakeQuizOptions={makeQuizOptions} onPrepareVersions={prepareVersions} onCardsChanged={load} />
+            <LessonRow key={lesson.id} lesson={lesson} admin onDelete={remove} onShare={shareLesson} onMakeQuizOptions={makeQuizOptions} onPrepareVersions={prepareVersions} onCardsChanged={load} />
           ))}
         </ul>
       )}

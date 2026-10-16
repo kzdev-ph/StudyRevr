@@ -60,6 +60,7 @@ function zip64UncompressedSize(buf, extraStart, extraEnd) {
 }
 
 // Throws an HttpError(422) when the archive is too big once unpacked, holds too many entries, or can't be read.
+// -> { entries, uncompressedBytes, names } (names: every entry's path, read from the central directory)
 export function assertSafeZip(buffer, { maxUncompressedBytes = MAX_UNCOMPRESSED_BYTES, maxEntries = MAX_ZIP_ENTRIES } = {}) {
   const tooMany = () =>
     new HttpError(422, `This file contains too many parts (over ${maxEntries.toLocaleString('en-US')}) to be a normal document, so it can't be processed.`);
@@ -77,6 +78,7 @@ export function assertSafeZip(buffer, { maxUncompressedBytes = MAX_UNCOMPRESSED_
 
   let total = 0;
   let seen = 0;
+  const names = new Set();
   try {
     while (pos + 46 <= buffer.length && buffer.readUInt32LE(pos) === CENTRAL_ENTRY_SIG) {
       if (++seen > maxEntries) throw tooMany(); // the header can understate the count; the walk can't
@@ -85,6 +87,7 @@ export function assertSafeZip(buffer, { maxUncompressedBytes = MAX_UNCOMPRESSED_
       const extraLen = buffer.readUInt16LE(pos + 30);
       const commentLen = buffer.readUInt16LE(pos + 32);
       const extraStart = pos + 46 + nameLen;
+      names.add(buffer.toString('utf8', pos + 46, extraStart));
       if (size === 0xffffffff) size = zip64UncompressedSize(buffer, extraStart, extraStart + extraLen);
       total += size;
       if (total > maxUncompressedBytes) throw tooBig();
@@ -93,5 +96,5 @@ export function assertSafeZip(buffer, { maxUncompressedBytes = MAX_UNCOMPRESSED_
   } catch (err) {
     throw err instanceof HttpError ? err : new HttpError(422, CORRUPT);
   }
-  return { entries: seen, uncompressedBytes: total };
+  return { entries: seen, uncompressedBytes: total, names };
 }

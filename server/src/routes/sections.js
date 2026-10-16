@@ -19,11 +19,11 @@ const idParam = z.object({ id: z.coerce.number().int().positive() });
 //   shared       the version is the shared one (everyone sees the same)
 //   answered_by  { source: student | default | gemma, provider, model } for a live answer; null when cached
 //   fallback     { steps, note } when a fallback answered (note: the line shown under the answer); else null
-export function sectionsRouter({ ai, db, config = {}, clock = () => new Date() }) {
+export function sectionsRouter({ ai, db, access, config = {}, clock = () => new Date() }) {
   const router = Router();
   const envAi = config.ai ?? {};
 
-  const loadSection = (req) => {
+  const loadSection = (req, viewer) => {
     const parsed = idParam.safeParse(req.params);
     if (!parsed.success) throw new HttpError(400, 'Section id must be a positive number.');
     const section = db
@@ -34,12 +34,15 @@ export function sectionsRouter({ ai, db, config = {}, clock = () => new Date() }
       )
       .get(parsed.data.id);
     if (!section) throw new HttpError(404, 'Section not found.');
+    // a section of a lesson the caller may not see is not found either
+    if (!access.canSee(viewer, section.lesson_id)) throw new HttpError(404, 'Section not found.');
     return { ...section, index: section.idx, check_questions: JSON.parse(section.check_questions) };
   };
 
   const rewrite = (kind, apiKind, parse, column) => async (req, res, next) => {
     try {
-      const section = loadSection(req);
+      const viewer = access.viewerOf(req);
+      const section = loadSection(req, viewer);
       const participant = requireParticipant(db, req); // no code, no AI call
       const shared = parse(section[column]);
       const ownKey = participant && studentKeysAllowed(db) && readStudentKey(db, participant.id);

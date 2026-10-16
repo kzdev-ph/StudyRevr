@@ -81,7 +81,9 @@ const rejects422 = (fn, pattern) =>
 describe('assertSafeZip', () => {
   it('accepts a normal archive and reports its size', async () => {
     const buf = await zipOf({ 'a.txt': 'hello', 'b.txt': 'world!' });
-    assert.deepEqual(assertSafeZip(buf), { entries: 2, uncompressedBytes: 11 });
+    const { names, ...size } = assertSafeZip(buf);
+    assert.deepEqual(size, { entries: 2, uncompressedBytes: 11 });
+    assert.deepEqual([...names], ['a.txt', 'b.txt']);
   });
 
   it('rejects an archive whose total uncompressed size exceeds the limit (real data, tiny limit)', async () => {
@@ -122,7 +124,9 @@ describe('assertSafeZip', () => {
 
   it('reads zip64 archives: accepts real small sizes, rejects a declared 5 GB entry', () => {
     const ok = makeZip64('word/document.xml', Buffer.from('<w:document/>'));
-    assert.deepEqual(assertSafeZip(ok), { entries: 1, uncompressedBytes: 13 });
+    const { names, ...size } = assertSafeZip(ok);
+    assert.deepEqual(size, { entries: 1, uncompressedBytes: 13 });
+    assert.ok(names.has('word/document.xml'));
     rejects422(() => assertSafeZip(makeZip64('bomb.bin', Buffer.from('x'), 5 * 1024 ** 3)), /once unpacked/);
   });
 

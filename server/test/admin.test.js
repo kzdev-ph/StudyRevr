@@ -11,9 +11,10 @@ const adminRoutes = (lessonId) => [
   ['GET', '/api/admin/export.zip'],
   ['GET', '/api/admin/export/summary.csv'],
   ['GET', '/api/admin/export/sessions.csv?include_p00=1'],
-  ['POST', '/api/lessons'],
-  ['POST', `/api/lessons/${lessonId}/retry`],
-  ['DELETE', `/api/lessons/${lessonId}`],
+  // lesson upload, retry and delete are shared with students since Phase 7B (their own uploads; see lesson-access.test.js)
+  ['POST', `/api/lessons/${lessonId}/share`],
+  ['POST', `/api/lessons/${lessonId}/quiz-options`],
+  ['POST', `/api/lessons/${lessonId}/section-versions`],
   ['POST', `/api/lessons/${lessonId}/flashcards/generate`],
   ['GET', '/api/settings/ai'],
   ['PUT', '/api/settings/ai', { provider: 'ollama' }],

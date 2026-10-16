@@ -14,7 +14,7 @@ export const ON_DEMAND_STAGES = ['section_versions'];
 // transaction when creating a lesson; also used to retry a failed lesson. `keepLesson` leaves a ready lesson ready
 // (making flashcards for an existing lesson must not hide its review while it runs).
 export function queueJob(db, lessonId, { stage = STAGES[0], keepLesson = false } = {}) {
-  if (!keepLesson) db.prepare(`UPDATE lessons SET status = 'processing', error = NULL WHERE id = ?`).run(lessonId);
+  if (!keepLesson) db.prepare(`UPDATE lessons SET status = 'processing', error = NULL, error_kind = NULL WHERE id = ?`).run(lessonId);
   const job = db.prepare('SELECT id FROM jobs WHERE lesson_id = ? ORDER BY id DESC LIMIT 1').get(lessonId);
   if (job) {
     db.prepare(
@@ -48,7 +48,7 @@ export function getJobStatus(db, lessonId) {
 export function failInterruptedJobs(db) {
   const message = 'Processing was interrupted by a server restart. Retry to continue.';
   return db.transaction(() => {
-    const lessons = db.prepare(`UPDATE lessons SET status = 'failed', error = ? WHERE status = 'processing'`).run(message).changes;
+    const lessons = db.prepare(`UPDATE lessons SET status = 'failed', error = ?, error_kind = 'other' WHERE status = 'processing'`).run(message).changes;
     db.prepare(
       `UPDATE jobs SET status = 'failed', error = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE status IN ('queued', 'running')`,
     ).run(message);

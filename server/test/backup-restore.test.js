@@ -60,6 +60,12 @@ describe('backup and restore', () => {
     db.prepare("INSERT INTO settings (key, value) VALUES ('ai_api_key:google', ?), ('ai_model:google', 'gemini-3.5-flash-lite')").run(ADMIN_KEY);
     const p01 = db.prepare("SELECT id FROM participants WHERE code = 'P01'").get().id;
     db.prepare("INSERT INTO participant_ai_keys VALUES (?, 'deepseek', 'deepseek-chat', ?, 'ET-2', 'x', 'x')").run(p01, STUDENT_KEY);
+    // two uploads by P01 (Phase 7B): one still private, one the researcher shared. Only their extracted text is kept.
+    const privateUpload = seedLesson(db, { title: 'Private upload' }).lessonId;
+    const sharedUpload = seedLesson(db, { title: 'Shared upload' }).lessonId;
+    db.prepare("UPDATE lessons SET origin = 'student', owner_participant_id = ? WHERE id IN (?, ?)").run(p01, privateUpload, sharedUpload);
+    db.prepare("UPDATE lessons SET shared_at = '2026-10-05T05:00:00.000Z' WHERE id = ?").run(sharedUpload);
+    db.prepare("INSERT INTO lesson_events (participant_id, type, lesson_id, lesson_title, actor, detail, created_at, study_date) VALUES (?, 'lesson_uploaded', ?, 'Private upload', 'student', 'private.docx', '2026-10-05T04:00:00.000Z', '2026-10-05')").run(p01, privateUpload);
 
     const app = await startApp(db);
     try {
@@ -146,7 +152,17 @@ describe('backup and restore', () => {
     const app = await startApp(db);
     try {
       const { lessons } = await (await fetch(`${app.base}/api/lessons`)).json();
-      assert.deepEqual(lessons.map((l) => l.title), ['Backed up lesson']);
+      assert.deepEqual(lessons.map((l) => l.title).sort(), ['Backed up lesson', 'Shared upload'], 'the private upload is still private after a restore');
+      // the uploads came back with their origin, owner and sharing, and P01 still sees their own
+      const rows = db.prepare('SELECT l.title, l.origin, p.code AS owner, l.shared_at FROM lessons l LEFT JOIN participants p ON p.id = l.owner_participant_id ORDER BY l.title').all();
+      assert.deepEqual(rows, [
+        { title: 'Backed up lesson', origin: 'admin', owner: null, shared_at: null },
+        { title: 'Private upload', origin: 'student', owner: 'P01', shared_at: null },
+        { title: 'Shared upload', origin: 'student', owner: 'P01', shared_at: '2026-10-05T05:00:00.000Z' },
+      ]);
+      const mine = await (await fetch(`${app.base}/api/lessons`, { headers: { 'x-participant': 'P01' } })).json();
+      assert.deepEqual(mine.lessons.map((l) => [l.title, l.mine]).sort(), [['Backed up lesson', false], ['Private upload', true], ['Shared upload', true]]);
+      assert.equal(db.prepare('SELECT COUNT(*) AS n FROM lesson_events').get().n, 1, 'the log of uploads came back');
       const participant = await fetch(`${app.base}/api/participants/P01`);
       assert.equal(participant.status, 200, 'participant codes came back');
       assert.equal(db.prepare("SELECT COUNT(*) n FROM settings WHERE key LIKE 'ai_api_key:%'").get().n, 0);

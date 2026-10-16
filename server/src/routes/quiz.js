@@ -34,12 +34,15 @@ const buildOptions = (db, lessonId) => ({ distractors: loadDistractors(db, lesso
 // Attempts are per participant (X-Participant): each sees and answers only their own.
 // `clock()` is the current time and `random` the shuffle source (tests pass fixed ones); `tuning()` gives the AI
 // concurrency for the wrong-answers batches.
-export function quizRouter({ db, ai, clock = () => new Date(), random = Math.random, tuning = () => ({ concurrency: 1 }), log = console }) {
+export function quizRouter({ db, ai, access, clock = () => new Date(), random = Math.random, tuning = () => ({ concurrency: 1 }), log = console }) {
   const router = Router();
-  const lessonOr404 = (lessonId) => {
-    const lesson = db.prepare('SELECT id, title, status FROM lessons WHERE id = ?').get(lessonId);
-    if (!lesson) throw new HttpError(404, 'Lesson not found.');
-    return lesson;
+  // The lesson, when the caller may see it (another student's private upload is a 404)
+  const lessonOr404 = (viewer, lessonId) => access.visibleLesson(viewer, lessonId, 'l.id, l.title, l.status');
+  // An attempt is its participant's own; its lesson must still be one they may see
+  const attemptOr404 = (viewer, attemptId, participantId) => {
+    const attempt = getAttempt(db, attemptId, participantId);
+    if (!access.canSee(viewer, attempt.lesson_id)) throw new HttpError(404, 'Quiz attempt not found.');
+    return attempt;
   };
 
   // Normally made when the lesson was processed; this fills in whatever is still missing (older lessons, a failed
@@ -48,9 +51,10 @@ export function quizRouter({ db, ai, clock = () => new Date(), random = Math.ran
 
   // One row per lesson for the Mock Quiz tab: how many questions it supports and the best finished score.
   router.get('/quiz', (req, res) => {
+    const viewer = access.viewerOf(req);
     const { id: participantId } = requireParticipant(db, req);
     const stats = lessonQuizStats(db, participantId);
-    const lessons = db.prepare('SELECT id, title, status, created_at FROM lessons ORDER BY created_at DESC, id DESC').all();
+    const lessons = db.prepare(`SELECT l.id, l.title, l.status, l.created_at FROM lessons l WHERE ${access.visibleSql(viewer)} ORDER BY l.created_at DESC, l.id DESC`).all();
     res.json({
       quiz_length: QUIZ_LENGTH,
       lessons: lessons.map((lesson) => {
@@ -92,8 +96,9 @@ export function quizRouter({ db, ai, clock = () => new Date(), random = Math.ran
   // { retake_of } asks the same questions as that attempt, in a new order. The right answers stay on the server.
   router.post('/lessons/:id/quiz/attempts', async (req, res, next) => {
     try {
+      const viewer = access.viewerOf(req);
       const { id: participantId } = requireParticipant(db, req);
-      const lesson = lessonOr404(parseId(req.params.id, 'Lesson'));
+      const lesson = lessonOr404(viewer, parseId(req.params.id, 'Lesson'));
       const body = startBody.safeParse(req.body ?? {});
       if (!body.success) throw new HttpError(400, 'retake_of must be the id of an earlier attempt, or left out.');
       const retakeOf = body.data.retake_of ?? null;
@@ -138,8 +143,10 @@ export function quizRouter({ db, ai, clock = () => new Date(), random = Math.ran
 
   // Grades and saves one answer. -> whether it was right, the right option, and the card's evidence quote.
   router.post('/quiz/attempts/:id/answers', (req, res) => {
+    const viewer = access.viewerOf(req);
     const { id: participantId } = requireParticipant(db, req);
     const attemptId = parseId(req.params.id, 'Attempt');
+    attemptOr404(viewer, attemptId, participantId);
     const body = answerBody.safeParse(req.body ?? {});
     if (!body.success) throw new HttpError(400, 'Send position (the question number, from 0), choice (the option number, from 0) and optionally time_ms.');
     const { position, choice, time_ms: timeMs } = body.data;
@@ -148,8 +155,10 @@ export function quizRouter({ db, ai, clock = () => new Date(), random = Math.ran
 
   // Closes the attempt (every question must be answered) and returns the results.
   router.post('/quiz/attempts/:id/finish', (req, res) => {
+    const viewer = access.viewerOf(req);
     const { id: participantId } = requireParticipant(db, req);
     const attemptId = parseId(req.params.id, 'Attempt');
+    attemptOr404(viewer, attemptId, participantId);
     const body = finishBody.safeParse(req.body ?? {});
     if (!body.success) throw new HttpError(400, 'total_ms must be a number of milliseconds.');
     res.json(finishAttempt(db, { participantId, attemptId, durationMs: body.data.total_ms, now: clock() }));

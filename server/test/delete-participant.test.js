@@ -87,6 +87,41 @@ describe('npm run participant:delete', () => {
     assert.ok(!fs.readFileSync(dbPath).includes(Buffer.from('P01')));
   });
 
+  it('deletes their private uploaded lessons with everything on them; shared ones stay but lose the owner', async () => {
+    let db = openDb(dbPath);
+    const p01 = db.prepare("SELECT id FROM participants WHERE code = 'P01'").get().id;
+    const p02 = db.prepare("SELECT id FROM participants WHERE code = 'P02'").get().id;
+    const upload = (title, owner, sharedAt = null) => {
+      const { lessonId } = seedLesson(db, { title });
+      db.prepare("UPDATE lessons SET origin = 'student', owner_participant_id = ?, shared_at = ? WHERE id = ?").run(owner, sharedAt, lessonId);
+      db.prepare("INSERT INTO lesson_events (participant_id, type, lesson_id, lesson_title, actor, detail, created_at, study_date) VALUES (?, 'lesson_uploaded', ?, ?, 'student', 'x.docx', '2026-10-05T04:00:00.000Z', '2026-10-05')").run(owner, lessonId, title);
+      return lessonId;
+    };
+    const mineSecret = upload('P01 Private Secret Title', p01);
+    const mineShared = upload('P01 Shared Title', p01, '2026-10-05T05:00:00.000Z');
+    const theirs = upload('P02 Private Title', p02);
+    db.close();
+
+    const preview = await run(dbPath, ['P01'], 'P01\n');
+    assert.equal(preview.code, 0, preview.out);
+    assert.match(preview.out, /1 +private uploaded lessons/);
+    assert.match(preview.out, /1 +shared uploaded lessons/);
+    assert.match(preview.out, /2 +lesson upload events|1 +lesson upload events/);
+
+    db = openDb(dbPath);
+    const titles = db.prepare('SELECT title, origin, owner_participant_id AS owner FROM lessons WHERE id IN (?, ?, ?) ORDER BY id').all(mineSecret, mineShared, theirs);
+    assert.deepEqual(titles, [
+      { title: 'P01 Shared Title', origin: 'student', owner: null }, // stays, the owner is gone
+      { title: 'P02 Private Title', origin: 'student', owner: p02 }, // someone else's private lesson is untouched
+    ]);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM flashcards WHERE lesson_id = ?').get(mineSecret).n, 0, 'its cards went with it');
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM lesson_events WHERE participant_id = ?').get(p01).n, 0, 'their upload events are gone with them');
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM lesson_events WHERE participant_id = ?').get(p02).n, 1);
+    db.close();
+    // the private lesson's text is not left readable in the file
+    assert.ok(!fs.readFileSync(dbPath).includes(Buffer.from('P01 Private Secret Title')));
+  });
+
   it('--yes skips the question; an unknown or bad code is an error', async () => {
     assert.equal((await run(dbPath, ['P02', '--yes'])).code, 0);
     assert.equal(counts('P02').participant, 0);

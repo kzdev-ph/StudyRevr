@@ -3,18 +3,10 @@ import { CheckIcon, RetryIcon } from './Icons.jsx';
 import Notice from './Notice.jsx';
 import { useAdminPin } from '../lib/admin.js';
 import { api } from '../lib/api.js';
+import { STAGES } from '../lib/uploads.js';
 import { paths } from '../lib/router.js';
 
 const POLL_MS = 1500;
-
-// The server runs these in this order, one after the other.
-const STAGES = [
-  { id: 'sections', doing: 'Writing the review sections', done: 'Review sections written' },
-  { id: 'key_points', doing: 'Picking the key points', done: 'Key points picked' },
-  { id: 'key_terms', doing: 'Finding the key terms', done: 'Key terms found' },
-  { id: 'flashcards', doing: 'Making the flashcards', done: 'Flashcards made' },
-  { id: 'quiz_options', doing: 'Preparing the quiz answers', done: 'Quiz answers ready' },
-];
 
 // The lesson is readable once its cards exist, so a quiz-answers step that failed (or is being retried) leaves it ready
 // with only the job unfinished. Admin stays on this page for that; students are sent on to the lesson.
@@ -37,7 +29,7 @@ export default function Processing({ lessonId, title, warning, onReady }) {
   const [problem, setProblem] = useState(null);
   const [retrying, setRetrying] = useState(false);
   const [polling, setPolling] = useState(true);
-  const admin = Boolean(useAdminPin()); // only the researcher can retry a lesson
+  const admin = Boolean(useAdminPin()); // the researcher can retry any lesson; a student only their own failed upload (status.can_retry)
 
   useEffect(() => {
     if (!polling) return undefined;
@@ -124,20 +116,22 @@ export default function Processing({ lessonId, title, warning, onReady }) {
       {failed || quizFailed ? (
         <div className="stack stack--tight">
           <Notice action={null}>{failure}</Notice>
-          {admin ? (
+          {admin || status.can_retry ? (
             <>
               <div className="processing__actions">
                 <button type="button" className="btn btn--primary" onClick={retry} disabled={retrying}>
-                  <RetryIcon size={18} /> {retrying ? 'Retrying…' : 'Retry'}
+                  <RetryIcon size={18} /> {retrying ? 'Trying again…' : admin ? 'Retry' : 'Try again'}
                 </button>
-                {quizFailed && (
+                {admin && quizFailed && (
                   <button type="button" className="btn btn--quiet" onClick={onReady}>
                     Open the lesson
                   </button>
                 )}
               </div>
               <p className="muted">
-                {quizFailed
+                {!admin
+                  ? 'Steps that already finished are kept. Trying again doesn’t use up one of your uploads.'
+                  : quizFailed
                   ? 'Students can already use the lesson. Until the quiz answers are made, their first quiz makes them itself, so it starts slowly. Batches that already worked are kept.'
                   : 'Steps that already finished are kept, so a retry picks up where it stopped.'}
               </p>
