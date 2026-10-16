@@ -31,6 +31,9 @@ Lessons from students (only if the researcher turned student uploads on)
 - A lesson is the teacher's (origin admin) or an upload by a student (origin student). A student's upload is private
   to that student until the researcher shares it with everyone (one way, it cannot be undone).
 - The original files students upload are never kept: the app reads the text from the file and keeps only that text.
+- A student's upload is titled after the file the student chose, which can hold a name. In every file of this export it is
+  therefore called "Student upload <lesson_id>" (lesson_title, title, the L<id> list below), and lesson_events.csv keeps
+  only the file's extension, never its name. The teacher's lessons keep their real titles.
 - Lesson text, flashcards and quizzes for an upload are made by the same pipeline and the same app AI as the teacher's
   lessons (never the student's own AI key). Study activity on uploads is exported in the same files as the rest
   (lesson_id tells which lesson; see lessons.csv for where each came from).
@@ -73,15 +76,17 @@ lessons.csv - one row per lesson, with where it came from
   owner     the uploader's code; blank for the teacher's lessons and when the uploader was withdrawn (a shared lesson
             stays after its owner is deleted; origin stays student)
   status    ready | processing | failed;  word_count, source_kind (slide | page | paragraph), created_at (UTC)
-  P00's uploads are left out unless P00 is included.
+  P00's private uploads are left out unless P00 is included (one the researcher shared stays, because other
+  participants' rows point to it).  title is "Student upload <lesson_id>" for an upload.
 
 lesson_events.csv - what happened to students' uploads, one row per event
   type    lesson_uploaded | lesson_upload_failed | lesson_deleted_by_student | lesson_shared
   actor   student | admin (lesson_shared is done by the researcher; participant is the lesson's owner)
-  detail  lesson_uploaded: the file name.  lesson_upload_failed: too_large | wrong_type | bad_signature (not a real
+  detail  lesson_uploaded: the file's extension only (.docx, .pptx or .pdf), never its name.  lesson_upload_failed: too_large | wrong_type | bad_signature (not a real
           docx/pptx/pdf) | wrong_content (a zip that is not a Word or PowerPoint file) | unreadable | no_text (nothing to
           read), or processing:<stage> when the AI pipeline failed on the lesson (stage: sections, key_points,
-          key_terms, flashcards).
+          key_terms, flashcards, quiz_options) or processing:interrupted when the server stopped while it was being
+          prepared.
   lesson_id and lesson_title stay even after the lesson is deleted. A refused upload (switch off, daily limit) is not
   an upload and is not listed. The daily limit counts lesson_uploaded rows per study_date, so deleting a lesson does
   not give the upload back.

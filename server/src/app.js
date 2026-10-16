@@ -31,6 +31,7 @@ export function createApp(db, config, { ai, runner, clock = () => new Date(), ra
   runner ??= createPipelineRunner({
     db,
     ai,
+    clock,
     tuning: () => {
       const { chunkTokens, concurrency, keyTermsMax, provider, model } = resolveAiConfig(db, config.ai);
       return { chunkTokens, concurrency, keyTermsMax, madeBy: { provider, model } };
@@ -47,18 +48,26 @@ export function createApp(db, config, { ai, runner, clock = () => new Date(), ra
   // who may see which lesson (services/lesson-access.js); the PIN check is shared with requireAdmin
   const access = createAccess({ db, requireAdmin });
 
+  // Every router is mounted through this, which also tags it with its prefix: Express keeps no readable prefix on a
+  // mounted router, and test/lesson-access.test.js walks the live router stack to list every route with its full path
+  // (a router mounted any other way fails that test, so a new route can't slip past the visibility checks).
+  const mount = (prefix, ...handlers) => {
+    handlers.at(-1).mountPath = prefix;
+    app.use(prefix, ...handlers);
+  };
+
   app.get('/api/health', (_req, res) => res.json({ ok: true, admin: Boolean(config.adminPin) }));
-  app.use('/api/admin', adminRouter({ db, ai, clock, requireAdmin }));
-  app.use('/api', participantsRouter({ db }));
-  app.use('/api', sessionsRouter({ db, clock, access }));
-  app.use('/api', statsRouter({ db, clock }));
-  app.use('/api', flashcardsRouter({ db, runner, clock, requireAdmin, access }));
-  app.use('/api', quizRouter({ db, ai, clock, random, access, tuning: () => ({ concurrency: resolveAiConfig(db, config.ai).concurrency }) }));
-  app.use('/api/lessons', lessonsRouter(db, config, runner, requireAdmin, { access, clock }));
-  app.use('/api', myAiRouter({ ai, db, config, clock }));
-  app.use('/api', myUploadsRouter({ db, config, clock }));
-  app.use('/api/sections', sectionsRouter({ ai, db, config, clock, access }));
-  app.use('/api/settings', requireAdmin, settingsRouter({ ai, db, config, clock }));
+  mount('/api/admin', adminRouter({ db, ai, clock, requireAdmin }));
+  mount('/api', participantsRouter({ db }));
+  mount('/api', sessionsRouter({ db, clock, access }));
+  mount('/api', statsRouter({ db, clock }));
+  mount('/api', flashcardsRouter({ db, runner, clock, requireAdmin, access }));
+  mount('/api', quizRouter({ db, ai, clock, random, access, tuning: () => ({ concurrency: resolveAiConfig(db, config.ai).concurrency }) }));
+  mount('/api/lessons', lessonsRouter(db, config, runner, requireAdmin, { access, clock }));
+  mount('/api', myAiRouter({ ai, db, config, clock }));
+  mount('/api', myUploadsRouter({ db, config, clock }));
+  mount('/api/sections', sectionsRouter({ ai, db, config, clock, access }));
+  mount('/api/settings', requireAdmin, settingsRouter({ ai, db, config, clock }));
 
   app.use('/api', notFound);
   serveClient(app, config.clientDist);

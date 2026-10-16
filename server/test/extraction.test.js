@@ -6,7 +6,7 @@ import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { createApp } from '../src/app.js';
 import { openDb, runMigrations } from '../src/db/index.js';
 import { extractText } from '../src/services/extract.js';
-import { reflowPdfPages } from '../src/services/pdf.js';
+import { extractPdf, reflowPdfPages } from '../src/services/pdf.js';
 import { drawingMlLines } from '../src/services/pptx.js';
 import { countWords } from '../src/services/text.js';
 import { studyFetch, TEST_PIN } from './helpers.js';
@@ -330,6 +330,31 @@ describe('pdf reflow', () => {
       const out = reflowPdfPages([[line('a'), line('b')].join('\n'), [line('c'), line('d')].join('\n')]);
       assert.equal(out.length, 2);
     });
+  });
+});
+
+describe('pdf: time budget', () => {
+  const TOPICS = ['Glaciers', 'Volcanoes', 'Deserts', 'Rivers', 'Forests'];
+  const make = async (pages) => {
+    const pdf = await PDFDocument.create();
+    const font = await pdf.embedFont(StandardFonts.Helvetica);
+    for (let i = 0; i < pages; i += 1) pdf.addPage([612, 792]).drawText(`${TOPICS[i % TOPICS.length]} is the subject of page ${i + 1}.`, { x: 50, y: 700, size: 11, font });
+    return Buffer.from(await pdf.save());
+  };
+
+  it('reads a normal PDF well inside the default budget', async () => {
+    const { text, pageCount } = await extractPdf(await make(3));
+    assert.equal(pageCount, 3);
+    assert.match(text, /Volcanoes is the subject of page 2/);
+  });
+
+  it('gives up with a 422 when the budget is spent (best effort: it is checked between pages)', async () => {
+    await assert.rejects(extractPdf(await make(5), { budgetMs: 1 }), (err) => err.status === 422 && /took too long/.test(err.message));
+  });
+
+  it('shows that message to the uploader instead of the generic one', async () => {
+    const { extractText: extract } = await import('../src/services/extract.js');
+    await assert.rejects(extract(await make(5), '.pdf', { pdfBudgetMs: 1 }), (err) => err.status === 422 && /took too long/.test(err.message));
   });
 });
 

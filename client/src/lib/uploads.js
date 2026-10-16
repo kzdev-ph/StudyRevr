@@ -44,5 +44,7 @@ export function rowActions(lesson) {
 export function adminLessonNote(lesson) {
   if (lesson.origin !== 'student') return null;
   const who = lesson.owner_code ?? 'a withdrawn participant';
-  return lesson.shared ? `Uploaded by ${who} · shared with everyone` : `Uploaded by ${who} · only ${lesson.owner_code ?? 'they'} can see it`;
+  if (lesson.shared) return `Uploaded by ${who} · shared with everyone`;
+  // a private upload whose owner withdrew is visible to nobody (the visibility rule fails closed)
+  return `Uploaded by ${who} · ${lesson.owner_code ? `only ${lesson.owner_code} can see it` : 'nobody can see it'}`;
 }

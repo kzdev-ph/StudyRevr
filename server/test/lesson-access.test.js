@@ -1,15 +1,11 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { addCodes, seedLesson, startStudyApp, TEST_PIN } from './helpers.js';
+import { addCodes, liveRoutes, seedLesson, startStudyApp, TEST_PIN } from './helpers.js';
 
 // Phase 7B: a student's upload is private to its owner until admin shares it. Every route that reads or writes a lesson
 // (directly, or through a card, section, review or attempt that belongs to one) answers 404 "not found" for anyone who
 // may not see it, never 403, so a private lesson can't even be told apart from one that doesn't exist.
 
-const here = path.dirname(fileURLToPath(import.meta.url));
 const MISSING = [401, 403, 404];
 
 // The routes. `records`: the thing in the path belongs to the owner's own study records (a review, an attempt), so
@@ -47,7 +43,33 @@ const NOT_LESSON_ROUTES = new Set([
   'GET /my-uploads',
   'POST /sessions/:id', // a session id of the caller's own (participant-scoped)
   'POST /setting-events',
+  'GET /health',
+  'GET /participants/:code', // checks a code; says nothing about lessons
+  'GET /stats', // the caller's own numbers
+  'GET /my-ai',
+  'POST /my-ai/models',
+  'POST /my-ai/key',
+  'DELETE /my-ai/key',
 ]);
+
+// Everything under these prefixes is behind the admin PIN (the last coverage test calls each route without it).
+const PIN_PREFIXES = ['/admin', '/settings'];
+
+// The routes of a live app that the tables above don't account for: what the coverage test must find empty. Routes
+// under the PIN prefixes are left to the PIN test. Every other route, with a parameter or without, must be listed: a
+// lesson route in ROUTES with its own checks, a list in LISTS, or NOT_LESSON_ROUTES with the reason it needs none.
+function unclassifiedRoutes(app) {
+  const known = new Set([...ROUTES.map((r) => r.name), ...LISTS, ...NOT_LESSON_ROUTES]);
+  const { routes, untagged } = liveRoutes(app);
+  const missing = untagged.map((n) => `${n}: a router mounted without mount() in app.js`);
+  for (const route of routes) {
+    const [method, full] = route.split(' ');
+    const rel = full.replace(/^\/api/, '') || '/';
+    if (PIN_PREFIXES.some((p) => rel === p || rel.startsWith(`${p}/`))) continue;
+    if (!known.has(`${method} ${rel}`)) missing.push(`${method} ${rel}`);
+  }
+  return missing;
+}
 
 describe('lesson visibility', () => {
   let t;
@@ -153,6 +175,16 @@ describe('lesson visibility', () => {
       assert.equal(n('events'), 0);
     });
 
+    it('a card that does not exist and a card of a private lesson answer alike, before the body is even read', async () => {
+      for (const body of [{}, { rating: 9 }, { rating: 3, time_ms: -1 }, { rating: 3 }]) {
+        const missing = await t.call('POST', '/api/flashcards/987654/review', { ...as.other, body });
+        const hidden = await t.call('POST', `/api/flashcards/${c.card}/review`, { ...as.other, body });
+        assert.equal(missing.status, 404, JSON.stringify(body));
+        assert.deepEqual(hidden.body, missing.body, JSON.stringify(body));
+        assert.match(missing.body.error.message, /Flashcard not found/);
+      }
+    });
+
     it('an unknown lesson and another student\'s private lesson answer with the same 404', async () => {
       const missing = await t.call('GET', '/api/lessons/99999', as.other);
       const hidden = await t.call('GET', `/api/lessons/${c.lesson}`, as.other);
@@ -204,21 +236,62 @@ describe('lesson visibility', () => {
     });
   });
 
-  describe('coverage', () => {
-    it('every route in the lesson, section, card, quiz, session and event routers is in the table above', () => {
-      const MOUNTS = { 'lessons.js': '/lessons', 'sections.js': '/sections', 'flashcards.js': '', 'quiz.js': '', 'sessions.js': '', 'my-uploads.js': '' };
-      const known = new Set(ROUTES.map((r) => r.name));
-      const missing = [];
-      for (const [file, prefix] of Object.entries(MOUNTS)) {
-        const src = fs.readFileSync(path.join(here, '../src/routes', file), 'utf8');
-        for (const m of src.matchAll(/router\.(get|post|put|delete|patch)\(\s*'([^']*)'/g)) {
-          const name = `${m[1].toUpperCase()} ${prefix}${m[2] === '/' ? '' : m[2]}` || '/';
-          const normal = name.replace(/\/quiz\/attempts\/:id\/(answers|finish)/, '/quiz/attempts/:id/$1');
-          const listed = known.has(normal) || LISTS.has(normal) || NOT_LESSON_ROUTES.has(normal) || (name === 'GET ' && file === 'lessons.js');
-          if (!listed) missing.push(`${file}: ${name}`);
+  describe('coverage (the live router stack)', () => {
+    // The old check read the route files with a regular expression, so a route written another way (router.route(),
+    // router.all, a router mounted in another file) went unseen. This reads the routes Express will really serve.
+    it('every route of the running app is in the tables above, and no router is mounted by hand', () => {
+      assert.deepEqual(unclassifiedRoutes(t.app), [], 'add these routes to ROUTES (or LISTS / NOT_LESSON_ROUTES with a reason)');
+    });
+
+    it('sees the routes the tables rely on', () => {
+      const { routes } = liveRoutes(t.app);
+      for (const r of ROUTES) assert.ok(routes.includes(r.name.replace(' /', ' /api/')), `${r.name} is not served by the app`);
+      for (const name of [...LISTS, ...NOT_LESSON_ROUTES]) assert.ok(routes.includes(name.replace(' /', ' /api/')), `${name} is not served by the app`);
+    });
+
+    describe('proof that it catches a route nobody checked', () => {
+      let probe;
+      before(async () => {
+        probe = await startStudyApp();
+      });
+      after(() => probe.close());
+
+      it('passes for the real app', () => {
+        assert.deepEqual(unclassifiedRoutes(probe.app), []);
+      });
+      it('fails for a fake unguarded route added to the lessons router', () => {
+        const lessons = probe.app.router.stack.find((l) => l.handle?.mountPath === '/api/lessons').handle;
+        lessons.get('/:id/leaky', (req, res) => res.json({ raw_text: 'private' }));
+        assert.deepEqual(unclassifiedRoutes(probe.app), ['GET /lessons/:id/leaky']);
+      });
+      it('fails for a route added straight to the app, with a parameter or without', () => {
+        probe.app.get('/api/things/:id', (req, res) => res.end());
+        probe.app.delete('/api/things', (req, res) => res.end());
+        probe.app.route('/api/other/:id').post((req, res) => res.end());
+        probe.app.all('/api/anything', (req, res) => res.end());
+        const missing = unclassifiedRoutes(probe.app);
+        for (const name of ['GET /things/:id', 'DELETE /things', 'POST /other/:id', 'GET /anything', 'POST /anything']) assert.ok(missing.includes(name), `${name} not reported: ${missing}`);
+      });
+      it('fails for a router mounted by hand, without mount()', async () => {
+        const { Router } = await import('express');
+        const sneaky = Router();
+        sneaky.get('/:id/secret', (req, res) => res.end());
+        probe.app.use('/api/sneaky', sneaky);
+        assert.ok(unclassifiedRoutes(probe.app).some((m) => /mounted without mount\(\)/.test(m)));
+      });
+    });
+
+    it('every route under /admin and /settings refuses a request with no PIN (a student code is no help)', async () => {
+      const { routes } = liveRoutes(t.app);
+      const guarded = routes.map((r) => r.split(' ')).filter(([, full]) => PIN_PREFIXES.some((p) => full.startsWith(`/api${p}/`) || full === `/api${p}`));
+      assert.ok(guarded.length >= 15, `only ${guarded.length} admin routes found`);
+      const fill = (full) => full.replace(':code', 'P01').replace(':file', 'summary').replace(/:\w+/g, '1');
+      for (const [method, full] of guarded) {
+        for (const who of [as.none, as.owner]) {
+          const res = await t.call(method, fill(full), { ...who, body: ['POST', 'PUT'].includes(method) ? {} : undefined });
+          assert.equal(res.status, 401, `${method} ${full} answered ${res.status} without the PIN`);
         }
       }
-      assert.deepEqual(missing, [], 'add these routes to ROUTES (or LISTS / NOT_LESSON_ROUTES with a reason)');
     });
   });
 });

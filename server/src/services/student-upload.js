@@ -42,9 +42,10 @@ export const studentJobsWaiting = (db) => db.prepare("SELECT COUNT(*) AS n FROM 
 
 // In-memory guards for the upload route: a burst limit per participant (on the app's clock, like the admin PIN lockout)
 // and one upload in flight per participant (extraction is async, so two parallel requests could both pass the quota).
+// The slot is given back when the upload ends and, as a safety net, when the connection closes (an aborted request).
 export function createUploadGuard({ clock = () => new Date() } = {}) {
   const hits = new Map(); // participant id -> [ms]
-  const inFlight = new Set();
+  const inFlight = new Map(); // participant id -> token
   return {
     // Counts this request toward the burst limit; throws 429 when it is over.
     hit(participantId) {
@@ -57,16 +58,30 @@ export function createUploadGuard({ clock = () => new Date() } = {}) {
       recent.push(now);
       hits.set(participantId, recent);
     },
+    // Takes the participant's one slot; returns the function that gives it back. It gives back only the slot it took, so a
+    // late call (the request's 'close' after its response) can't release a newer upload's slot.
     start(participantId) {
       if (inFlight.has(participantId)) throw new HttpError(409, 'Your last upload is still being checked. Wait a moment.', { code: 'upload_in_flight' });
-      inFlight.add(participantId);
+      const token = Symbol('upload');
+      inFlight.set(participantId, token);
+      return () => {
+        if (inFlight.get(participantId) === token) inFlight.delete(participantId);
+      };
     },
-    done: (participantId) => void inFlight.delete(participantId),
+    has: (participantId) => inFlight.has(participantId),
   };
 }
 
 export function assertUploadsOn(db) {
   if (!studentUploadsAllowed(db)) throw new HttpError(403, 'Uploading your own lessons is turned off right now.', { code: 'student_uploads_off' });
+}
+
+// Too many student lessons waiting: 429 upload_busy. Checked up front and again where a lesson is created or retried, so
+// requests that passed the first check together can't push the queue over the limit.
+export function assertQueueRoom(db) {
+  if (studentJobsWaiting(db) >= QUEUE_LIMIT) {
+    throw new HttpError(429, 'Lessons are queued up right now. Try again in a few minutes.', { code: 'upload_busy' });
+  }
 }
 
 // The refusals that need only the database, after the switch: the daily quota, then the queue. Throws; returns nothing.
@@ -75,7 +90,5 @@ export function assertCanUpload(db, participant, now) {
   if (uploadsUsedToday(db, participant.id, now) >= perDay) {
     throw new HttpError(429, perDay === 0 ? 'Uploads are turned off right now.' : 'You’ve used today’s uploads. You can upload again tomorrow.', { code: 'upload_quota' });
   }
-  if (studentJobsWaiting(db) >= QUEUE_LIMIT) {
-    throw new HttpError(429, 'Lessons are queued up right now. Try again in a few minutes.', { code: 'upload_busy' });
-  }
+  assertQueueRoom(db);
 }

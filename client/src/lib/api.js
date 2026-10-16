@@ -11,15 +11,16 @@ export class ApiError extends Error {
 
 const UNREACHABLE = "Can't reach the StudyRevr server. Make sure it is running, then try again.";
 
-// Every request says which participant is studying (X-Participant) and, once admin is unlocked, carries the PIN (so
-// the researcher can open a student's lesson before sharing it; without the PIN a private lesson is not found).
-// `as` sends a given participant code instead of the current one (a session's last report after Switch participant).
-function headersFor(body, { as = null } = {}) {
+// Every request says which participant is studying (X-Participant). Only admin calls (`admin: true`) carry the PIN, so
+// a student using a tab where admin was unlocked is still just a student: no private uploads, no owner codes, no
+// teacher uploads. `as` sends a given participant code instead of the current one (a session's last report after
+// Switch participant).
+function headersFor(body, { admin = false, as = null } = {}) {
   const headers = {};
   if (body !== undefined) headers['content-type'] = 'application/json';
   const code = as ?? getParticipant();
   if (code) headers['x-participant'] = code;
-  const pin = getAdminPin();
+  const pin = admin ? getAdminPin() : null;
   if (pin) headers['x-admin-pin'] = pin;
   return headers;
 }
@@ -31,14 +32,14 @@ function onRefused(code) {
   if (code === 'admin_pin') lockAdmin();
 }
 
-async function request(path, { method = 'GET', body, form, signal, keepalive = false, as = null } = {}) {
+async function request(path, { method = 'GET', body, form, signal, admin = false, keepalive = false, as = null } = {}) {
   let res;
   try {
     res = await fetch(`/api${path}`, {
       method,
       signal,
       keepalive,
-      headers: headersFor(form ? undefined : body, { as }),
+      headers: headersFor(form ? undefined : body, { admin, as }),
       body: form ?? (body === undefined ? undefined : JSON.stringify(body)),
     });
   } catch (err) {
@@ -62,7 +63,7 @@ async function request(path, { method = 'GET', body, form, signal, keepalive = f
 async function download(path, filename) {
   let res;
   try {
-    res = await fetch(`/api${path}`, { headers: headersFor(undefined) });
+    res = await fetch(`/api${path}`, { headers: headersFor(undefined, { admin: true }) });
   } catch {
     throw new ApiError(UNREACHABLE);
   }
@@ -87,29 +88,31 @@ const quietly = (promise) => promise.catch(() => null);
 export const api = {
   listLessons: (signal) => request('/lessons', { signal }),
   // admin's list: the same rows plus the quiz-answers and leak counts (quiz_options, leaks), behind the PIN
-  listLessonsWithCounts: (signal) => request('/lessons?counts=1', { signal }),
-  getLesson: (id, signal) => request(`/lessons/${id}`, { signal }),
+  listLessonsWithCounts: (signal) => request('/lessons?counts=1', { signal, admin: true }),
+  // { admin: true }: admin's read-only preview of a lesson (a student's private upload is a 404 without the PIN)
+  getLesson: (id, signal, { admin = false } = {}) => request(`/lessons/${id}`, { signal, admin }),
   getStatus: (id, signal) => request(`/lessons/${id}/status`, { signal }),
-  // upload: with the admin PIN a teacher's lesson, without it a student's own (when admin allows it)
-  uploadLesson: (file) => {
+  // upload: with { admin: true } (the PIN) a teacher's lesson, without it a student's own (when admin allows it)
+  uploadLesson: (file, { admin = false } = {}) => {
     const form = new FormData();
     form.append('file', file);
-    return request('/lessons', { method: 'POST', form });
+    return request('/lessons', { method: 'POST', form, admin });
   },
   // the student's uploads: { allowed, per_day, used_today, left_today, max_mb }
   myUploads: (signal) => request('/my-uploads', { signal }),
   // admin: make a student's private upload visible to everyone (one way)
-  shareLesson: (id) => request(`/lessons/${id}/share`, { method: 'POST' }),
-  // admin, or the student for their own failed upload (a retry doesn't use up an upload)
-  retryLesson: (id) => request(`/lessons/${id}/retry`, { method: 'POST' }),
+  shareLesson: (id) => request(`/lessons/${id}/share`, { method: 'POST', admin: true }),
+  // admin ({ admin: true }), or the student for their own failed upload (a retry doesn't use up an upload)
+  retryLesson: (id, { admin = false } = {}) => request(`/lessons/${id}/retry`, { method: 'POST', admin }),
   // makes the AI wrong answers for the quiz (the retry for that step, and for lessons made before it existed)
-  makeQuizOptions: (id) => request(`/lessons/${id}/quiz-options`, { method: 'POST' }),
-  deleteLesson: (id) => request(`/lessons/${id}`, { method: 'DELETE' }),
+  makeQuizOptions: (id) => request(`/lessons/${id}/quiz-options`, { method: 'POST', admin: true }),
+  // admin ({ admin: true }), or a student deleting their own upload before they have studied it
+  deleteLesson: (id, { admin = false } = {}) => request(`/lessons/${id}`, { method: 'DELETE', admin }),
   // flashcards and quiz questions that give their answer away, and writing one card again (only before participants study it)
-  lessonLeaks: (id) => request(`/admin/lessons/${id}/leaks`),
-  regenerateCard: (id) => request(`/admin/flashcards/${id}/regenerate`, { method: 'POST' }),
+  lessonLeaks: (id) => request(`/admin/lessons/${id}/leaks`, { admin: true }),
+  regenerateCard: (id) => request(`/admin/flashcards/${id}/regenerate`, { method: 'POST', admin: true }),
   // makes the shared Explain simpler and Filipino/Taglish versions of every section ahead of study day
-  prepareVersions: (id) => request(`/lessons/${id}/section-versions`, { method: 'POST' }),
+  prepareVersions: (id) => request(`/lessons/${id}/section-versions`, { method: 'POST', admin: true }),
   simplifySection: (id) => request(`/sections/${id}/simplify`, { method: 'POST' }),
   translateSection: (id) => request(`/sections/${id}/translate`, { method: 'POST' }),
   saveProgress: (id, progress) => request(`/lessons/${id}/review-progress`, { method: 'PUT', body: progress }),
@@ -119,7 +122,7 @@ export const api = {
   answerCard: (cardId, { rating, timeMs, deck }) =>
     request(`/flashcards/${cardId}/review`, { method: 'POST', body: { rating, time_ms: timeMs, deck: deck === 'all' ? null : deck } }),
   undoAnswer: (reviewId, deck) => request(`/flashcards/reviews/${reviewId}/undo`, { method: 'POST', body: { deck: deck === 'all' ? null : deck } }),
-  makeFlashcards: (lessonId) => request(`/lessons/${lessonId}/flashcards/generate`, { method: 'POST' }),
+  makeFlashcards: (lessonId) => request(`/lessons/${lessonId}/flashcards/generate`, { method: 'POST', admin: true }),
   listQuizzes: (signal) => request('/quiz', { signal }),
   // retakeOf: an earlier attempt's id, to get the same questions in a new order
   startQuiz: (lessonId, retakeOf) => request(`/lessons/${lessonId}/quiz/attempts`, { method: 'POST', body: retakeOf ? { retake_of: retakeOf } : {} }),
@@ -145,7 +148,7 @@ export const api = {
   saveMyKey: ({ provider, model, apiKey }) => request('/my-ai/key', { method: 'POST', body: { provider, model, apiKey } }),
   removeMyKey: () => request('/my-ai/key', { method: 'DELETE' }),
 
-  // admin (the PIN header is added once admin is unlocked)
+  // admin (`admin: true` adds the PIN header once admin is unlocked)
   unlockAdmin: (pin) =>
     fetch('/api/admin/unlock', { method: 'POST', headers: { 'x-admin-pin': pin } }).then(
       async (res) => {
@@ -157,20 +160,20 @@ export const api = {
         throw new ApiError(UNREACHABLE);
       },
     ),
-  adminParticipants: (signal) => request('/admin/participants', { signal }),
-  addParticipants: (codes) => request('/admin/participants', { method: 'POST', body: { codes } }),
-  adminStats: (code, signal) => request(`/admin/participants/${encodeURIComponent(code)}/stats`, { signal }),
+  adminParticipants: (signal) => request('/admin/participants', { signal, admin: true }),
+  addParticipants: (codes) => request('/admin/participants', { method: 'POST', body: { codes }, admin: true }),
+  adminStats: (code, signal) => request(`/admin/participants/${encodeURIComponent(code)}/stats`, { signal, admin: true }),
   // admin settings: new cards per day, the student-key switch, and the AI provider (the app's Default)
-  appSettings: (signal) => request('/settings', { signal }),
-  saveAppSettings: (body) => request('/settings', { method: 'PUT', body }),
-  aiSettings: (signal) => request('/settings/ai', { signal }),
-  saveAiSettings: (body) => request('/settings/ai', { method: 'PUT', body }),
-  aiModels: (provider, signal) => request(`/settings/models?provider=${encodeURIComponent(provider)}`, { signal }),
-  testAi: (body) => request('/settings/test-ai', { method: 'POST', body }),
-  aiProblems: (signal) => request('/admin/ai-problems', { signal }),
-  deleteStudentKeys: () => request('/admin/student-keys', { method: 'DELETE' }),
+  appSettings: (signal) => request('/settings', { signal, admin: true }),
+  saveAppSettings: (body) => request('/settings', { method: 'PUT', body, admin: true }),
+  aiSettings: (signal) => request('/settings/ai', { signal, admin: true }),
+  saveAiSettings: (body) => request('/settings/ai', { method: 'PUT', body, admin: true }),
+  aiModels: (provider, signal) => request(`/settings/models?provider=${encodeURIComponent(provider)}`, { signal, admin: true }),
+  testAi: (body) => request('/settings/test-ai', { method: 'POST', body, admin: true }),
+  aiProblems: (signal) => request('/admin/ai-problems', { signal, admin: true }),
+  deleteStudentKeys: () => request('/admin/student-keys', { method: 'DELETE', admin: true }),
   downloadBackup: () => download('/admin/backup'),
-  lastBackup: (signal) => request('/admin/backup/last', { signal }),
+  lastBackup: (signal) => request('/admin/backup/last', { signal, admin: true }),
   downloadExport: (file, includeP00) => {
     const q = includeP00 ? '?include_p00=1' : '';
     return file === 'all' ? download(`/admin/export.zip${q}`, 'studyrevr-export.zip') : download(`/admin/export/${file}.csv${q}`, `${file}.csv`);

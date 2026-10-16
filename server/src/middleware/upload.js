@@ -31,7 +31,8 @@ function fileFilter(_req, file, cb) {
 export function createUpload(maxUploadBytes) {
   return multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: maxUploadBytes, files: 1 },
+    // one file, a title and nothing else: a form with more parts, fields or headers is refused before it is buffered
+    limits: { fileSize: maxUploadBytes, files: 1, fields: 2, fieldSize: 1024, fieldNameSize: 100, parts: 3, headerPairs: 20 },
     fileFilter,
   }).single('file');
 }

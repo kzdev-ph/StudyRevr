@@ -6,6 +6,7 @@ import { dueReviews, reviewDue } from '../stats/planning.js';
 import { listLessons, summaryTable } from '../stats/participant.js';
 import { toCsv } from './csv.js';
 import { CODEBOOK } from './codebook.js';
+import { EXPORT_TITLE } from './titles.js';
 
 // The research export: one CSV per kind of record plus a per-participant summary. Rows carry participant codes only
 // (no names exist anywhere). Only study tables are read: never `settings`, so no API key or PIN can end up in a
@@ -28,7 +29,7 @@ export const attemptStatus = (a, now) => {
 function sessions(db, { now, includeP00 }) {
   const rows = db
     .prepare(
-      `SELECT p.code AS participant, s.*, l.title AS lesson_title FROM study_sessions s JOIN participants p ON p.id = s.participant_id
+      `SELECT p.code AS participant, s.*, ${EXPORT_TITLE} AS lesson_title FROM study_sessions s JOIN participants p ON p.id = s.participant_id
        LEFT JOIN lessons l ON l.id = s.lesson_id WHERE 1 = 1 ${who(includeP00)} ORDER BY p.code, s.started_at, s.id`,
     )
     .all();
@@ -41,7 +42,7 @@ function sessions(db, { now, includeP00 }) {
 function flashcardReviews(db, { config, includeP00 }) {
   const rows = db
     .prepare(
-      `SELECT p.code AS participant, r.*, f.lesson_id, f.kind, l.title AS lesson_title FROM flashcard_reviews r
+      `SELECT p.code AS participant, r.*, f.lesson_id, f.kind, ${EXPORT_TITLE} AS lesson_title FROM flashcard_reviews r
        JOIN participants p ON p.id = r.participant_id JOIN flashcards f ON f.id = r.flashcard_id JOIN lessons l ON l.id = f.lesson_id
        WHERE 1 = 1 ${who(includeP00)} ORDER BY p.code, r.reviewed_at, r.id`,
     )
@@ -95,7 +96,7 @@ function dueReviewsCsv(db, { now, config, includeP00 }) {
 function attemptRows(db, { now, includeP00 }) {
   const rows = db
     .prepare(
-      `SELECT p.code AS participant, a.*, l.title AS lesson_title,
+      `SELECT p.code AS participant, a.*, ${EXPORT_TITLE} AS lesson_title,
          (SELECT COUNT(*) FROM quiz_answers q WHERE q.attempt_id = a.id AND q.chosen_index IS NOT NULL) AS answered
        FROM quiz_attempts a JOIN participants p ON p.id = a.participant_id JOIN lessons l ON l.id = a.lesson_id
        WHERE 1 = 1 ${who(includeP00)} ORDER BY p.code, a.started_at, a.id`,
@@ -157,7 +158,7 @@ function quizAnswers(db, opts) {
 function events(db, { includeP00 }) {
   const rows = db
     .prepare(
-      `SELECT p.code AS participant, e.*, l.title AS lesson_title FROM events e JOIN participants p ON p.id = e.participant_id
+      `SELECT p.code AS participant, e.*, ${EXPORT_TITLE} AS lesson_title FROM events e JOIN participants p ON p.id = e.participant_id
        LEFT JOIN lessons l ON l.id = e.lesson_id WHERE 1 = 1 ${who(includeP00)} ORDER BY p.code, e.created_at, e.id`,
     )
     .all();
@@ -168,22 +169,30 @@ function events(db, { includeP00 }) {
 }
 
 // Every lesson with where it came from: admin (the teacher's) | student (an upload), whether it was shared with
-// everyone, and the uploader's code (blank for a teacher's lesson and when the uploader was withdrawn). P00's uploads
-// are left out like the rest of P00's data.
+// everyone, and the uploader's code (blank for a teacher's lesson and when the uploader was withdrawn). P00's private
+// uploads are left out like the rest of P00's data; one the researcher shared stays, since other participants' rows
+// point to it.
 function lessons(db, { includeP00 }) {
   const rows = db
     .prepare(
-      `SELECT l.*, p.code AS owner FROM lessons l LEFT JOIN participants p ON p.id = l.owner_participant_id
-       WHERE 1 = 1 ${includeP00 ? '' : "AND (p.code IS NULL OR p.code <> 'P00')"} ORDER BY l.id`,
+      `SELECT l.*, ${EXPORT_TITLE} AS export_title, p.code AS owner FROM lessons l LEFT JOIN participants p ON p.id = l.owner_participant_id
+       WHERE 1 = 1 ${includeP00 ? '' : "AND NOT (COALESCE(p.code, '') = 'P00' AND l.shared_at IS NULL)"} ORDER BY l.id`,
     )
     .all();
   return toCsv(
     ['lesson_id', 'title', 'origin', 'shared', 'shared_at', 'owner', 'status', 'word_count', 'source_kind', 'created_at'],
-    rows.map((l) => ({ ...l, lesson_id: l.id, shared: l.origin === 'admin' ? null : l.shared_at !== null })),
+    rows.map((l) => ({ ...l, title: l.export_title, lesson_id: l.id, shared: l.origin === 'admin' ? null : l.shared_at !== null })),
   );
 }
 
-// Student uploads: lesson_uploaded, lesson_upload_failed, lesson_deleted_by_student, lesson_shared (lesson_events).
+// Student uploads: lesson_uploaded, lesson_upload_failed, lesson_deleted_by_student, lesson_shared (lesson_events). The
+// stored title and file name come from the student's file, so the export has "Student upload <id>" and, for an upload,
+// only the file's extension.
+const extensionOf = (name) => {
+  const m = /.[A-Za-z0-9]{1,8}$/.exec(String(name ?? ''));
+  return m ? m[0].toLowerCase() : '';
+};
+
 function lessonEvents(db, { includeP00 }) {
   const rows = db
     .prepare(
@@ -193,7 +202,12 @@ function lessonEvents(db, { includeP00 }) {
     .all();
   return toCsv(
     ['participant', 'event_id', 'type', 'actor', 'lesson_id', 'lesson_title', 'detail', 'created_at', 'study_date'],
-    rows.map((e) => ({ ...e, event_id: e.id })),
+    rows.map((e) => ({
+      ...e,
+      event_id: e.id,
+      lesson_title: e.lesson_id === null || e.lesson_id === undefined ? null : `Student upload ${e.lesson_id}`,
+      detail: e.type === 'lesson_uploaded' ? extensionOf(e.detail) : e.detail,
+    })),
   );
 }
 
@@ -216,7 +230,7 @@ function settingEvents(db, { includeP00 }) {
 function aiCalls(db, { includeP00 }) {
   const rows = db
     .prepare(
-      `SELECT p.code AS participant, c.*, l.title AS lesson_title FROM ai_calls c JOIN participants p ON p.id = c.participant_id
+      `SELECT p.code AS participant, c.*, ${EXPORT_TITLE} AS lesson_title FROM ai_calls c JOIN participants p ON p.id = c.participant_id
        LEFT JOIN lessons l ON l.id = c.lesson_id WHERE 1 = 1 ${who(includeP00)} ORDER BY p.code, c.created_at, c.id`,
     )
     .all();

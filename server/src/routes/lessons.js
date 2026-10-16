@@ -7,13 +7,13 @@ import { extractText } from '../services/extract.js';
 import { getJobStatus, queueJob } from '../pipeline/jobs.js';
 import { cardsNeedingDistractors } from '../quiz/distractors.js';
 import { CARD_LEAK_RULES, cardLeaks } from '../quiz/leaks.js';
-import { ownerRecords } from '../services/lesson-access.js';
+import { PREPARE_FAILED_MESSAGE, ownerRecords, safeError } from '../services/lesson-access.js';
 import { hasRecords, participantRecords } from '../services/lesson-records.js';
 import { logAdminEvent } from '../services/backup.js';
 import { missingVersions, versionCounts } from '../services/prepare-versions.js';
 import { parseFilipino, parseSimple } from '../services/section-versions.js';
 import { getBoolSetting, uploadsPerDay } from '../services/settings.js';
-import { assertCanUpload, assertUploadsOn, createUploadGuard, logLessonEvent, uploadStatus, uploadsUsedToday } from '../services/student-upload.js';
+import { assertCanUpload, assertQueueRoom, assertUploadsOn, createUploadGuard, logLessonEvent, uploadStatus, uploadsUsedToday } from '../services/student-upload.js';
 
 const SHORT_TEXT_WORDS = 150;
 const SHORT_TEXT_WARNING =
@@ -36,9 +36,9 @@ const progressBody = z.object({
   completed_sections: z.array(z.number().int().min(0)).max(500).optional(),
 });
 
-// What a student sees when their upload failed for a reason that isn't about the file (the AI was down or busy, the
-// server restarted): never a provider message or a pointer to Settings. A message about the file itself (no text) stays.
-export const UPLOAD_FAILED_MESSAGE = 'The AI couldn’t prepare this lesson right now. Try again in a few minutes.';
+// The multipart envelope (boundaries, the title field, headers) around the file; a request whose Content-Length is more
+// than the file limit plus this is refused before anything is read.
+const MULTIPART_OVERHEAD = 64 * 1024;
 
 const SUMMARY_COLUMNS = 'l.id, l.title, l.filename, l.word_count, l.status, l.error, l.created_at, l.origin, l.owner_participant_id, l.shared_at, l.error_kind';
 const OWNER_CODE = '(SELECT code FROM participants WHERE id = l.owner_participant_id) AS owner_code';
@@ -75,6 +75,7 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin, { ac
     if (owner && uploadsUsedToday(db, owner.id, now) >= uploadsPerDay(db)) {
       throw new HttpError(429, 'You’ve used today’s uploads. You can upload again tomorrow.', { code: 'upload_quota' });
     }
+    if (owner) assertQueueRoom(db);
     const numbers = source.numbers ? JSON.stringify(source.numbers) : null;
     const id = Number(
       insertLesson.run(title, filename, text, wordCount, source.kind, numbers, source.total, owner ? 'student' : 'admin', owner?.id ?? null).lastInsertRowid,
@@ -84,14 +85,15 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin, { ac
     return id;
   });
 
-  // A lesson row as the caller may see it. Students get `mine` and `shared`, never the owner's code or id; admin gets
-  // the owner's code. A student's own upload that failed for a reason other than its file shows a plain message.
+  // A lesson row as the caller may see it. Students get `mine` and `shared`, never the owner's code or id, and never the
+  // file name (the title may come from it, but they chose that file themselves); admin gets the owner's code and the
+  // file name. A student's own upload that failed for a reason other than its file shows a plain message.
   const shape = (row, viewer) => {
     const { owner_participant_id: ownerId, owner_code: ownerCode, error_kind: errorKind, ...rest } = row;
     const mine = Boolean(viewer.participant) && ownerId === viewer.participant.id;
-    const hide = !viewer.admin && row.origin === 'student' && errorKind !== 'content';
-    const out = { ...rest, error: row.error && hide ? UPLOAD_FAILED_MESSAGE : row.error, mine, shared: row.shared_at !== null };
+    const out = { ...rest, error: safeError(row.error, { origin: row.origin, error_kind: errorKind }, viewer), mine, shared: row.shared_at !== null };
     if (viewer.admin) out.owner_code = ownerCode ?? null;
+    else delete out.filename;
     if (mine && !viewer.admin) {
       const records = ownerRecords(db, row.id, viewer.participant.id);
       out.can_delete = row.origin === 'student' && row.shared_at === null && !hasRecords(records);
@@ -99,7 +101,6 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin, { ac
     }
     return out;
   };
-  const safeError = (message, row, viewer) => (message && !viewer.admin && row?.origin === 'student' && row.error_kind !== 'content' ? UPLOAD_FAILED_MESSAGE : message);
 
   const readProgress = (lessonId, participant) => {
     if (!participant) return null;
@@ -123,14 +124,35 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin, { ac
   router.post('/', (req, res, next) => {
     let viewer;
     let student = null;
+    let release = null;
+    const logFailure = (participant, detail) => {
+      try {
+        logLessonEvent(db, { participantId: participant.id, type: 'lesson_upload_failed', detail, now: clock() });
+      } catch (inner) {
+        console.error('Could not log the failed upload:', inner.message);
+      }
+    };
     try {
       viewer = access.viewerOf(req);
       if (!viewer.admin) {
         student = requireParticipant(db, req);
         assertUploadsOn(db);
+      }
+      // A body that says it is far bigger than the limit is refused before multer reads any of it. The connection is
+      // closed after the answer, so the rest of the body is not read either.
+      const declared = Number(req.headers['content-length']);
+      if (Number.isFinite(declared) && declared > maxUploadBytes + MULTIPART_OVERHEAD) {
+        res.set('Connection', 'close');
+        if (student) logFailure(student, 'too_large');
+        const mb = Math.round(maxUploadBytes / 1024 / 1024);
+        throw new HttpError(413, `That file is larger than ${mb} MB. Upload a smaller file.`, { code: 'too_large' });
+      }
+      if (student) {
         uploadGuard.hit(student.id);
         assertCanUpload(db, student, clock());
-        uploadGuard.start(student.id);
+        release = uploadGuard.start(student.id);
+        // also when the connection goes away before the upload callback runs (an aborted request)
+        res.on('close', release);
       }
     } catch (e) {
       return next(e);
@@ -152,7 +174,7 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin, { ac
           throw new HttpError(422, "This file has no readable text, so there's nothing to study. Try a text-based version of the lesson.", { code: 'no_text' });
         }
 
-        const title = body.data.title || filename.slice(0, -ext.length).trim() || 'Untitled lesson';
+        const title = body.data.title || filename.slice(0, -ext.length).trim().slice(0, 200) || 'Untitled lesson';
         const id = createLesson(title, filename, text, wordCount, source, student);
         const lesson = shape(db.prepare(`SELECT ${SUMMARY_COLUMNS}, ${OWNER_CODE} FROM lessons l WHERE l.id = ?`).get(id), viewer);
         runner.enqueue(id);
@@ -163,16 +185,10 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin, { ac
         });
       } catch (e) {
         const detail = student && uploadFailure(e);
-        if (detail) {
-          try {
-            logLessonEvent(db, { participantId: student.id, type: 'lesson_upload_failed', detail, now: clock() });
-          } catch (inner) {
-            console.error('Could not log the failed upload:', inner.message);
-          }
-        }
+        if (detail) logFailure(student, detail);
         next(e);
       } finally {
-        if (student) uploadGuard.done(student.id);
+        release?.();
       }
     });
   });
@@ -184,7 +200,9 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin, { ac
   // GET /api/admin/lessons/:id/leaks. Both run the leak checks over every card, so they are only sent to admin's list
   // (`?counts=1`, behind the PIN), not to the students' list. `section_versions`: the shared Explain simpler /
   // Filipino-Taglish versions still missing (`missing` of `total`, two per section) and, when the last job was making
-  // them ("Prepare"), its `status`, `error` and `progress`.
+  // them ("Prepare"), its `status`, `error` and `progress`. `flashcards` (admin's list only): how many cards the lesson
+  // has and, when the last job was making them, its `status` and `error` (the "Make cards" button, which used to be on
+  // the Flashcard tab: admin keeps the PIN only on the admin screens).
   const quizOptionCounts = (lessonId) => {
     const missing = cardsNeedingDistractors(db, lessonId).length;
     return { missing, weak: cardsNeedingDistractors(db, lessonId, { includeFailing: true }).length - missing };
@@ -195,6 +213,7 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin, { ac
   };
   const listLessons = (res, counts, viewer) => {
     const versions = versionCounts(db);
+    const cardTotals = counts ? new Map(db.prepare('SELECT lesson_id, COUNT(*) AS n FROM flashcards GROUP BY lesson_id').all().map((r) => [r.lesson_id, r.n])) : null;
     const lessons = db
       .prepare(`SELECT ${SUMMARY_COLUMNS}, ${OWNER_CODE} FROM lessons l WHERE ${access.visibleSql(viewer)} ORDER BY l.created_at DESC, l.id DESC`)
       .all();
@@ -203,6 +222,7 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin, { ac
         const { job } = getJobStatus(db, lesson.id);
         const own = job?.stage === 'quiz_options';
         const preparing = job?.stage === 'section_versions';
+        const making = job?.stage === 'flashcards';
         const row = shape(lesson, viewer);
         return {
           ...row,
@@ -211,11 +231,12 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin, { ac
           ...(counts && {
             quiz_options: { ...quizOptionCounts(lesson.id), status: own ? job.status : null, error: own ? job.error : null },
             leaks: { cards: leakyCards(lesson.id) },
+            flashcards: { total: cardTotals.get(lesson.id) ?? 0, status: making ? job.status : null, error: making ? job.error : null },
           }),
           section_versions: {
             ...(versions.get(lesson.id) ?? { missing: 0, total: 0 }),
             status: preparing ? job.status : null,
-            error: preparing ? job.error : null,
+            error: preparing && job.error ? (viewer.admin ? job.error : PREPARE_FAILED_MESSAGE) : null,
             progress: preparing ? job.progress : null,
           },
         };
@@ -308,7 +329,11 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin, { ac
       if (lesson.owner_participant_id !== me.id) throw new HttpError(404, 'Lesson not found.');
     }
     if (lesson.status !== 'failed') throw new HttpError(409, 'Only a lesson whose processing failed can be retried.');
-    db.transaction(() => queueJob(db, id))();
+    db.transaction(() => {
+      // a student's retry counts against the queue like a new upload (admin's does not)
+      if (!viewer.admin) assertQueueRoom(db);
+      queueJob(db, id);
+    })();
     runner.enqueue(id);
     res.status(202).json(getJobStatus(db, id));
   });
@@ -377,6 +402,12 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin, { ac
     }
     db.transaction(() => {
       logLessonEvent(db, { participantId: me.id, type: 'lesson_deleted_by_student', lessonId: lesson.id, title: lesson.title, now: clock() });
+      // What the owner left on the lesson without studying it (a simpler / Taglish tap, a reading session opened with no
+      // time, a quiz or the flashcards opened) goes with it. Left behind, those rows would lose their lesson (lesson_id
+      // NULL) and be counted in the main measures, which count the teacher's lessons and the All lessons deck (NULL).
+      // Attempts with no answer are removed with the lesson (cascade). The deleted-lesson event above stays.
+      db.prepare('DELETE FROM events WHERE participant_id = ? AND lesson_id = ?').run(me.id, lesson.id);
+      db.prepare('DELETE FROM study_sessions WHERE participant_id = ? AND lesson_id = ?').run(me.id, lesson.id);
       db.prepare('DELETE FROM lessons WHERE id = ?').run(lesson.id);
     })();
   };

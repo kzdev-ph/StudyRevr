@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ChevronRight, TrashIcon } from './Icons.jsx';
 import LeakyCards from './LeakyCards.jsx';
 import { prettyTitle } from '../lib/format.js';
+import { flashcardsNotice } from '../lib/flashcardsNotice.js';
 import { quizOptionsNotice } from '../lib/quizOptions.js';
 import { sectionVersionsNotice } from '../lib/sectionVersions.js';
 import { paths } from '../lib/router.js';
@@ -65,7 +66,7 @@ function LessonStep({ lesson, notice, busyText, onMake }) {
 // `onShare` (admin) "Share with everyone" for a student's private upload.
 // A student's own upload (`lesson.mine`) shows who can see it and where its preparation is; `onDeleteOwn` (only while
 // the server says `can_delete`: before it is shared or studied) and `onRetry` (a failed upload) are theirs.
-export default function LessonRow({ lesson, admin = false, onDelete, onDeleteOwn, onRetry, onShare, onMakeQuizOptions, onPrepareVersions, onCardsChanged }) {
+export default function LessonRow({ lesson, admin = false, onDelete, onDeleteOwn, onRetry, onShare, onMakeFlashcards, onMakeQuizOptions, onPrepareVersions, onCardsChanged }) {
   const [confirming, setConfirming] = useState(null); // 'delete' | 'share'
   const [working, setWorking] = useState(false);
   const [retrying, setRetrying] = useState(false);
@@ -87,6 +88,14 @@ export default function LessonRow({ lesson, admin = false, onDelete, onDeleteOwn
   const note = admin ? adminLessonNote(lesson) : ownLessonNote(lesson);
   const stage = lesson.mine ? processingLine(lesson) : null;
   const failedMine = lesson.mine && lesson.status === 'failed';
+  // admin's list is where a failed lesson is retried (the reader has no PIN); a student retries their own upload
+  const failedAdmin = admin && lesson.status === 'failed' && Boolean(onRetry);
+  const canDelete = Boolean(onDelete) || canDeleteOwn;
+
+  // The confirm closes if its delete option goes away (the lesson was shared or studied meanwhile)
+  useEffect(() => {
+    if (confirming === 'delete' && !canDelete) setConfirming(null);
+  }, [confirming, canDelete]);
 
   const finish = async (action) => {
     setWorking(true);
@@ -100,7 +109,7 @@ export default function LessonRow({ lesson, admin = false, onDelete, onDeleteOwn
     setRetrying(false);
   };
 
-  if (confirming) {
+  if (confirming && !(confirming === 'delete' && !canDelete)) {
     const title = prettyTitle(lesson.title);
     // a student's confirm is ink, never red; the red button is admin's alone
     const sharing = confirming === 'share';
@@ -130,7 +139,7 @@ export default function LessonRow({ lesson, admin = false, onDelete, onDeleteOwn
               {working ? 'Sharing…' : 'Share lesson'}
             </button>
           ) : (
-            <button type="button" className={canDeleteOwn ? 'btn btn--primary' : 'btn btn--danger'} onClick={() => finish(canDeleteOwn ? onDeleteOwn : onDelete)} disabled={working}>
+            <button type="button" className={onDelete ? 'btn btn--danger' : 'btn btn--primary'} onClick={() => finish(onDelete ?? onDeleteOwn)} disabled={working}>
               {working ? 'Deleting…' : 'Delete lesson'}
             </button>
           )}
@@ -141,7 +150,7 @@ export default function LessonRow({ lesson, admin = false, onDelete, onDeleteOwn
 
   return (
     <li className="lesson">
-      <a className="lesson__link" href={paths.lesson(lesson.id)}>
+      <a className="lesson__link" href={admin ? paths.adminLesson(lesson.id) : paths.lesson(lesson.id)}>
         <span className="lesson__main">
           <span className="lesson__title">{prettyTitle(lesson.title)}</span>
           <span className="lesson__meta">
@@ -158,24 +167,24 @@ export default function LessonRow({ lesson, admin = false, onDelete, onDeleteOwn
           <TrashIcon size={20} />
         </button>
       )}
-      {failedMine && (
+      {(failedMine || failedAdmin) && (
         <div className="lesson__extra lesson__extra--note" aria-live="polite">
           <p className="lesson__extra-text">{lesson.error ?? 'Something went wrong while preparing this lesson.'}</p>
-          {actions.retry && onRetry && (
+          {(failedAdmin || actions.retry) && onRetry && (
             <button type="button" className="btn btn--primary" onClick={tryAgain} disabled={retrying}>
-              {retrying ? 'Trying again…' : 'Try again'}
+              {retrying ? 'Trying again…' : failedAdmin ? 'Retry' : 'Try again'}
             </button>
           )}
         </div>
       )}
       {canShare && (
         <div className="lesson__extra">
-          <p className="lesson__extra-text">Only {lesson.owner_code ?? 'the uploader'} can see this lesson.</p>
           <button type="button" className="btn btn--quiet" ref={share} onClick={() => setConfirming('share')}>
             Share with everyone
           </button>
         </div>
       )}
+      {onMakeFlashcards && <LessonStep lesson={lesson} notice={flashcardsNotice(lesson)} busyText="Making the flashcards…" onMake={onMakeFlashcards} />}
       {onCardsChanged && <LeakyCards lesson={lesson} onChanged={onCardsChanged} />}
       {onMakeQuizOptions && <LessonStep lesson={lesson} notice={quizOptionsNotice(lesson)} busyText="Making the quiz answers…" onMake={onMakeQuizOptions} />}
       {onPrepareVersions && (

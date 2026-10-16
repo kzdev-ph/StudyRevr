@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { lockAdmin } from './admin.js';
 import { local, storedValue } from './store.js';
 
 // The participant code this device studies as (P01, P02, ...). Saved on the device until "Switch participant".
@@ -24,7 +25,9 @@ export const onBeforeSwitch = (fn) => {
   beforeSwitch.add(fn);
   return () => beforeSwitch.delete(fn);
 };
+// Switching ends the study session, locks admin again (the next person on this tab is a student) and forgets the code.
 export function switchParticipant() {
   for (const fn of beforeSwitch) fn();
+  lockAdmin();
   setParticipant(null);
 }

@@ -64,6 +64,7 @@ export async function startStudyApp({ now = '2026-10-05T04:00:00.000Z', adminPin
   const server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
   const base = `http://127.0.0.1:${server.address().port}`;
   t.base = base;
+  t.app = app; // for tests that read the live router stack (lesson-access.test.js)
   t.call = async (method, path, { as, pin, body, raw = false } = {}) => {
     const headers = {};
     if (as) headers['x-participant'] = as;
@@ -101,3 +102,26 @@ export const addCodes = (db, ...codes) => {
   const insert = db.prepare('INSERT OR IGNORE INTO participants (code) VALUES (?)');
   for (const c of codes) insert.run(c);
 };
+
+// Every route of a running app, read from the live Express stack (Express 5: `app.router.stack`), as 'METHOD /full/path'
+// ('/api' included, a trailing slash dropped). A mounted router must carry the `mountPath` that app.js's mount() gives it;
+// one that doesn't is listed in `untagged` instead of being walked, so a router mounted by hand can't hide its routes.
+//   const { routes, untagged } = liveRoutes(app)
+export function liveRoutes(app) {
+  const routes = [];
+  const untagged = [];
+  const walk = (stack, prefix) => {
+    for (const layer of stack) {
+      if (layer.route) {
+        const path = typeof layer.route.path === 'string' ? layer.route.path : String(layer.route.path);
+        const full = `${prefix}${path}`.replace(/(.)\/$/, '$1');
+        for (const method of Object.keys(layer.route.methods)) routes.push(`${method === '_all' ? 'ALL' : method.toUpperCase()} ${full}`);
+      } else if (layer.handle?.stack) {
+        if (typeof layer.handle.mountPath !== 'string') untagged.push(layer.name || 'router');
+        else walk(layer.handle.stack, `${prefix}${layer.handle.mountPath}`);
+      }
+    }
+  };
+  walk(app.router.stack, '');
+  return { routes, untagged };
+}

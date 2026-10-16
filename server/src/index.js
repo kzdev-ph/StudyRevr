@@ -14,7 +14,7 @@ if (applied.length) console.log(`[db] applied migrations: ${applied.join(', ')}`
 const leftover = removeLeftoverBackups(config.dbPath);
 if (leftover) console.log(`[backup] removed ${leftover} temporary backup file(s) left by an earlier run`);
 
-const interrupted = failInterruptedJobs(db);
+const interrupted = failInterruptedJobs(db, new Date());
 if (interrupted) console.log(`[pipeline] marked ${interrupted} unfinished lesson(s) as failed after a restart; they can be retried`);
 
 const app = createApp(db, config);

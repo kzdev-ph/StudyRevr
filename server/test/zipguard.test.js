@@ -5,7 +5,7 @@ import PptxGenJS from 'pptxgenjs';
 import { createApp } from '../src/app.js';
 import { openDb, runMigrations } from '../src/db/index.js';
 import { extractText } from '../src/services/extract.js';
-import { assertSafeZip, MAX_UNCOMPRESSED_BYTES } from '../src/services/zipguard.js';
+import { assertEntrySizes, assertSafeZip, MAX_UNCOMPRESSED_BYTES } from '../src/services/zipguard.js';
 import { studyFetch, TEST_PIN } from './helpers.js';
 
 const fetch = studyFetch; // as participant P00, with the admin PIN (see helpers.js)
@@ -81,8 +81,9 @@ const rejects422 = (fn, pattern) =>
 describe('assertSafeZip', () => {
   it('accepts a normal archive and reports its size', async () => {
     const buf = await zipOf({ 'a.txt': 'hello', 'b.txt': 'world!' });
-    const { names, ...size } = assertSafeZip(buf);
+    const { names, records, ...size } = assertSafeZip(buf);
     assert.deepEqual(size, { entries: 2, uncompressedBytes: 11 });
+    assert.deepEqual(records.map((r) => [r.name, r.size]), [['a.txt', 5], ['b.txt', 6]]);
     assert.deepEqual([...names], ['a.txt', 'b.txt']);
   });
 
@@ -124,14 +125,64 @@ describe('assertSafeZip', () => {
 
   it('reads zip64 archives: accepts real small sizes, rejects a declared 5 GB entry', () => {
     const ok = makeZip64('word/document.xml', Buffer.from('<w:document/>'));
-    const { names, ...size } = assertSafeZip(ok);
+    const { names, records, ...size } = assertSafeZip(ok);
     assert.deepEqual(size, { entries: 1, uncompressedBytes: 13 });
+    assert.deepEqual(records.map((r) => [r.name, r.size, r.compressedSize, r.offset]), [['word/document.xml', 13, 13, 0]]);
     assert.ok(names.has('word/document.xml'));
     rejects422(() => assertSafeZip(makeZip64('bomb.bin', Buffer.from('x'), 5 * 1024 ** 3)), /once unpacked/);
   });
 
   it('rejects data that is not a zip at all', () => {
     rejects422(() => assertSafeZip(Buffer.from('this is not a zip archive, just some text '.repeat(5))), /corrupted/);
+  });
+});
+
+// A zip whose directory understates what an entry inflates to: 8 MB of zeros that the header says are 20 bytes.
+const lyingZip = async (declared = 20) => declareUncompressedSize(await zipOf({ 'word/document.xml': Buffer.alloc(8 * 1024 * 1024) }), declared);
+
+describe('assertEntrySizes (the real size of every entry, not the declared one)', () => {
+  const check = (buf) => assertEntrySizes(buf, assertSafeZip(buf).records);
+  const rejects = (promise, pattern = /corrupted/) => assert.rejects(promise, (err) => err.status === 422 && pattern.test(err.message));
+
+  it('passes an honest archive, deflated and stored entries alike', async () => {
+    const zip = new JSZip();
+    zip.file('deflated.xml', '<a>'.repeat(1000), { compression: 'DEFLATE' });
+    zip.file('stored.xml', 'plain text', { compression: 'STORE' });
+    zip.file('empty.xml', '');
+    const buf = await zip.generateAsync({ type: 'nodebuffer' });
+    await check(buf);
+  });
+
+  it('refuses an entry that inflates to far more than the header says, without inflating it all', async () => {
+    const buf = await lyingZip();
+    assert.ok(assertSafeZip(buf).uncompressedBytes < 100, 'the directory alone passes: that is the hole');
+    const started = process.memoryUsage().heapUsed;
+    await rejects(check(buf));
+    assert.ok(process.memoryUsage().heapUsed - started < 4 * 1024 * 1024, 'the 8 MB was never held');
+  });
+
+  it('refuses an entry that inflates to less than the header says', async () => {
+    const buf = declareUncompressedSize(await zipOf({ 'word/document.xml': 'short' }), 5000);
+    await rejects(check(buf));
+  });
+
+  it('refuses a stored entry whose size is not what it says', async () => {
+    const zip = new JSZip();
+    zip.file('a.xml', 'stored data', { compression: 'STORE' });
+    const buf = declareUncompressedSize(await zip.generateAsync({ type: 'nodebuffer' }), 3);
+    await rejects(check(buf));
+  });
+
+  it('refuses a cut-off archive and an entry pointing outside it', async () => {
+    const buf = await zipOf({ 'word/document.xml': '<x/>'.repeat(100) });
+    const records = assertSafeZip(buf).records;
+    await rejects(assertEntrySizes(buf.subarray(0, 40), records));
+    await rejects(assertEntrySizes(buf, records.map((r) => ({ ...r, offset: buf.length + 100 }))));
+  });
+
+  it('refuses a method we do not read', async () => {
+    const buf = await zipOf({ 'a.xml': '<x/>' });
+    await rejects(assertEntrySizes(buf, assertSafeZip(buf).records.map((r) => ({ ...r, method: 12 }))));
   });
 });
 
@@ -163,6 +214,13 @@ describe('zip-bomb guard in the upload pipeline', () => {
     const res = await upload(bomb, 'bomb.docx', DOCX_MIME);
     assert.equal(res.status, 422);
     assert.match((await res.json()).error.message, /more than 200 MB once unpacked/);
+    assert.equal(db.prepare('SELECT COUNT(*) c FROM lessons').get().c, 0);
+  });
+
+  it('refuses a .docx whose header lies about its size, before any parser inflates it', async () => {
+    const res = await upload(await lyingZip(), 'liar.docx', DOCX_MIME);
+    assert.equal(res.status, 422);
+    assert.match((await res.json()).error.message, /corrupted/);
     assert.equal(db.prepare('SELECT COUNT(*) c FROM lessons').get().c, 0);
   });
 

@@ -82,27 +82,64 @@ describe("research export with students' uploads", () => {
   it('lessons.csv says where each lesson came from: admin, student, shared, and the owner', async () => {
     const rows = parseCsv(await file('lessons'));
     const by = Object.fromEntries(rows.map((r) => [r.title, r]));
-    assert.deepEqual(Object.keys(by).sort(), ['Private upload', 'Shared upload', 'Teacher lesson'], "the researcher's own upload is left out with P00");
+    const priv = `Student upload ${l.priv}`;
+    const shared = `Student upload ${l.shared}`;
+    assert.deepEqual(Object.keys(by).sort(), [priv, shared, 'Teacher lesson'].sort(), "the researcher's private upload is left out with P00; uploads carry the generic title");
     assert.deepEqual([by['Teacher lesson'].origin, by['Teacher lesson'].shared, by['Teacher lesson'].owner], ['admin', '', '']);
-    assert.deepEqual([by['Private upload'].origin, by['Private upload'].shared, by['Private upload'].shared_at, by['Private upload'].owner], ['student', '0', '', 'P01']);
-    assert.deepEqual([by['Shared upload'].origin, by['Shared upload'].shared, by['Shared upload'].shared_at, by['Shared upload'].owner], ['student', '1', '2026-10-05T03:00:00.000Z', 'P02']);
+    assert.deepEqual([by[priv].origin, by[priv].shared, by[priv].shared_at, by[priv].owner], ['student', '0', '', 'P01']);
+    assert.deepEqual([by[shared].origin, by[shared].shared, by[shared].shared_at, by[shared].owner], ['student', '1', '2026-10-05T03:00:00.000Z', 'P02']);
     assert.equal(by['Teacher lesson'].lesson_id, String(l.admin));
     assert.ok(parseCsv(await file('lessons', '?include_p00=1')).some((r) => r.owner === 'P00'));
   });
 
   it("lessons.csv keeps a shared lesson's origin when its owner was withdrawn", async () => {
     t.db.prepare('UPDATE lessons SET owner_participant_id = NULL WHERE id = ?').run(l.shared);
-    const row = parseCsv(await file('lessons')).find((r) => r.title === 'Shared upload');
+    const row = parseCsv(await file('lessons')).find((r) => r.title === `Student upload ${l.shared}`);
     assert.deepEqual([row.origin, row.shared, row.owner], ['student', '1', '']);
   });
 
   it('lesson_events.csv lists the uploads\' events with the participant, and leaves P00 out', async () => {
     const rows = parseCsv(await file('lesson_events'));
     assert.deepEqual(rows.map((r) => [r.participant, r.type, r.actor, r.lesson_title, r.detail, r.study_date]), [
-      ['P01', 'lesson_uploaded', 'student', 'Private upload', 'private.docx', '2026-10-05'],
-      ['P02', 'lesson_shared', 'admin', 'Shared upload', '', '2026-10-05'],
+      ['P01', 'lesson_uploaded', 'student', `Student upload ${l.priv}`, '.docx', '2026-10-05'],
+      ['P02', 'lesson_shared', 'admin', `Student upload ${l.shared}`, '', '2026-10-05'],
     ]);
     assert.equal(parseCsv(await file('lesson_events', '?include_p00=1')).length, 3);
+  });
+
+  it("lessons.csv keeps the researcher's shared upload (other participants' rows point to it)", async () => {
+    t.db.prepare('UPDATE lessons SET shared_at = ? WHERE id = ?').run('2026-10-05T03:30:00.000Z', l.p00);
+    const rows = parseCsv(await file('lessons'));
+    assert.ok(rows.some((r) => r.lesson_id === String(l.p00) && r.owner === 'P00'));
+  });
+
+  it("no export file shows a student upload's real title or file name; the teacher's lessons keep theirs", async () => {
+    const REAL = ['Private upload', 'Shared upload', 'Researcher upload', 'private.docx', 'mine.docx'];
+    // every kind of record that carries a lesson title: sessions (done in beforeEach), reviews, events, quiz attempts, AI calls
+    await t.call('POST', '/api/events', { as: 'P01', body: { type: 'section_translate', lesson_id: l.priv, section_index: 0 } });
+    const attempt = await t.call('POST', `/api/lessons/${l.priv}/quiz/attempts`, { as: 'P01', body: {} });
+    assert.equal(attempt.status, 201);
+    t.db.prepare("INSERT INTO ai_calls (participant_id, lesson_id, section_index, kind, outcome, source, from_cache, saved_shared, created_at, study_date) VALUES (?, ?, 0, 'simplify', 'ok', 'default', 0, 0, '2026-10-05T06:00:00.000Z', '2026-10-05')").run(ids.P01, l.priv);
+    const zip = await JSZip.loadAsync(Buffer.from(await (await t.call('GET', '/api/admin/export.zip?include_p00=1', { pin: TEST_PIN, raw: true })).arrayBuffer()));
+    const names = Object.keys(zip.files);
+    assert.ok(names.length >= 12);
+    for (const name of names) {
+      if (name === 'quiz_answers.csv') continue; // the questions are lesson content (the seeded cards repeat the title); it has no title column
+      const text = await zip.file(name).async('string');
+      for (const real of REAL) assert.ok(!text.includes(real), `${name} shows "${real}"`);
+    }
+    const csv = async (n) => parseCsv(await zip.file(`${n}.csv`).async('string'));
+    for (const n of ['sessions', 'flashcard_reviews', 'events', 'quiz_attempts', 'ai_calls']) {
+      const rows = await csv(n);
+      const forPriv = rows.filter((r) => r.lesson_id === String(l.priv));
+      assert.ok(forPriv.length > 0, `${n} has a row for the private upload`);
+      for (const r of forPriv) assert.equal(r.lesson_title, `Student upload ${l.priv}`, n);
+      for (const r of rows.filter((x) => x.lesson_id === String(l.admin))) assert.equal(r.lesson_title, 'Teacher lesson', n);
+    }
+    const readme = await zip.file('README.txt').async('string');
+    assert.ok(readme.includes(`Student upload <lesson_id>`));
+    assert.ok(readme.includes(`L${l.shared} = Student upload ${l.shared}`));
+    assert.ok(readme.includes(`L${l.admin} = Teacher lesson`));
   });
 
   it('the codebook explains the new files, the _all columns and that no original file is kept', async () => {

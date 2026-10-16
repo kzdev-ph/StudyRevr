@@ -117,7 +117,7 @@ export function quizRouter({ db, ai, access, clock = () => new Date(), random = 
       } else {
         if (lesson.status === 'processing') throw new HttpError(409, 'This lesson is still being prepared. Its quiz is ready once its flashcards are made.');
         const cards = lessonCards(db, lesson.id);
-        if (!cards.length) throw new HttpError(409, 'This lesson has no flashcards yet, and the quiz is made from them. Make them on the Flashcard tab first.');
+        if (!cards.length) throw new HttpError(409, 'This lesson has no flashcards yet, and the quiz is made from them. Your teacher can make them.');
         if (cards.length < 2) throw new HttpError(409, NEEDS_TWO);
         const made = await distractorsFor(lesson.id);
         // another start may have finished while the wrong answers were being made
@@ -127,7 +127,7 @@ export function quizRouter({ db, ai, access, clock = () => new Date(), random = 
         if (!questions.length) throw new HttpError(409, NEEDS_TWO);
         const notes = [];
         if (questions.length < QUIZ_LENGTH) notes.push(`This lesson supports ${questions.length} ${questions.length === 1 ? 'question' : 'questions'}.`);
-        if (made.error) notes.push(`Answer options for some questions couldn’t be made (${made.error}), so they are true or false this time.`);
+        if (made.error) notes.push('Answer options for some questions couldn’t be made, so they are true or false this time.');
         notice = notes.join(' ') || null;
       }
 

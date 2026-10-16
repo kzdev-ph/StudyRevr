@@ -30,6 +30,7 @@ describe('ownLessonNote / adminLessonNote', () => {
     assert.equal(adminLessonNote({ origin: 'student', owner_code: 'P07', shared: false }), 'Uploaded by P07 · only P07 can see it');
     assert.equal(adminLessonNote({ origin: 'student', owner_code: 'P07', shared: true }), 'Uploaded by P07 · shared with everyone');
     assert.equal(adminLessonNote({ origin: 'student', owner_code: null, shared: true }), 'Uploaded by a withdrawn participant · shared with everyone');
+    assert.equal(adminLessonNote({ origin: 'student', owner_code: null, shared: false }), 'Uploaded by a withdrawn participant · nobody can see it');
     assert.equal(ownLessonNote({ mine: false, owner_code: 'P07' }), null);
   });
 });
@@ -56,5 +57,21 @@ describe('rowActions', () => {
   it('offers nothing on a lesson that is not theirs', () => {
     assert.deepEqual(rowActions({ mine: false, can_delete: true, can_retry: true }), { delete: false, retry: false });
     assert.deepEqual(rowActions({}), { delete: false, retry: false });
+  });
+});
+
+describe('flashcardsNotice (admin\'s "Make cards", now in the lesson list)', () => {
+  it('offers Make cards for a ready lesson with none, and nothing once it has some', async () => {
+    const { flashcardsNotice } = await import('../src/lib/flashcardsNotice.js');
+    assert.equal(flashcardsNotice({ status: 'ready', flashcards: { total: 0 } }).action, 'Make cards');
+    assert.equal(flashcardsNotice({ status: 'ready', flashcards: { total: 12 } }), null);
+    assert.equal(flashcardsNotice({ status: 'processing', flashcards: { total: 0 } }), null);
+    assert.equal(flashcardsNotice({ status: 'ready' }).state, 'missing');
+  });
+  it('shows progress and failure', async () => {
+    const { flashcardsNotice } = await import('../src/lib/flashcardsNotice.js');
+    assert.equal(flashcardsNotice({ status: 'ready', flashcards: { total: 0, status: 'running' } }).state, 'making');
+    const failed = flashcardsNotice({ status: 'ready', flashcards: { total: 0, status: 'failed', error: 'boom' } });
+    assert.deepEqual([failed.state, failed.detail, failed.action], ['failed', 'boom', 'Try again']);
   });
 });

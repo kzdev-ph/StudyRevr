@@ -34,7 +34,7 @@ const count = (db, table, lessonId) => db.prepare(`SELECT COUNT(*) AS c FROM ${t
 // event })` is told when each stage starts and ends ('start' | 'end'), e.g. for a timeline in the pipeline script.
 // `madeBy` ({ provider, model }, the admin Default) is recorded with the section versions the "Prepare" step makes.
 // A job queued at an on-demand stage (ON_DEMAND_STAGES) runs only that stage.
-export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUNK_TOKENS, concurrency = 1, keyTermsMax = 12, madeBy = null, log = console, onStage = () => {} }) {
+export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUNK_TOKENS, concurrency = 1, keyTermsMax = 12, madeBy = null, log = console, clock = () => new Date(), onStage = () => {} }) {
   const lesson = db
     .prepare('SELECT id, title, raw_text, word_count, status, source_kind, source_numbers, source_total, origin, owner_participant_id FROM lessons WHERE id = ?')
     .get(lessonId);
@@ -195,7 +195,7 @@ export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUN
         db.prepare(`UPDATE lessons SET status = 'failed', error = ?, error_kind = ? WHERE id = ?`).run(message, kind, lessonId);
         // a student's upload that fails is logged (lesson_events), so the researcher can see how often processing fails
         if (lesson.origin === 'student' && lesson.owner_participant_id !== null) {
-          logLessonEvent(db, { participantId: lesson.owner_participant_id, type: 'lesson_upload_failed', lessonId, title: lesson.title, detail: `processing:${stage}`, now: new Date() });
+          logLessonEvent(db, { participantId: lesson.owner_participant_id, type: 'lesson_upload_failed', lessonId, title: lesson.title, detail: `processing:${stage}`, now: clock() });
         }
       }
     } catch (inner) {

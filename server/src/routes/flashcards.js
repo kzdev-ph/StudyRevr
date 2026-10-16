@@ -6,6 +6,7 @@ import { buildQueue, studyDay } from '../flashcards/scheduler.js';
 import { HttpError } from '../middleware/errors.js';
 import { requireParticipant } from '../middleware/participant.js';
 import { getJobStatus, queueJob } from '../pipeline/jobs.js';
+import { CARDS_FAILED_MESSAGE } from '../services/lesson-access.js';
 
 const id = z.coerce.number().int().positive();
 // `deck`: the lesson being studied, or null for "All lessons". It decides which card comes next after an answer.
@@ -53,7 +54,8 @@ export function flashcardsRouter({ db, runner, clock = () => new Date(), require
     const decks = lessons.map((lesson) => {
       const cards = byLesson.get(lesson.id) ?? [];
       const { job } = getJobStatus(db, lesson.id);
-      const making = job?.stage === 'flashcards' && job.status !== 'done' ? { status: job.status, error: job.error, progress: job.progress } : null;
+      // students never read a provider's message (nor, for their own upload, the lesson's): a plain line instead
+      const making = job?.stage === 'flashcards' && job.status !== 'done' ? { status: job.status, error: job.error && !viewer.admin ? CARDS_FAILED_MESSAGE : job.error, progress: job.progress } : null;
       return { lesson_id: lesson.id, title: lesson.title, status: lesson.status, total: cards.length, ...summary(cards), job: making };
     });
     res.json({
@@ -82,7 +84,8 @@ export function flashcardsRouter({ db, runner, clock = () => new Date(), require
     const { id: participantId } = requireParticipant(db, req);
     const cardId = parseId(req.params.id, 'Flashcard');
     const cardLesson = lessonOfCard(cardId);
-    if (cardLesson && !access.canSee(viewer, cardLesson)) throw new HttpError(404, 'Flashcard not found.');
+    // before the body is read: a card that doesn't exist and one the caller may not see answer the same, whatever is sent
+    if (!cardLesson || !access.canSee(viewer, cardLesson)) throw new HttpError(404, 'Flashcard not found.');
     const body = reviewBody.safeParse(req.body ?? {});
     if (!body.success) throw new HttpError(400, 'Send rating (1 Again, 2 Hard, 3 Good, 4 Easy), and optionally time_ms and deck.');
     const now = clock();

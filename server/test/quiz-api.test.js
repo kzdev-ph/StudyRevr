@@ -198,7 +198,7 @@ describe('quiz API', () => {
     assert.equal(res.status, 201);
     assert.equal(res.body.questions.length, 5);
     assert.ok(res.body.questions.every((q) => q.type === 'tf'));
-    assert.match(res.body.notice, /supports 5 questions\. Answer options for some questions couldn’t be made \(The AI provider is rate limiting requests\. Try again shortly\.\), so they are true or false this time\./);
+    assert.match(res.body.notice, /supports 5 questions\. Answer options for some questions couldn’t be made, so they are true or false this time\./);
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM quiz_distractors').get().n, 0, 'nothing cached, so the next quiz tries again');
   });
 

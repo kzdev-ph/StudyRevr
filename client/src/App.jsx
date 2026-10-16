@@ -1,9 +1,10 @@
 import { lazy, Suspense, useEffect, useRef } from 'react';
 import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import { Header, TabBar } from './components/Shell.jsx';
+import { lockAdmin } from './lib/admin.js';
 import { useMotionReduced } from './lib/motion.js';
 import { useParticipant } from './lib/participant.js';
-import { useRoute, tabOf } from './lib/router.js';
+import { isAdminRoute, useRoute, tabOf } from './lib/router.js';
 import AdminScreen from './screens/AdminScreen.jsx';
 import LibraryScreen from './screens/LibraryScreen.jsx';
 import LessonScreen from './screens/LessonScreen.jsx';
@@ -17,6 +18,7 @@ import StudyScreen from './screens/StudyScreen.jsx';
 // Stats and the admin participant view load only when opened, so the study screens stay light on a phone.
 const StatsScreen = lazy(() => import('./screens/StatsScreen.jsx'));
 const AdminParticipantScreen = lazy(() => import('./screens/AdminParticipantScreen.jsx'));
+const AdminLessonScreen = lazy(() => import('./screens/AdminLessonScreen.jsx'));
 const loading = <p className="muted" aria-live="polite">Loading…</p>;
 
 function Screen({ route }) {
@@ -45,6 +47,12 @@ function Screen({ route }) {
           <AdminParticipantScreen key={route.code} code={route.code} />
         </Suspense>
       );
+    case 'adminLesson':
+      return (
+        <Suspense fallback={loading}>
+          <AdminLessonScreen key={route.lessonId} lessonId={route.lessonId} />
+        </Suspense>
+      );
     case 'settings':
       return <SettingsScreen />;
     default:
@@ -56,7 +64,13 @@ export default function App() {
   const route = useRoute();
   const participant = useParticipant();
   const reduced = useMotionReduced();
-  const adminRoute = route.name === 'admin' || route.name === 'adminParticipant';
+  const adminRoute = isAdminRoute(route);
+
+  // Admin stays unlocked only while an admin screen is open: leaving them locks it again, so a student on this tab
+  // is never admin.
+  useEffect(() => {
+    if (!adminRoute) lockAdmin();
+  }, [adminRoute]);
   const mainRef = useRef(null);
   const screenKey =
     route.name === 'lesson'
