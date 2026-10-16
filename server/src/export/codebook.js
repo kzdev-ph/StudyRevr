@@ -127,8 +127,8 @@ ai_calls.csv - one row per live AI request for Explain simpler (kind simplify) o
                          not_configured  no key or model set for that step
                          error           anything unexpected
                        A step falls back to the next only for some of these: student: all except not_configured and
-                       error; default: rate_limit, timeout, network, provider_error, not_found, invalid_json,
-                       bad_response; gemma is last. Other reasons end the request (outcome failed).
+                       error; default: rate_limit, timeout, network, provider_error, not_found, bad_request,
+                       invalid_json, bad_response; gemma is last. Other reasons end the request (outcome failed).
   from_cache           1 if the answer was the default version already saved (the student's own key had failed, or it
                        was saved a moment earlier by Prepare or by another student's tap)
   saved_shared         1 if this answer was saved as the version everyone sees (default answers only; answers

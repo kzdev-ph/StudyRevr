@@ -35,7 +35,7 @@ describe('runChain and the fallback note', () => {
     const ok = await runChain([step('default', 'rate_limit'), step('gemma', { v: 1 })]);
     assert.deepEqual([ok.ok, ok.value, ok.step.source, ok.steps], [true, { v: 1 }, 'gemma', 1]);
     for (const code of ['timeout', 'network', 'provider_error']) assert.equal((await runChain([step('default', code), step('gemma', 1)])).ok, true, code);
-    for (const code of ['bad_request', 'invalid_json', 'auth', 'no_credit']) {
+    for (const code of ['invalid_json', 'auth', 'no_credit']) {
       const r = await runChain([step('default', code), step('gemma', 1)]);
       assert.deepEqual([r.ok, r.error.code, r.failures.length], [false, code, 1], code);
     }
@@ -50,12 +50,12 @@ describe('runChain and the fallback note', () => {
     assert.equal(stop.ok, false, 'anything else stops the chain');
   });
 
-  it('the Default also falls back to Gemma on an unusable reply or an unknown model, but not on a bad request or key', async () => {
-    for (const code of ['invalid_json', 'bad_response', 'not_found']) {
+  it('the Default also falls back to Gemma on an unusable reply or an unknown model or rejected model (404/400), but not on a bad key', async () => {
+    for (const code of ['invalid_json', 'bad_response', 'not_found', 'bad_request']) {
       const r = await runChain([step('default', code, DEFAULT_FALLBACK), step('gemma', { v: 1 })]);
       assert.deepEqual([r.ok, r.step.source], [true, 'gemma'], code);
     }
-    for (const code of ['bad_request', 'auth', 'no_credit']) {
+    for (const code of ['auth', 'no_credit']) {
       assert.equal((await runChain([step('default', code, DEFAULT_FALLBACK), step('gemma', { v: 1 })])).ok, false, code);
     }
   });
@@ -255,14 +255,21 @@ describe('live rewrites through the fallback chain', () => {
     assert.deepEqual([row.outcome, row.source, row.error_code, row.fallback_steps], ['failed', null, 'rate_limit', 1], 'Default failed, then one fallback (Gemma) was tried');
   });
 
-  it('a bad request does not fall back, and the student gets plain copy that does not mention Settings', async () => {
+  it('a Default model the provider rejects with 400 falls back to Gemma, and the log records the reason and one fallback', async () => {
+    respond = (model) => (model === GEMMA_MODEL ? completion(simpleJson('From gemma.')) : failure(400, { error: { message: 'Invalid model' } }));
+    const res = await simplify();
+    assert.deepEqual([res.status, res.body.answered_by.source, res.body.version.text], [200, 'gemma', 'From gemma.']);
+    assert.equal(res.body.fallback.note, 'The main AI was busy, so a backup AI answered.');
+    const [row] = aiCalls();
+    assert.deepEqual([row.outcome, row.source, row.fallback_steps, row.fallback_reasons, row.error_code], ['ok', 'gemma', 1, 'default:bad_request', null]);
+  });
+
+  it('a bad request that Gemma rejects too fails with plain copy that does not mention Settings', async () => {
     respond = () => failure(400, { error: { message: 'Invalid argument' } });
     const res = await simplify();
     assert.deepEqual([res.status, res.body.error.code, res.body.error.message], [503, 'ai_unavailable', 'The AI couldn’t answer right now. Try again in a minute.']);
-    // (the client resends once without response_format, as for any 400; Gemma is never asked)
-    assert.ok(calls.every((c) => c.model === PRESETS.google.model));
     const [row] = aiCalls();
-    assert.deepEqual([row.error_code, row.fallback_steps, row.fallback_reasons], ['bad_request', 0, 'default:bad_request'], 'no fallback was tried');
+    assert.deepEqual([row.error_code, row.fallback_steps, row.fallback_reasons], ['bad_request', 1, 'default:bad_request;gemma:bad_request']);
   });
 
   it('a retired Default model (404) falls back to Gemma; the student is not told anything about Settings', async () => {

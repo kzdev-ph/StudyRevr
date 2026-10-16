@@ -12,9 +12,11 @@ export const BAD_REPLY = new Set(['invalid_json', 'bad_response']);
 // The student's chosen model or key doesn't work (retired or unknown model, a request it rejects): Default is a different model.
 export const MODEL_PROBLEM = new Set(['not_found', 'bad_request']);
 // The Default (and Gemma, which is last): an outage, a model that couldn't produce usable JSON, or a model the provider
-// doesn't know (retired or mistyped: 404). Gemma is a different model, so it can still answer. A rejected key or a bad
-// request does not fall back: Gemma would use the same admin key and send the same kind of request.
-export const DEFAULT_FALLBACK = new Set([...OUTAGE, ...BAD_REPLY, 'not_found']);
+// doesn't accept (retired or mistyped: 404, or 400 from providers that answer an unknown model that way). Gemma is a
+// different model, so it can still answer; if the 400 was about the request itself, Gemma fails the same way and the
+// request ends with the Default's reason in the log. A rejected key or no credit does not fall back: Gemma would use the
+// same admin key.
+export const DEFAULT_FALLBACK = new Set([...OUTAGE, ...BAD_REPLY, ...MODEL_PROBLEM]);
 export const STUDENT_FALLBACK = new Set([...OUTAGE, ...KEY_PROBLEM, ...MODEL_PROBLEM, ...BAD_REPLY]);
 
 // steps: [{ source, provider, model, fallbackOn: Set<code>, run: () => Promise<value> }]
