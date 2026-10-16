@@ -2,7 +2,7 @@
 
 Open-source, mobile-first study app. Upload a lesson (.docx / .pptx / .pdf) and get a sectioned review, Anki-style flashcards, and mock quizzes. Study activity is logged and exportable for research.
 
-> **Status:** Phase 7A of 7 — React app with the lesson library, the Review tab (sections, quick checks, simpler / Filipino-Taglish rewrites, key points, key terms, original text, resume), the Flashcard tab (grounded cards, Anki-style SM-2 scheduling, undo), the Mock Quiz tab (questions from the lesson's flashcards, every answer logged), participant codes, active-time session logging, the Stats tab, and a PIN-protected researcher admin (lesson upload, participant codes, research CSV export, AI and study settings, "Prepare" for the rewrites, database backup). Students can optionally use their own AI key for the rewrites, with a fallback chain (their key → the app's Default → Gemma). The rest of Phase 7 (polish, LICENSE) is still to come.
+> **Status:** Phase 7A of 7. Working: lesson upload and AI review (sections, quick checks, key points and terms, simpler and Filipino/Taglish rewrites), Anki-style flashcards (SM-2, undo), mock quizzes built from the flashcards with **leak protection** (nothing that gives its answer away is asked; `npm run quiz:check` and an admin list of leaking cards), participant codes, active-time session logging, a Stats tab, and a PIN-protected researcher admin (upload, participant codes, research CSV export, AI and study settings, Prepare, database backup and restore). Students can optionally use their own AI key for the rewrites. The screens use a small **paper motion** (the deck coming out, the card turning, pen marks on quiz answers, Stats bars inked in); **Settings › Motion** (Match my device / Less motion / Full motion) controls it. **Answer time never includes animation** (or time the app was hidden), with any motion setting. Still to come: polish and the rest of Phase 7.
 
 ## Running it
 
@@ -15,6 +15,7 @@ npm run dev              # API on http://localhost:3001 and the app on http://lo
 npm test                 # server and client tests
 npm run build            # production build of the client into client/dist
 npm run study            # build the client and serve app + API on one port (for phones on the same Wi-Fi)
+npm run quiz:check       # read-only report: which flashcards and quiz questions would give their answer away (see Mock Quiz)
 ```
 
 The SQLite database is created at `server/data/studyrevr.db` on first start, and migrations run automatically.
@@ -61,7 +62,7 @@ Each value resolves as: a one-off request value → what is saved in the `settin
 3. On any device, open that address, tap **Researcher admin** under the code box (or Settings › Researcher admin), and enter the PIN. In **Admin**:
    - **Lessons**: upload every lesson and wait until it is ready; the last step makes the quiz answer options, so students never wait on the AI when they start a quiz (if that step fails the lesson is still usable; use **Retry quiz answers** on its row). Students cannot upload, retry, delete or make cards. A lesson that participants (other than P00) have answered or logged study time on cannot be deleted; the app tells you how many records it would remove.
    - **Participants**: add the codes, e.g. `P01-P10`. Students can only type a code that is on this list; P00 (made by the Phase 6 migration) holds your own earlier test data.
-   - **Research export**: `Download all (zip)` or single CSVs; tick **Include P00** to include your test data. `README.txt` in the zip explains every column.
+   - **Research export**: `Download all (zip)` or single CSVs (summary, sessions, flashcard reviews, due reviews, quiz attempts and answers, events, setting_events, ai_calls); tick **Include P00** to include your test data. `README.txt` in the zip explains every column.
    - **AI and study settings**: the Default AI (provider, key, model; the model list shows chat models only; **Test connection** tries it before you save), **New flashcards per day** (default 20), and **Allow students to use their own API key** (off by default).
    - **Prepare simpler and Taglish** on each lesson row (after processing): makes the Explain simpler and Filipino/Taglish version of every section with the Default ahead of time, within the 15 requests/min limit, with progress on the row. Run this before study day: while it runs, students' live requests use the backup AI. Afterwards study day needs no live AI calls (unless a student uses their own key).
    - **Backup**: **Download backup** saves `studyrevr-backup-YYYY-MM-DD-HHMM.db` (Manila time), a copy of the whole database made while the app runs, without any API key or the PIN; "Last backup" shows when you last did it.
@@ -75,7 +76,7 @@ Each value resolves as: a one-off request value → what is saved in the `settin
 
 **Known limit: the participant code is the only identity.** The code screen is type-only by design, so a student who types another student's code is that student to the app: they can see that participant's Stats, use or replace that participant's saved AI key, and add records under that code. There is no password. The limit is accepted for a classroom study on a trusted Wi-Fi; a student's own key also travels over that Wi-Fi without encryption (plain HTTP), so students should only use a key they can delete later.
 
-**What is logged, per participant:** flashcard schedule and every answer (Again/Hard/Good/Easy), quiz attempts and every answer (abandoned attempts and retakes included and marked), Review-tab position, study sessions (reading / flashcards / quiz) with active time, self-monitoring events (Stats views, quiz retakes, "Review these flashcards" taps, "Explain simpler" and "Filipino/Taglish" taps), and every live AI request for a rewrite (`ai_calls.csv`: which source, provider and model answered and how many fallbacks it took). Active time stops when the app goes to the background and a session ends after 5 minutes without a tap, scroll or key press. Days follow the flashcard study day: 04:00 to 04:00 Asia/Manila. The export never contains names, settings or API keys (yours or students').
+**What is logged, per participant:** flashcard schedule and every answer (Again/Hard/Good/Easy), quiz attempts and every answer (abandoned attempts and retakes included and marked), Review-tab position, study sessions (reading / flashcards / quiz) with active time, changes to the Motion setting (`setting_events.csv`), self-monitoring events (Stats views, quiz retakes, "Review these flashcards" taps, "Explain simpler" and "Filipino/Taglish" taps), and every live AI request for a rewrite (`ai_calls.csv`: which source, provider and model answered and how many fallbacks it took). Active time stops when the app goes to the background and a session ends after 5 minutes without a tap, scroll or key press. Time on a flashcard or quiz question (`time_ms`) starts when it is on screen and usable, pauses while a card turns or the app is hidden, and never includes animation, so Less motion and Full motion give the same numbers; the zip's `README.txt` says exactly how. Days follow the flashcard study day: 04:00 to 04:00 Asia/Manila. The export never contains names, settings or API keys (yours or students').
 
 The Stats tab shows each student their own study time this week (reading / flashcards / quiz), cards reviewed and % Good or Easy, first and best quiz score per lesson, and cards due tomorrow. In admin, tap a code to see that participant's Stats (this is not logged as their view).
 
@@ -187,7 +188,13 @@ curl -H "x-participant: P01" -X POST http://localhost:3001/api/quiz/attempts/4/a
 curl -H "x-participant: P01" -X POST http://localhost:3001/api/quiz/attempts/4/finish -H 'content-type: application/json' -d '{"total_ms":61000}'
 ```
 
-In the app: 1–4 answer (1–2 on true / false), Enter goes to the next question.
+In the app: 1–4 answer (1–2 on true / false), Enter goes to the next question. After an answer, a pen mark shows it (a loop, a tick or a strike); a tap skips it.
+
+**Leak protection.** A question is asked only if it does not give its answer away: the question must not hold the answer, the right option must not stand out (length, tone, only echoed words), wrong options must not be copies, reversals or off-topic, and a definition that names its own term is shown with the term blanked (`___`). A lesson that cannot fill 10 clean questions gets fewer ("This lesson supports N questions"). Flashcards that give their answer away are dropped when cards are made. Before a study, run `npm run quiz:check` (add `-- --lesson 3` for one lesson, `-- --db path/to/file.db` for another database): it reads the database without changing it, needs no AI or key, and prints the flagged cards, the questions possible, clean and skipped, and "Clean questions available: N of 10". In Admin, a lesson row says "N flashcards give the answer away" with **Show cards** and **Regenerate this card** (one Default AI call, only while no participant besides P00 has records on the lesson).
+
+### Motion
+
+Settings › Appearance › **Motion**: Match my device (default, follows the device's reduced-motion setting), Less motion, or Full motion. It is kept on the device, like the theme. Each change is logged in `setting_events.csv` (the participant, the study day, the choice). It only changes how much the screens animate; it never changes `time_ms`.
 
 ## Project layout
 
