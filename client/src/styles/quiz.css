@@ -1,7 +1,8 @@
-/* Mock Quiz tab: the shuffle, a question with its options and feedback, and the results. The question is written on
+/* Mock Quiz tab: a test sheet with a question, its options and feedback, and the results. The question is written on
    the page; its options are ruled lines with their keys (1-4) in the margin. Right answers use ok and the
-   highlighter, wrong ones danger, always with an icon and a word (the word is read out on the option and shown in the
-   feedback below, so the option itself never changes size when it is marked). */
+   highlighter, wrong ones quiet ink (nothing is red), always with an icon and a word (the word is read out on the option and shown in the
+   feedback below, so the option itself never changes size when it is marked). Once saved, an answer is marked in pen:
+   a loop round the chosen number (accent), a tick on the right answer (ok), a line through a wrong one (ink-2). */
 
 .quiz-counter {
   color: var(--ink-2);
@@ -9,11 +10,85 @@
   font-weight: 650;
   font-variant-numeric: tabular-nums;
 }
-.quiz-progress {
+
+/* the test sheet: the answer sheet above the question */
+.quiz-paper {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+/* one bubble per question, filled once answered, ringed while open; never right / wrong colours mid-quiz */
+.quiz-sheet {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 16px;
   margin-top: -6px;
 }
-.quiz-progress .progress__fill {
-  transition: transform 0.25s ease-out;
+.quiz-sheet__bubble {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--control-border);
+  border-radius: 50%;
+}
+.quiz-sheet__bubble i {
+  position: absolute;
+  inset: 2px;
+  border-radius: 50%;
+  background: var(--ink);
+}
+.quiz-sheet__bubble--now {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1.5px var(--accent);
+}
+
+/* the pen marks */
+.pen-loop,
+.pen-tick,
+.quiz-score__ring {
+  overflow: visible;
+  pointer-events: none;
+}
+.pen-loop path,
+.pen-tick path,
+.quiz-score__ring path {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.pen-loop {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  margin: -17px 0 0 -20px;
+}
+.pen-loop path,
+.quiz-score__ring path {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+.pen-tick {
+  display: block;
+  width: 1.125rem;
+  height: 1.125rem;
+}
+.pen-tick path {
+  stroke: var(--ok);
+  stroke-width: 2.5;
+}
+.pen-strike {
+  position: absolute;
+  left: -2px;
+  right: -2px;
+  top: 0.72em;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--ink-2);
+  rotate: -1.5deg;
+  transform-origin: left center;
+  pointer-events: none;
 }
 
 .quiz-loading {
@@ -25,40 +100,6 @@
 }
 .quiz-loading .spinner {
   flex: none;
-}
-
-/* ---- the shuffle ---- */
-.shuffle {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 20px;
-  padding: 32px 0 16px;
-  cursor: pointer;
-}
-.shuffle__deck {
-  position: relative;
-  width: 9rem;
-  height: 12rem;
-}
-.shuffle__card {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  border-radius: var(--r-lg);
-  background: var(--sheet);
-  box-shadow: var(--card-shadow);
-}
-.shuffle__mark {
-  font-family: var(--font-read);
-  font-size: 2.5rem;
-  font-weight: 650;
-  color: var(--accent);
-}
-.shuffle__text {
-  color: var(--ink-2);
-  font-weight: 600;
 }
 
 /* ---- a question: written on the page ---- */
@@ -146,6 +187,7 @@
   min-width: 0;
 }
 .quiz-opt__text > span {
+  position: relative;
   padding: 0 2px;
   margin: 0 -2px;
   border-radius: 2px;
@@ -173,7 +215,7 @@
 .quiz-opt--wrong .quiz-opt__text,
 .quiz-opt--wrong .quiz-opt__mark,
 .quiz-opt--wrong .quiz-opt__key {
-  color: var(--danger);
+  color: var(--ink-2);
 }
 .quiz-opt--other {
   opacity: 0.6;
@@ -193,7 +235,9 @@
   border-radius: var(--r-sm);
 }
 .quiz-opts--tf .quiz-opt__key {
-  position: static;
+  position: relative; /* in the box, not the margin: the pen loop is drawn round it here */
+  top: auto;
+  left: auto;
   width: auto;
   font-size: 1.125rem;
 }
@@ -201,7 +245,7 @@
   border-color: var(--ok);
 }
 .quiz-opts--tf .quiz-opt--wrong {
-  border-color: var(--danger);
+  border-color: var(--ink-2);
 }
 
 .quiz-feedback {
@@ -222,7 +266,7 @@
   color: var(--ok);
 }
 .quiz-feedback--wrong .quiz-feedback__verdict {
-  color: var(--danger);
+  color: var(--ink-2);
 }
 .quiz-feedback__answer {
   font-family: var(--font-read);
@@ -237,9 +281,18 @@
   gap: 2px;
 }
 .quiz-score__n {
+  position: relative;
+  align-self: flex-start;
+  padding: 2px 6px;
   font-size: 2.5rem;
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
+}
+/* the score circled like a grade */
+.quiz-score__ring {
+  position: absolute;
+  left: -12px;
+  top: -8px;
 }
 .quiz-missed__head {
   margin-bottom: 0;
@@ -294,7 +347,7 @@
   font-weight: 700;
 }
 .quiz-missed__yours {
-  color: var(--danger);
+  color: var(--ink-2);
 }
 .quiz-missed__right {
   color: var(--ok);
@@ -322,7 +375,9 @@
     column-gap: 32px;
   }
   .quiz-opts:not(.quiz-opts--tf) .quiz-opt__key {
-    position: static;
+    position: relative;
+    top: auto;
+    left: auto;
     width: 1.5rem;
     flex: none;
   }
@@ -338,12 +393,6 @@
   .quiz-results .quiz-score {
     position: sticky;
     top: calc(var(--header-h) + 24px);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .quiz-progress .progress__fill {
-    transition: none;
   }
 }
 

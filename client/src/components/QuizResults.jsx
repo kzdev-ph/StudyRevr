@@ -1,10 +1,43 @@
+import { useLayoutEffect, useRef, useState } from 'react';
 import { CheckIcon, QuizIcon, RetryIcon } from './Icons.jsx';
+import { PenLoop } from './Pen.jsx';
 import { api } from '../lib/api.js';
 import { truncateAtWord } from '../lib/format.js';
 import { bestLine, formatDuration, questionText, scoreLine, yesNo } from '../lib/quiz.js';
 import { paths } from '../lib/router.js';
 
 const EVIDENCE_MAX = 220;
+const GRADE_MS = 500;
+const GRADE_DELAY_MS = 120;
+
+// The score, circled in pen like a grade on a test paper (drawn once; a tap finishes it). The loop is sized to the
+// number once it is on the page.
+function Grade({ score, total }) {
+  const ref = useRef(null);
+  const [box, setBox] = useState(null);
+  const marks = useRef(new Set()).current;
+  // sized to the number's own box, again whenever that box changes (text size, window width)
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const size = () => {
+      const w = Math.round(el.offsetWidth + 24);
+      const h = Math.round(el.offsetHeight + 16);
+      setBox((b) => (b && b.w === w && b.h === h ? b : { w, h }));
+    };
+    size();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(size);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [score, total]);
+  return (
+    <span className="quiz-score__n" aria-hidden="true" ref={ref} onPointerDown={() => marks.forEach((m) => m.complete())}>
+      {score}/{total}
+      {box && <PenLoop className="quiz-score__ring" w={box.w} h={box.h} duration={GRADE_MS} delay={GRADE_DELAY_MS} track={marks} shape={{ turns: 1.08, tilt: -0.05, start: -0.7 }} />}
+    </span>
+  );
+}
 
 // Yes / no (stored as True / False): "Yes", or "No" with what is actually right.
 const rightAnswer = (m) => {
@@ -22,9 +55,7 @@ export default function QuizResults({ results, onRetake, busy, headingRef }) {
       <div className="done quiz-score">
         {all ? <CheckIcon size={36} className="done__icon" /> : <QuizIcon size={36} className="done__icon" />}
         <h2 className="done__title" tabIndex={-1} ref={headingRef}>
-          <span className="quiz-score__n" aria-hidden="true">
-            {attempt.score}/{attempt.total}
-          </span>
+          <Grade score={attempt.score} total={attempt.total} />
           <span className="visually-hidden">{scoreLine(attempt.score, attempt.total)}</span>
         </h2>
         <p className="done__text">

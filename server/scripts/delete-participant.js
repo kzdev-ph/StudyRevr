@@ -15,6 +15,7 @@ const TABLES = [
   ['review_progress', 'review positions'],
   ['study_sessions', 'study sessions'],
   ['events', 'events'],
+  ['setting_events', 'setting changes'],
   ['ai_calls', 'live AI requests'],
   ['participant_ai_keys', 'saved own AI key'],
 ];

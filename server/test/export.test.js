@@ -89,6 +89,8 @@ describe('research export', () => {
     // P00: the researcher's own test data
     await t.call('POST', `/api/flashcards/${cards[0]}/review`, { as: 'P00', body: { rating: 4, deck: lessonId } });
     await t.call('POST', '/api/events', { as: 'P00', body: { type: 'stats_view' } });
+    await t.call('POST', '/api/setting-events', { as, body: { setting: 'motion', value: 'less' } });
+    await t.call('POST', '/api/setting-events', { as: 'P00', body: { setting: 'motion', value: 'full' } });
     t.now = '2026-10-06T09:00:00.000Z';
   });
   afterEach(() => t.close());
@@ -105,7 +107,7 @@ describe('research export', () => {
     assert.equal(res.headers.get('content-type'), 'application/zip');
     const zip = await JSZip.loadAsync(Buffer.from(await res.arrayBuffer()));
     const names = Object.keys(zip.files).sort();
-    assert.deepEqual(names, ['README.txt', 'ai_calls.csv', 'due_reviews.csv', 'events.csv', 'flashcard_reviews.csv', 'quiz_answers.csv', 'quiz_attempts.csv', 'sessions.csv', 'summary.csv']);
+    assert.deepEqual(names, ['README.txt', 'ai_calls.csv', 'due_reviews.csv', 'events.csv', 'flashcard_reviews.csv', 'quiz_answers.csv', 'quiz_attempts.csv', 'sessions.csv', 'setting_events.csv', 'summary.csv']);
     for (const name of names) {
       const text = await zip.file(name).async('string');
       for (const secret of [SECRET_KEY, TEST_PIN, 'gemini-secret-model', 'ai_api_key', 'sk-STUDENT-EXPORT-SECRET']) assert.ok(!text.includes(secret), `${secret} in ${name}`);
@@ -114,8 +116,19 @@ describe('research export', () => {
     for (const col of ['self_monitoring_simplify_taps', 'self_monitoring_translate_taps', 'planning_on_time_rate', `L${lessonId} = =Risky title`]) assert.ok(readme.includes(col), col);
   });
 
+  it('setting_events.csv lists each setting change; the codebook explains it and says time_ms is not affected', async () => {
+    const rows = parseCsv(await file('setting_events'));
+    assert.deepEqual(rows.map((r) => [r.participant, r.setting, r.value, r.study_date]), [['P01', 'motion', 'less', parseCsv(await file('events')).find((r) => r.participant === 'P01').study_date]]);
+    assert.ok('event_id' in rows[0] && 'created_at' in rows[0]);
+    const all = parseCsv(await file('setting_events', '?include_p00=1'));
+    assert.deepEqual(all.map((r) => [r.participant, r.value]), [['P00', 'full'], ['P01', 'less']]);
+    const zip = await JSZip.loadAsync(Buffer.from(await (await t.call('GET', '/api/admin/export.zip', { pin: TEST_PIN, raw: true })).arrayBuffer()));
+    const readme = await zip.file('README.txt').async('string');
+    assert.ok(/setting_events.csv/.test(readme) && /never changes time_ms/.test(readme));
+  });
+
   it('leaves P00 out unless asked', async () => {
-    for (const name of ['summary', 'sessions', 'flashcard_reviews', 'quiz_attempts', 'quiz_answers', 'events']) {
+    for (const name of ['summary', 'sessions', 'flashcard_reviews', 'quiz_attempts', 'quiz_answers', 'events', 'setting_events']) {
       const rows = parseCsv(await file(name));
       assert.ok(rows.length > 0, name);
       assert.ok(rows.every((r) => r.participant !== 'P00'), name);

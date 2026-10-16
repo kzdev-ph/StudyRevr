@@ -22,7 +22,7 @@ function run(dbPath, args, input = '') {
   });
 }
 
-const PER_PARTICIPANT = ['flashcard_progress', 'flashcard_reviews', 'quiz_attempts', 'review_progress', 'study_sessions', 'events'];
+const PER_PARTICIPANT = ['flashcard_progress', 'flashcard_reviews', 'quiz_attempts', 'review_progress', 'study_sessions', 'events', 'setting_events'];
 
 describe('npm run participant:delete', () => {
   let dir;
@@ -45,6 +45,7 @@ describe('npm run participant:delete', () => {
       await t.call('PUT', `/api/lessons/${lessonId}/review-progress`, { as, body: { last_section: 1 } });
       await t.call('POST', '/api/sessions', { as, body: { lesson_id: lessonId, activity: 'reading' } });
       await t.call('POST', '/api/events', { as, body: { type: 'stats_view' } });
+      await t.call('POST', '/api/setting-events', { as, body: { setting: 'motion', value: 'less' } });
     }
     await t.close();
     db.close();
@@ -77,9 +78,10 @@ describe('npm run participant:delete', () => {
     const res = await run(dbPath, ['p1'], 'p01\n');
     assert.equal(res.code, 0, res.out);
     assert.match(res.out, /1 +flashcard answers/);
+    assert.match(res.out, /1 +setting changes/);
     assert.match(res.out, /Deleted P01/);
     const gone = counts('P01');
-    assert.deepEqual({ ...gone, lessons: 0, flashcards: 0 }, { participant: 0, flashcard_progress: 0, flashcard_reviews: 0, quiz_attempts: 0, review_progress: 0, study_sessions: 0, events: 0, quiz_answers: 0, lessons: 0, flashcards: 0 });
+    assert.deepEqual({ ...gone, lessons: 0, flashcards: 0 }, { participant: 0, flashcard_progress: 0, flashcard_reviews: 0, quiz_attempts: 0, review_progress: 0, study_sessions: 0, events: 0, setting_events: 0, quiz_answers: 0, lessons: 0, flashcards: 0 });
     assert.deepEqual(counts('P02'), p02); // untouched, and lessons/cards still there
     // the deleted rows are not left readable in the file
     assert.ok(!fs.readFileSync(dbPath).includes(Buffer.from('P01')));

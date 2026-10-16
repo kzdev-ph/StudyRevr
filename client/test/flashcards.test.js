@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { describeCounts, describeNextDue, keyAction, RATINGS, spellInterval, studyMinutes, totalDue } from '../src/lib/flashcards.js';
+import { canRate, describeCounts, describeNextDue, keyAction, RATINGS, spellInterval, studyMinutes, totalDue } from '../src/lib/flashcards.js';
 import { parseRoute, paths, tabOf } from '../src/lib/router.js';
 
 const opts = { timeZone: 'Asia/Manila', locale: 'en-US' };
@@ -88,5 +88,22 @@ describe('flashcard routes', () => {
     assert.deepEqual(parseRoute('#/flashcards/nope'), { name: 'flashcards' });
     assert.deepEqual(parseRoute(paths.study(7)), { name: 'study', deck: 7 });
     assert.equal(tabOf(parseRoute('#/flashcards/all')), 'flashcards');
+  });
+});
+
+describe('rating waits for the turn', () => {
+  it('canRate needs the answer revealed and the card finished turning', () => {
+    assert.equal(canRate({ revealed: false, turned: false }), false);
+    assert.equal(canRate({ revealed: true, turned: false }), false);
+    assert.equal(canRate({ revealed: true, turned: true }), true);
+  });
+
+  it('keys 1-4 wait for `ready`; Space still does nothing once revealed', () => {
+    const key = (k) => ({ key: k });
+    for (const n of [1, 2, 3, 4]) {
+      assert.equal(keyAction(key(String(n)), { revealed: true, ready: false }), null);
+      assert.equal(keyAction(key(String(n)), { revealed: true, ready: true }), n);
+    }
+    assert.equal(keyAction(key(' '), { revealed: true, ready: false }), null);
   });
 });

@@ -14,7 +14,7 @@ import { CODEBOOK } from './codebook.js';
 const RATING = { 1: 'again', 2: 'hard', 3: 'good', 4: 'easy' };
 const STATE = { 0: 'new', 1: 'learning', 2: 'review', 3: 'relearning' };
 
-export const EXPORT_FILES = ['summary', 'sessions', 'flashcard_reviews', 'due_reviews', 'quiz_attempts', 'quiz_answers', 'events', 'ai_calls'];
+export const EXPORT_FILES = ['summary', 'sessions', 'flashcard_reviews', 'due_reviews', 'quiz_attempts', 'quiz_answers', 'events', 'setting_events', 'ai_calls'];
 
 const who = (includeP00) => (includeP00 ? '' : "AND p.code <> 'P00'");
 
@@ -167,6 +167,20 @@ function events(db, { includeP00 }) {
   );
 }
 
+// Settings a participant changed (setting_events): setting motion, value system | less | full.
+function settingEvents(db, { includeP00 }) {
+  const rows = db
+    .prepare(
+      `SELECT p.code AS participant, s.* FROM setting_events s JOIN participants p ON p.id = s.participant_id
+       WHERE 1 = 1 ${who(includeP00)} ORDER BY p.code, s.created_at, s.id`,
+    )
+    .all();
+  return toCsv(
+    ['participant', 'event_id', 'study_date', 'setting', 'value', 'created_at'],
+    rows.map((e) => ({ ...e, event_id: e.id })),
+  );
+}
+
 // Live AI requests (Explain simpler / Filipino-Taglish not served from the shared cache): who answered and how many
 // fallbacks it took. Requests made without a participant code (an admin preview) are not participant data.
 function aiCalls(db, { includeP00 }) {
@@ -198,7 +212,7 @@ function summary(db, opts) {
   return toCsv(columns, rows);
 }
 
-const MAKERS = { summary, sessions, flashcard_reviews: flashcardReviews, due_reviews: dueReviewsCsv, quiz_attempts: quizAttempts, quiz_answers: quizAnswers, events, ai_calls: aiCalls };
+const MAKERS = { summary, sessions, flashcard_reviews: flashcardReviews, due_reviews: dueReviewsCsv, quiz_attempts: quizAttempts, quiz_answers: quizAnswers, events, setting_events: settingEvents, ai_calls: aiCalls };
 
 // One file's CSV text. opts: { now, config, includeP00 }
 export function exportCsv(db, name, opts) {

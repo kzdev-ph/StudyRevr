@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef } from 'react';
 import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import { Header, TabBar } from './components/Shell.jsx';
+import { useMotionReduced } from './lib/motion.js';
 import { useParticipant } from './lib/participant.js';
 import { useRoute, tabOf } from './lib/router.js';
 import AdminScreen from './screens/AdminScreen.jsx';
@@ -54,6 +55,7 @@ function Screen({ route }) {
 export default function App() {
   const route = useRoute();
   const participant = useParticipant();
+  const reduced = useMotionReduced();
   const adminRoute = route.name === 'admin' || route.name === 'adminParticipant';
   const mainRef = useRef(null);
   const screenKey =
@@ -91,14 +93,14 @@ export default function App() {
   // Until this device knows who is studying, only the code screen (and the researcher's admin) can open.
   if (!participant && !adminRoute) {
     return (
-      <MotionConfig reducedMotion="user">
+      <MotionConfig reducedMotion={reduced ? 'always' : 'never'}>
         <ParticipantScreen />
       </MotionConfig>
     );
   }
 
   return (
-    <MotionConfig reducedMotion="user">
+    <MotionConfig reducedMotion={reduced ? 'always' : 'never'}>
       <div className="app">
         <a className="skip-link" href="#main" onClick={(e) => { e.preventDefault(); mainRef.current?.focus(); }}>
           Skip to content

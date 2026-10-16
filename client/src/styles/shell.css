@@ -55,7 +55,7 @@
   pointer-events: none;
   display: none;
 }
-.main:not(:has(.lesson-view)):has(.mnote, .lesson, .days, .figures)::before {
+.main:not(:has(.lesson-view)):has(.mnote, .lesson, .days, .figures, .study-pile__n)::before {
   display: block;
 }
 /* answer keys and missed-question numbers stand in the margin only until 64rem, where they move into the columns */

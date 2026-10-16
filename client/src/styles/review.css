@@ -217,24 +217,81 @@
   font-weight: 600;
   font-size: 0.9375rem;
 }
-.skeleton__line {
-  display: block;
-  height: 14px;
-  border-radius: 7px;
-  background: linear-gradient(90deg, var(--line) 25%, var(--accent-wash) 50%, var(--line) 75%);
-  background-size: 300% 100%;
-  animation: shimmer 1.6s ease-in-out infinite;
+/* ruled lines being written on, one after another (transform and opacity only); paused off screen, blank rules with
+   reduced motion */
+.rules {
+  display: flex;
+  flex-direction: column;
 }
-.skeleton__line--short {
-  width: 62%;
+.rules__line {
+  position: relative;
+  height: 30px;
+  border-bottom: 1px solid var(--line);
+  overflow: hidden;
 }
-@keyframes shimmer {
-  from {
-    background-position: 100% 0;
+.rules__ink {
+  position: absolute;
+  left: 0;
+  bottom: 8px;
+  width: 100%;
+  height: 6px;
+  border-radius: 1px;
+  background: var(--line-strong);
+  transform-origin: left center;
+  transform: scaleX(0);
+  animation: rule-ink 3.2s linear infinite;
+}
+.rules__line:nth-child(2) .rules__ink {
+  animation-delay: 0.42s;
+}
+.rules__line:nth-child(3) .rules__ink {
+  width: 88%;
+  animation-delay: 0.84s;
+}
+.rules__line:nth-child(4) .rules__ink {
+  animation-delay: 1.26s;
+}
+.rules__line:nth-child(5) .rules__ink {
+  width: 56%;
+  animation-delay: 1.68s;
+}
+.is-off .rules__ink {
+  animation-play-state: paused;
+}
+/* still going after ~10 s: the loop stops, the rules stay written on, and the page says it is still working */
+.is-long .rules__ink {
+  animation: none;
+  transform: scaleX(1);
+  opacity: 0.6;
+}
+@keyframes rule-ink {
+  0% {
+    transform: scaleX(0);
+    opacity: 1;
+    animation-timing-function: ease-in;
   }
-  to {
-    background-position: 0 0;
+  16% {
+    transform: scaleX(1);
+    opacity: 1;
   }
+  80% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+  92%,
+  100% {
+    transform: scaleX(1);
+    opacity: 0;
+  }
+}
+/* Less motion: the device (unless Full motion is chosen) or the Motion setting; see base.css */
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion='full']) .rules__ink {
+    animation: none;
+  }
+}
+:root[data-motion='less'] .rules__ink {
+  animation: none;
 }
 
 /* original text */
@@ -334,9 +391,42 @@
 .check textarea:disabled {
   opacity: 0.75;
 }
-.check__reveal {
+/* the answer is already in its place, under an index card: Show answer slides the card off it */
+.check__slot {
+  position: relative;
   width: 100%;
-  overflow: hidden;
+}
+.check__answer:focus {
+  outline: none;
+}
+.check__cover {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  border: 1.5px solid var(--control-border);
+  border-radius: var(--r-lg);
+  background: var(--sheet);
+  box-shadow: var(--card-shadow), 0 4px 0 -2px var(--card-edge);
+  color: var(--ink);
+  font-weight: 650;
+  font-size: 0.9375rem;
+  transform-origin: 100% 100%;
+}
+@media (hover: hover) {
+  .check__cover:not(:disabled):hover {
+    background: var(--accent-wash);
+  }
+}
+.check__after {
+  width: 100%;
+}
+.check__after > .check__rate,
+.check__after > .check__feedback {
+  margin-top: 2px;
 }
 .check__answer {
   padding: 12px 14px;
@@ -458,6 +548,7 @@
   border-bottom: 1px solid var(--line);
 }
 .term__name {
+  position: relative;
   align-self: flex-start;
   padding: 0 3px;
   margin-left: -3px;
@@ -468,6 +559,38 @@
   font-size: 1.125rem;
   font-weight: 700;
   line-height: 1.5;
+}
+/* the marker drawn in once as the term comes into view (KeyTerms.jsx): while it is drawn, the plain mark is off and
+   a clip carries the marker with a copy of the word in the marker's ink */
+.term__wipe {
+  display: none;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 2px;
+  pointer-events: none;
+  user-select: none;
+}
+.term__wipe-fill {
+  position: absolute;
+  inset: 0;
+  padding: 0 3px;
+  overflow: hidden;
+  background: linear-gradient(to bottom, transparent var(--mk-top), var(--hi) var(--mk-top) 94%, transparent 94%);
+  color: var(--mk-ink);
+  white-space: nowrap;
+  transform: translateX(-101%);
+}
+.term__wipe-fill > span {
+  display: block;
+  transform: translateX(101%);
+}
+.term__name--wipe {
+  background: none;
+  color: var(--ink);
+}
+.term__name--wipe .term__wipe {
+  display: block;
 }
 .term__def {
   font-family: var(--font-read);

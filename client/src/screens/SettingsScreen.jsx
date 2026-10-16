@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import MyAiSettings from '../components/MyAiSettings.jsx';
+import { api } from '../lib/api.js';
+import { getMotionChoice, setMotionChoice } from '../lib/motion.js';
 import { switchParticipant, useParticipant } from '../lib/participant.js';
 import { getThemeChoice, setThemeChoice } from '../lib/theme.js';
 
@@ -9,12 +11,26 @@ const CHOICES = [
   { id: 'dark', label: 'Dark' },
 ];
 
+const MOTION = [
+  { id: 'system', label: 'Match my device' },
+  { id: 'less', label: 'Less motion' },
+  { id: 'full', label: 'Full motion' },
+];
+
 export default function SettingsScreen() {
   const [theme, setTheme] = useState(getThemeChoice);
+  const [motion, setMotion] = useState(getMotionChoice);
   const participant = useParticipant();
   const choose = (id) => {
     setThemeChoice(id);
     setTheme(id);
+  };
+
+  const chooseMotion = (id) => {
+    if (id === motion) return;
+    setMotionChoice(id);
+    setMotion(id);
+    api.logSettingEvent('motion', id);
   };
 
   return (
@@ -35,6 +51,17 @@ export default function SettingsScreen() {
           {CHOICES.map(({ id, label }) => (
             <label key={id} className="segmented__item">
               <input type="radio" name="theme" value={id} checked={theme === id} onChange={() => choose(id)} />
+              <span>{label}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <fieldset className="choice">
+        <legend>Motion</legend>
+        <div className="segmented">
+          {MOTION.map(({ id, label }) => (
+            <label key={id} className="segmented__item">
+              <input type="radio" name="motion" value={id} checked={motion === id} onChange={() => chooseMotion(id)} />
               <span>{label}</span>
             </label>
           ))}

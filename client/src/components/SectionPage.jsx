@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Notice from './Notice.jsx';
 import Prose from './Prose.jsx';
 import QuickCheck from './QuickCheck.jsx';
@@ -10,15 +10,36 @@ const WORKING = {
   filipino: 'Translating this section to Filipino/Taglish…',
 };
 
+const RULES = 5;
+const LONG_MS = 10_000; // after this the ruled lines stop moving and the page says it is still working
+
+// While a rewrite is being made: ruled lines being written on, one after another (a slow loop that stops while it is
+// off screen; blank rules with reduced motion).
 function Skeleton({ label }) {
+  const ref = useRef(null);
+  const [long, setLong] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setLong(true), LONG_MS);
+    return () => clearTimeout(timer);
+  }, []);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return undefined;
+    const io = new IntersectionObserver(([entry]) => el.classList.toggle('is-off', !entry.isIntersecting));
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
   return (
-    <div className="skeleton" role="status" aria-live="polite">
+    <div className={`skeleton${long ? ' is-long' : ''}`} role="status" aria-live="polite" ref={ref}>
       <p className="skeleton__label">{label}</p>
-      <span className="skeleton__line" />
-      <span className="skeleton__line" />
-      <span className="skeleton__line skeleton__line--short" />
-      <span className="skeleton__line" />
-      <span className="skeleton__line skeleton__line--short" />
+      {long && <p className="muted">Still working…</p>}
+      <div className="rules" aria-hidden="true">
+        {Array.from({ length: RULES }, (_, k) => (
+          <span key={k} className="rules__line">
+            <span className="rules__ink" />
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

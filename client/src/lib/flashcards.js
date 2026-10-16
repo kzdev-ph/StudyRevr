@@ -44,14 +44,16 @@ const PRESSABLE = new Set(['BUTTON', 'A', 'SUMMARY']);
 //   Space flips the card; 1-4 answer once the answer shows; Ctrl/Cmd+Z or U undoes the last answer.
 // Keys typed into a form field, and other modifier combinations, are left alone. Space on a focused button or link
 // is left to the browser (it presses that button), so it never does two things at once.
-export function keyAction(event, { revealed }) {
+//   `ready`: the answer side has finished turning (default: as soon as it is revealed). 1-4 wait for it, so a rating
+//   is never given mid-turn; Space on a revealed card does nothing.
+export function keyAction(event, { revealed, ready = revealed }) {
   const target = event.target;
   if (target && (TYPING.has(target.tagName) || target.isContentEditable)) return null;
   if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key?.toLowerCase() === 'z') return 'undo';
   if (event.ctrlKey || event.metaKey || event.altKey) return null;
   if (event.key === ' ' || event.code === 'Space') return revealed || PRESSABLE.has(target?.tagName) ? null : 'flip';
   if (event.key?.toLowerCase() === 'u') return 'undo';
-  if (revealed && /^[1-4]$/.test(event.key ?? '')) return Number(event.key);
+  if (ready && /^[1-4]$/.test(event.key ?? '')) return Number(event.key);
   return null;
 }
 
@@ -88,3 +90,15 @@ export function sessionRecap(ratings, activeMs) {
   const goodEasy = ratings.filter((r) => r >= 3).length;
   return { cards: ratings.length, timeMs: Math.max(0, activeMs), goodEasyPct: ratings.length ? Math.round((goodEasy / ratings.length) * 100) : null };
 }
+
+// Where an answered card goes on screen, from the button that was pressed ({ minutes } or { days }, from the
+// scheduler's preview): back under the deck when it comes back within the day (Again, a learning step), onto the done
+// pile when it waits a day or more. Read before the answer is sent: the next card brings new buttons.
+export function comesBackToday(button) {
+  if (!button || button.days !== undefined) return false;
+  return Number(button.minutes) < 1440;
+}
+
+// Ratings (buttons and keys 1-4) are open once the answer is revealed and the card has finished turning: the turn is
+// never part of the answer time, and nothing can be rated before its answer is readable.
+export const canRate = ({ revealed, turned }) => Boolean(revealed && turned);

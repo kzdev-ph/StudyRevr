@@ -230,6 +230,110 @@
   cursor: not-allowed;
 }
 
+/* ---- the deck coming out, as a deck starts ---- */
+.shuffle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 32px 0 16px;
+  cursor: pointer;
+}
+.shuffle__deck {
+  position: relative;
+  width: 9rem;
+  height: 12rem;
+}
+.shuffle__card {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-lg);
+  background: var(--sheet);
+  box-shadow: var(--card-shadow);
+}
+.shuffle__text {
+  color: var(--ink-2);
+  font-weight: 600;
+}
+
+/* The card being studied lies on the deck: the edges of two more cards show under it, like a deck on the Flashcard
+   tab. An answered card slides under them (it comes back today) or onto the done pile in the margin. */
+.study-desk {
+  position: relative;
+}
+.study-desk::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-lg);
+  box-shadow: 0 4px 0 -2px var(--card-edge), 0 8px 0 -5px var(--card-edge);
+}
+.study-desk--done::before {
+  display: none;
+}
+.study-desk__card {
+  position: relative;
+  z-index: 2;
+}
+/* the answered card on its way, behind the next one, so the next card is readable from the first frame */
+.study-ghost {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: var(--r-lg);
+  background: var(--sheet);
+  box-shadow: var(--card-shadow);
+  pointer-events: none;
+}
+.study-ghost__line {
+  display: block;
+  height: 6px;
+  margin: 26px 18px 0;
+  border-radius: 1px;
+  background: var(--line);
+}
+.study-ghost__line + .study-ghost__line {
+  width: 55%;
+  margin-top: 12px;
+}
+/* the done pile, in the margin beside the card: at most four card edges, and how many are on it */
+.study-pile {
+  position: absolute;
+  top: 6px;
+  left: calc(-1 * (var(--mw) + var(--mgap)));
+  width: var(--mw);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-read);
+  font-variant-numeric: lining-nums tabular-nums;
+  line-height: 1.1;
+  text-align: center;
+}
+.study-pile__cards {
+  position: relative;
+  width: 38px;
+  height: 28px;
+}
+.study-pile__card {
+  position: absolute;
+  inset: 0;
+  border-radius: 1px;
+  background: var(--sheet);
+  box-shadow: var(--card-shadow);
+}
+.study-pile__count {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: var(--ink-2);
+}
+.study-pile__n {
+  display: inline-block;
+  color: var(--ok);
+}
+
 /* The card is an index card. It turns over in 3D: both faces sit in one grid cell, so the card is as tall as its
    taller side. */
 .flashcard-scene {
@@ -263,6 +367,33 @@
 }
 .flashcard__face--back {
   transform: rotateY(180deg);
+}
+/* the fold shadow while the card turns, darkest when it stands on its edge. It darkens the card in both themes, so it uses
+   the dark ink in light and the desk (the darkest surface) in dark, switched the way tokens.css switches themes. */
+.flashcard__shade {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, var(--ink));
+  opacity: 0;
+  pointer-events: none;
+}
+.flashcard__shade--back {
+  background: linear-gradient(270deg, transparent, var(--ink));
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .flashcard__shade {
+    background: linear-gradient(90deg, transparent, var(--desk));
+  }
+  :root:not([data-theme='light']) .flashcard__shade--back {
+    background: linear-gradient(270deg, transparent, var(--desk));
+  }
+}
+:root[data-theme='dark'] .flashcard__shade {
+  background: linear-gradient(90deg, transparent, var(--desk));
+}
+:root[data-theme='dark'] .flashcard__shade--back {
+  background: linear-gradient(270deg, transparent, var(--desk));
 }
 .flashcard--flat {
   display: grid;
@@ -411,10 +542,10 @@
   font-variant-numeric: tabular-nums;
 }
 .rate__btn--again {
-  border-color: var(--danger);
+  border-color: var(--learn);
 }
 .rate__btn--again .rate__name {
-  color: var(--danger);
+  color: var(--learn);
 }
 .rate__btn--hard {
   border-color: var(--ink-2);
@@ -432,7 +563,7 @@
   color: var(--accent);
 }
 .rate__btn--again:not(:disabled):hover {
-  background: var(--danger-wash);
+  background: var(--warn-wash);
 }
 .rate__btn--hard:not(:disabled):hover {
   background: var(--paper);

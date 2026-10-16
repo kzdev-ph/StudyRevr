@@ -127,3 +127,50 @@ describe('events API', () => {
     assert.deepEqual(t.db.prepare('SELECT type, lesson_id, attempt_id FROM events').all(), [{ type: 'quiz_retake', lesson_id: lessonId, attempt_id: retake.attempt.id }]);
   });
 });
+
+describe('setting changes (setting_events)', () => {
+  let t;
+  afterEach(() => t?.close());
+  const start = async () => {
+    t = await startStudyApp({ now: '2026-10-05T19:58:00.000Z' }); // 03:58 Manila: study day Oct 5
+    addCodes(t.db, 'P01');
+  };
+  const send = (body, as = 'P01') => t.call('POST', '/api/setting-events', { as, body });
+
+  it('logs each Motion choice with the participant and study day', async () => {
+    await start();
+    for (const value of ['less', 'full', 'system']) assert.equal((await send({ setting: 'motion', value })).status, 201);
+    assert.deepEqual(t.db.prepare('SELECT setting, value, study_date, created_at FROM setting_events ORDER BY id').all(), [
+      { setting: 'motion', value: 'less', study_date: '2026-10-05', created_at: '2026-10-05T19:58:00.000Z' },
+      { setting: 'motion', value: 'full', study_date: '2026-10-05', created_at: '2026-10-05T19:58:00.000Z' },
+      { setting: 'motion', value: 'system', study_date: '2026-10-05', created_at: '2026-10-05T19:58:00.000Z' },
+    ]);
+  });
+
+  it('refuses an unknown setting, a value the setting does not have, and a missing participant', async () => {
+    await start();
+    assert.equal((await send({ setting: 'motion', value: 'reduce' })).status, 400);
+    assert.equal((await send({ setting: 'motion' })).status, 400);
+    assert.equal((await send({ setting: 'theme', value: 'dark' })).status, 400); // not logged yet
+    assert.equal((await send({ setting: 'volume', value: 'less' })).status, 400);
+    assert.equal((await send({ setting: 'motion', value: 'less' }, null)).status, 401);
+    assert.equal(t.db.prepare('SELECT COUNT(*) n FROM setting_events').get().n, 0);
+  });
+
+  it('leaves the events table and its type list alone', async () => {
+    await start();
+    await send({ setting: 'motion', value: 'less' });
+    assert.equal(t.db.prepare('SELECT COUNT(*) n FROM events').get().n, 0);
+    const res = await t.call('POST', '/api/events', { as: 'P01', body: { type: 'motion_setting' } });
+    assert.equal(res.status, 400);
+    const sql = t.db.prepare("SELECT sql FROM sqlite_master WHERE name = 'events'").get().sql;
+    assert.ok(sql.includes("CHECK (type IN ('stats_view', 'quiz_retake', 'review_flashcards_tap', 'section_simplify', 'section_translate'))"));
+  });
+
+  it('goes with the participant (cascade)', async () => {
+    await start();
+    await send({ setting: 'motion', value: 'less' });
+    t.db.prepare("DELETE FROM participants WHERE code = 'P01'").run();
+    assert.equal(t.db.prepare('SELECT COUNT(*) n FROM setting_events').get().n, 0);
+  });
+});

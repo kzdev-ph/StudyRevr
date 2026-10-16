@@ -12,6 +12,20 @@ General
 - Active time counts only time with the app in front and the student interacting: it pauses when the app goes to
   the background and a session ends after 5 minutes without a tap, scroll or key press (those 5 minutes are not
   counted).
+- time_ms (flashcard_reviews.csv, quiz_answers.csv) is the time the student spent on one card or question, from
+  when it is on screen and can be answered to the answer. It leaves out:
+    - animations: the deck coming out, a quiz sheet being handed out, a card turning over, the marks drawn after an
+      answer. Turning the screen's motion setting on or off does not change it.
+    - time away: it pauses while the app is hidden (a locked phone, another app or tab) and carries on when the
+      student comes back.
+  It is capped at 1 hour. A flashcard cannot be rated until it has finished turning, so the turn is never in time_ms.
+  Reloading or reopening the app starts the open card's or question's time again from 0, so a row can be shorter than
+  the real time on that card.
+  Rows answered before the study copy was updated to this version (the researcher notes that day) also counted the
+  animations of that time, about 0.2-0.6 s per flashcard (its slide-in and the flip) and about 0.2-0.4 s per quiz
+  question (the fade between questions), and did not pause when the app was hidden. Split by reviewed_at / answered_at
+  at that day to compare. A quiz's duration_ms likewise starts when its first question can be answered (before, it
+  included that question's 0.2 s fade-in), and there is no longer a fade between questions in it.
 
 summary.csv - one row per participant; columns grouped by SDL dimension
   Planning (study planning and time management)
@@ -78,6 +92,12 @@ events.csv - self-monitoring events
   type  stats_view | quiz_retake | review_flashcards_tap | section_simplify | section_translate
   section_index  0-based section number, for section_simplify and section_translate
   (every tap that opens a rewrite is an event, whether or not the AI was asked; see ai_calls.csv for the AI requests)
+
+setting_events.csv - settings a participant changed, one row per change
+  setting  motion (the Motion choice in Settings)
+  value    system (Match my device) | less (Less motion) | full (Full motion)
+  It only changes how much the screens animate. It never changes time_ms: answer time leaves animation out with
+  every choice.
 
 ai_calls.csv - one row per live AI request for Explain simpler (kind simplify) or Filipino/Taglish (kind translate):
   the rewrite was not already saved for everyone, or the student uses their own key. Rewrites saved ahead of time by
