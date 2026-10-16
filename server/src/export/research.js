@@ -268,6 +268,6 @@ export function exportCsv(db, name, opts) {
 export async function exportZip(db, opts) {
   const zip = new JSZip();
   for (const name of EXPORT_FILES) zip.file(`${name}.csv`, `\uFEFF${exportCsv(db, name, opts)}`); // BOM: Excel reads UTF-8
-  zip.file('README.txt', CODEBOOK({ ...opts, lessons: listLessons(db) }));
+  zip.file('README.txt', CODEBOOK({ ...opts, lessons: listLessons(db, { forExport: true }) }));
   return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
 }

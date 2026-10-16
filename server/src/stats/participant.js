@@ -215,8 +215,10 @@ export const listParticipants = (db, { includeP00 = false } = {}) =>
   db.prepare(`SELECT id, code, created_at FROM participants ${includeP00 ? '' : "WHERE code <> 'P00'"} ORDER BY code`).all();
 
 // The lessons that get a column of their own in summary.csv: the teacher's and the student uploads admin shared
-// (a student's upload is named by its generic export title, see EXPORT_TITLE)
-export const listLessons = (db) => db.prepare(`SELECT l.id, ${EXPORT_TITLE} AS title FROM lessons l WHERE l.origin = ? OR l.shared_at IS NOT NULL ORDER BY l.id`).all('admin');
+// `forExport`: a student's upload is named by its generic export title (see EXPORT_TITLE); admin's screens (the participants
+// table) get the real one.
+export const listLessons = (db, { forExport = false } = {}) =>
+  db.prepare(`SELECT l.id, ${forExport ? EXPORT_TITLE : 'l.title'} AS title FROM lessons l WHERE l.origin = ? OR l.shared_at IS NOT NULL ORDER BY l.id`).all('admin');
 
 export function summaryTable(db, { now, config, includeP00 = false }) {
   const lessons = listLessons(db);

@@ -142,6 +142,12 @@ describe("research export with students' uploads", () => {
     assert.ok(readme.includes(`L${l.admin} = Teacher lesson`));
   });
 
+  it("admin's participants table keeps the real titles (only the exports are generic)", async () => {
+    const res = await t.call('GET', '/api/admin/participants', { pin: TEST_PIN });
+    const titles = res.body.lessons.map((x) => x.title);
+    assert.ok(titles.includes('Teacher lesson') && titles.includes('Shared upload'), titles.join(', '));
+  });
+
   it('the codebook explains the new files, the _all columns and that no original file is kept', async () => {
     const res = await t.call('GET', '/api/admin/export.zip', { pin: TEST_PIN, raw: true });
     const zip = await JSZip.loadAsync(Buffer.from(await res.arrayBuffer()));
