@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef } from 'react';
-import { animate, useReducedMotion } from 'motion/react';
+import { animate } from 'motion/react';
+import { useMotionReduced } from '../lib/motion.js';
 import { prettyTitle } from '../lib/format.js';
 import { paths } from '../lib/router.js';
 import { ACTIVITIES, cardsLine, daySegments, mostActiveDay, pct, studyTime, weekRows } from '../lib/stats.js';
@@ -52,7 +53,7 @@ function useInkedBars(listRef, reduce) {
 // day in the margin, a bar in the activity colours, the time written at the end), with a table view.
 function Week({ week, own }) {
   const listRef = useRef(null);
-  const finishInk = useInkedBars(listRef, useReducedMotion());
+  const finishInk = useInkedBars(listRef, useMotionReduced());
   const rows = weekRows(week.days);
   const { totals } = week;
   const empty = totals.total_ms === 0;

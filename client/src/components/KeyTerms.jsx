@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef } from 'react';
-import { animate, useReducedMotion } from 'motion/react';
+import { animate } from 'motion/react';
+import { useMotionReduced } from '../lib/motion.js';
 import { truncateAtWord } from '../lib/format.js';
 import { paths } from '../lib/router.js';
 
@@ -75,7 +76,7 @@ function useMarkerOnView(listRef, reduce) {
 
 export default function KeyTerms({ terms, lessonId }) {
   const listRef = useRef(null);
-  const reduce = useReducedMotion();
+  const reduce = useMotionReduced();
   useMarkerOnView(listRef, reduce);
   if (!terms.length) {
     return (

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { EVENT_TYPES, logEvent } from '../events/log.js';
+import { logSettingEvent, settingEventBody } from '../events/settings.js';
 import { loadSchedulerConfig } from '../flashcards/config.js';
 import { HttpError } from '../middleware/errors.js';
 import { requireParticipant } from '../middleware/participant.js';
@@ -64,6 +65,14 @@ export function sessionsRouter({ db, clock = () => new Date() }) {
       config: config(),
     });
     res.status(201).json({ id: eventId });
+  });
+
+  router.post('/setting-events', (req, res) => {
+    const { id: participantId } = requireParticipant(db, req);
+    const body = settingEventBody.safeParse(req.body ?? {});
+    if (!body.success) throw new HttpError(400, 'Send setting (motion) and its value (system, less or full).');
+    const id = logSettingEvent(db, { participantId, ...body.data, now: clock(), config: config() });
+    res.status(201).json({ id });
   });
 
   return router;

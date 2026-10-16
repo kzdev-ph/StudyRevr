@@ -284,10 +284,14 @@
     opacity: 0;
   }
 }
+/* Less motion: the device (unless Full motion is chosen) or the Motion setting; see base.css */
 @media (prefers-reduced-motion: reduce) {
-  .rules__ink {
+  :root:not([data-motion='full']) .rules__ink {
     animation: none;
   }
+}
+:root[data-motion='less'] .rules__ink {
+  animation: none;
 }
 
 /* original text */

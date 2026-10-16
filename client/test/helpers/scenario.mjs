@@ -2,6 +2,7 @@
 // (helpers/env.mjs). It prints the time_ms the app sent to the server for each answer, as JSON. The test file runs it
 // with motion on and with reduced motion, and compares. Everything the student does is timed from what is on screen,
 // so the two runs are the same student.
+//   REDUCED=1 is the device asking for less motion; MOTION=system|less|full is the Settings choice (lib/motion.js).
 //   MODE=natural: the animations run to their end.  MODE=skip: the student taps through the deck and the hand-out.
 import { advance, reduced, sched, settle, until } from './env.mjs';
 
@@ -13,8 +14,11 @@ const { createRoot } = await import('react-dom/client');
 const { default: StudyScreen } = await import('../../src/screens/StudyScreen.jsx');
 const { default: QuizRunScreen } = await import('../../src/screens/QuizRunScreen.jsx');
 const { setParticipant } = await import('../../src/lib/participant.js');
+const { setMotionChoice, motionReduced } = await import('../../src/lib/motion.js');
 
 setParticipant('P01');
+const motion = process.env.MOTION ?? 'system';
+setMotionChoice(motion);
 const mode = process.env.MODE ?? 'natural';
 
 // ---- the server --------------------------------------------------------------------------------------------------
@@ -70,7 +74,7 @@ const setHidden = async (hidden) => {
   await act(async () => document.dispatchEvent(new window.Event('visibilitychange')));
 };
 
-const out = { reduced, mode };
+const out = { reduced, motion, mode, effectiveReduced: motionReduced() };
 const root = createRoot(document.getElementById('root'));
 
 // Flashcards. Card 1: read 2.5 s, turn it, try to rate it before it has turned, read the answer 1.2 s, rate Good.

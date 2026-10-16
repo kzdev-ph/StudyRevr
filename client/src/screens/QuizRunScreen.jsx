@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { animate, motion, useReducedMotion } from 'motion/react';
+import { animate, motion } from 'motion/react';
+import { motionReduced, useMotionReduced } from '../lib/motion.js';
 import { ChevronLeft } from '../components/Icons.jsx';
 import Notice from '../components/Notice.jsx';
 import QuizQuestion from '../components/QuizQuestion.jsx';
@@ -12,7 +13,6 @@ import { bubbleStates, elapsed, quizKeyAction } from '../lib/quiz.js';
 import { paths } from '../lib/router.js';
 
 const SLOW_START_MS = 2500; // after this, say why starting takes a while (the first quiz makes answer options)
-const reduceMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 const OUT = [0.16, 1, 0.3, 1];
 const HANDOUT = { duration: 0.42, ease: OUT }; // the test sheet slides up into place
 const HANDOUT_FADE = { duration: 0.15 };
@@ -21,7 +21,7 @@ const SKIP_KEYS = new Set(['Enter', ' ', 'Escape']);
 // The answer sheet: one bubble per question, filled once it is answered, ringed while it is open. It shows progress
 // without saying what was right (no scoreboard mid-quiz).
 function AnswerSheet({ total, answered, index }) {
-  const reduce = useReducedMotion();
+  const reduce = useMotionReduced();
   return (
     <div
       className="quiz-sheet"
@@ -64,7 +64,7 @@ export default function QuizRunScreen({ lessonId }) {
   const [handout, setHandout] = useState(null); // the first question's clock token while the sheet is handed out
   const handoutRun = useRef(null);
   const sheetRef = useRef(null);
-  const reduce = useReducedMotion();
+  const reduce = useMotionReduced();
   const alive = useRef(true);
   const started = useRef(false);
   const nextRef = useRef(null);
@@ -151,7 +151,7 @@ export default function QuizRunScreen({ lessonId }) {
     if (target?.current) {
       target.current.focus({ preventScroll: true });
       // the pinned Next bar must not hide the verdict and the lesson quote (scroll-padding keeps them above it)
-      if (focusAfter.current === 'next') document.getElementById('quiz-feedback')?.scrollIntoView({ block: 'nearest', behavior: reduceMotion() ? 'auto' : 'smooth' });
+      if (focusAfter.current === 'next') document.getElementById('quiz-feedback')?.scrollIntoView({ block: 'nearest', behavior: motionReduced() ? 'auto' : 'smooth' });
       focusAfter.current = null;
     }
   });

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { animate, motion, useReducedMotion } from 'motion/react';
+import { animate, motion } from 'motion/react';
+import { useMotionReduced } from '../lib/motion.js';
 import DeckShuffle from '../components/DeckShuffle.jsx';
 import FlipCard from '../components/FlipCard.jsx';
 import { CardsIcon, CheckIcon, ChevronLeft, UndoIcon } from '../components/Icons.jsx';
@@ -48,7 +49,7 @@ const countAnswer = () => {
 // The done pile in the margin: the cards answered this sitting that wait a day or more, with how many. It squares up
 // when the deck is finished. Decorative: the counts line and the done card's recap say the same in words.
 function Pile({ count, squared = false, bump = 0, cardsRef }) {
-  const reduce = useReducedMotion();
+  const reduce = useMotionReduced();
   const n = useRef(null);
   useLayoutEffect(() => {
     if (bump === 0 || reduce || !n.current) return undefined;
@@ -150,7 +151,7 @@ export default function StudyScreen({ deck }) {
   const deskRef = useRef(null);
   const pileRef = useRef(null);
   const focusAfter = useRef(null); // 'show' | 'rate': where focus goes after the next render
-  const reduce = useReducedMotion();
+  const reduce = useMotionReduced();
   const { clock, show, showAtPaint } = useAnswerClock(); // the card's time_ms
   const activeMs = useStudySession(deck === 'all' ? null : deck, 'flashcards');
 

@@ -1,4 +1,5 @@
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
+import { useMotionReduced } from '../lib/motion.js';
 import { truncateAtWord } from '../lib/format.js';
 
 const EVIDENCE_MAX = 220;
@@ -38,7 +39,7 @@ function Back({ card }) {
 // inert, so it is never read out or focused. `onTurned` is called when the answer side is fully shown (the answer
 // clock is paused until then). Mount one per card (key it by the card), so a new card never turns back.
 export default function FlipCard({ card, revealed, onReveal, onTurned, showLesson }) {
-  const reduce = useReducedMotion();
+  const reduce = useMotionReduced();
   const reveal = () => {
     if (!revealed) onReveal();
   };

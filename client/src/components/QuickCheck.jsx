@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { animate, motion, useReducedMotion } from 'motion/react';
+import { animate, motion } from 'motion/react';
+import { useMotionReduced } from '../lib/motion.js';
 import { CheckIcon } from './Icons.jsx';
 
 const LIFT = { duration: 0.28, ease: [0.4, 0, 0.2, 1] };
@@ -10,7 +11,7 @@ const FADE = { duration: 0.15 };
 // The answer lies under an index card, already in its place (so nothing on the page moves): Show answer lifts the
 // card off it, sliding it aside (a fade with reduced motion).
 function Question({ question, answer }) {
-  const reduce = useReducedMotion();
+  const reduce = useMotionReduced();
   const [draft, setDraft] = useState('');
   const [revealed, setRevealed] = useState(false);
   const [covered, setCovered] = useState(true); // the card is on the answer (it stays until it has slid off)

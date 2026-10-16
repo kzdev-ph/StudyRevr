@@ -14,9 +14,11 @@ import './styles/admin.css';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.jsx';
+import { applyMotion } from './lib/motion.js';
 import { applyTheme } from './lib/theme.js';
 
 applyTheme();
+applyMotion();
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

@@ -93,6 +93,12 @@ events.csv - self-monitoring events
   section_index  0-based section number, for section_simplify and section_translate
   (every tap that opens a rewrite is an event, whether or not the AI was asked; see ai_calls.csv for the AI requests)
 
+setting_events.csv - settings a participant changed, one row per change
+  setting  motion (the Motion choice in Settings)
+  value    system (Match my device) | less (Less motion) | full (Full motion)
+  It only changes how much the screens animate. It never changes time_ms: answer time leaves animation out with
+  every choice.
+
 ai_calls.csv - one row per live AI request for Explain simpler (kind simplify) or Filipino/Taglish (kind translate):
   the rewrite was not already saved for everyone, or the student uses their own key. Rewrites saved ahead of time by
   the researcher ("Prepare") and taps served from that saved version are not AI requests and are not listed.

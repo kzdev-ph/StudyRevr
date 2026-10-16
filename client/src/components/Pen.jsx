@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef } from 'react';
-import { animate, useReducedMotion } from 'motion/react';
+import { animate } from 'motion/react';
+import { useMotionReduced } from '../lib/motion.js';
 import { loopPath } from '../lib/paper.js';
 
 const OUT = [0.16, 1, 0.3, 1];
@@ -9,7 +10,7 @@ const FADE_S = 0.15;
 // in. `track` (a Set) collects the running animation so a tap can finish it.
 export function Stroke({ d, duration, delay = 0, track }) {
   const ref = useRef(null);
-  const reduce = useReducedMotion();
+  const reduce = useMotionReduced();
   useLayoutEffect(() => {
     const controls = reduce
       ? animate(ref.current, { opacity: [0, 1] }, { duration: FADE_S })
@@ -35,7 +36,7 @@ export function PenLoop({ w, h, className, duration, delay, track, shape }) {
 // A line struck through a wrong answer (one line of text), drawn from the left (scaleX).
 export function PenStrike({ duration, delay = 0, track }) {
   const ref = useRef(null);
-  const reduce = useReducedMotion();
+  const reduce = useMotionReduced();
   useLayoutEffect(() => {
     const controls = reduce
       ? animate(ref.current, { opacity: [0, 1] }, { duration: FADE_S })

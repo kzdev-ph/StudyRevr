@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { motion, useReducedMotion } from 'motion/react';
+import { motion } from 'motion/react';
+import { useMotionReduced } from '../lib/motion.js';
 import { riffleFrames, shufflePlan } from '../lib/paper.js';
 
 const FADE_MS = 450;
@@ -13,7 +14,7 @@ const OWN_KEYS = new Set(['A', 'BUTTON', 'SUMMARY', 'INPUT', 'SELECT', 'TEXTAREA
 // just fades in and out. A tap, Enter, Space or Escape skips it. The first card's answer clock starts only once it is
 // over, however long it ran. Calls `onDone` once.
 export default function DeckShuffle({ onDone }) {
-  const reduce = useReducedMotion();
+  const reduce = useMotionReduced();
   const [plan] = useState(() => shufflePlan());
   const done = useRef(false);
   const box = useRef(null);

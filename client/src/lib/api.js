@@ -129,6 +129,8 @@ export const api = {
   reportSession: (id, report, as) => quietly(request(`/sessions/${id}`, { method: 'POST', body: report, keepalive: true, as })),
   // type: stats_view | review_flashcards_tap | section_simplify | section_translate
   logEvent: (type, extra = {}) => quietly(request('/events', { method: 'POST', body: { type, ...extra }, keepalive: true })),
+  // a setting the participant changed: setting 'motion', value system | less | full
+  logSettingEvent: (setting, value) => quietly(request('/setting-events', { method: 'POST', body: { setting, value }, keepalive: true })),
   getStats: (signal) => request('/stats', { signal }),
 
   // the student's AI choice for Explain simpler and Filipino/Taglish (Settings, when admin allows own keys)

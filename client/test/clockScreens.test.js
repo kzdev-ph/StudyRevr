@@ -8,10 +8,10 @@ import { fileURLToPath } from 'node:url';
 // when motion loads, so each run is its own process. See helpers/scenario.mjs for what the student does.
 const clientDir = fileURLToPath(new URL('..', import.meta.url));
 
-function run({ reduced, mode }) {
+function run({ reduced, mode, motion }) {
   const result = spawnSync(process.execPath, ['--import', './test/helpers/register.mjs', 'test/helpers/scenario.mjs'], {
     cwd: clientDir,
-    env: { ...process.env, REDUCED: reduced ? '1' : '0', MODE: mode },
+    env: { ...process.env, REDUCED: reduced ? '1' : '0', MODE: mode, MOTION: motion },
     encoding: 'utf8',
     timeout: 110_000,
   });
@@ -23,13 +23,22 @@ function run({ reduced, mode }) {
 const FRAME = 16; // the app starts a clock two animation frames after a card is on screen
 const within = (value, expected) => assert.ok(value <= expected && value >= expected - 2 * FRAME - 2, `${value} should be ${expected - 2 * FRAME - 2}..${expected}`);
 
+// The Motion setting (Match my device / Less motion / Full motion) is visual only: with every choice, on a device that asks
+// for less motion or not, the same student gets the same time_ms. Reduced is what the helper resolves to.
 describe('time_ms from the real screens', { concurrency: true }, () => {
   const runs = {};
   for (const mode of ['natural', 'skip']) {
-    for (const reduced of [false, true]) runs[`${mode}-${reduced}`] = run({ reduced, mode });
+    for (const reduced of [false, true]) {
+      for (const motion of ['system', 'less', 'full']) runs[`${mode}-device${reduced ? 'Reduces' : 'Full'}-${motion}`] = run({ reduced, mode, motion });
+    }
   }
+  const effective = (r) => (r.effectiveReduced ? 'reduced' : 'full');
 
   for (const [name, r] of Object.entries(runs)) {
+    it(`${name}: the setting resolves to what the helper says`, () => {
+      assert.equal(r.effectiveReduced, r.motion === 'less' ? true : r.motion === 'full' ? false : r.reduced);
+    });
+
     it(`${name}: counts only the time the student spent (no animation, no time away)`, () => {
       // card 1: 2.5 s on the front + 1.2 s on the answer; card 2: 1 s + 2.1 s + 0.9 s, with the app hidden for a minute
       within(r.cards[0], 3700);
@@ -45,17 +54,25 @@ describe('time_ms from the real screens', { concurrency: true }, () => {
     });
   }
 
-  it('reduced motion gives the same time_ms as full motion when the student taps through the animations', () => {
-    assert.deepEqual(runs['skip-true'].cards, runs['skip-false'].cards);
-    assert.deepEqual(runs['skip-true'].answers, runs['skip-false'].answers);
+  it('every Motion choice and device setting gives the same time_ms when the student taps through the animations', () => {
+    const skip = Object.entries(runs).filter(([name]) => name.startsWith('skip-')).map(([, r]) => r);
+    assert.equal(skip.length, 6);
+    assert.deepEqual(new Set(skip.map(effective)), new Set(['reduced', 'full'])); // both kinds were really run
+    for (const r of skip) {
+      assert.deepEqual(r.cards, skip[0].cards);
+      assert.deepEqual(r.answers, skip[0].answers);
+    }
   });
 
-  it('reduced motion gives the same time_ms to within one frame when the animations run to their end', () => {
-    const full = runs['natural-false'];
-    const reduced = runs['natural-true'];
-    for (const k of [0, 1]) {
-      assert.ok(Math.abs(full.cards[k] - reduced.cards[k]) <= FRAME, `card ${k}: ${full.cards[k]} vs ${reduced.cards[k]}`);
-      assert.ok(Math.abs(full.answers[k] - reduced.answers[k]) <= FRAME, `question ${k}: ${full.answers[k]} vs ${reduced.answers[k]}`);
+  it('every Motion choice and device setting gives the same time_ms to within one frame when the animations run to their end', () => {
+    const natural = Object.entries(runs).filter(([name]) => name.startsWith('natural-')).map(([, r]) => r);
+    assert.equal(natural.length, 6);
+    assert.deepEqual(new Set(natural.map(effective)), new Set(['reduced', 'full']));
+    for (const r of natural) {
+      for (const k of [0, 1]) {
+        assert.ok(Math.abs(r.cards[k] - natural[0].cards[k]) <= FRAME, `card ${k}: ${r.cards[k]} vs ${natural[0].cards[k]}`);
+        assert.ok(Math.abs(r.answers[k] - natural[0].answers[k]) <= FRAME, `question ${k}: ${r.answers[k]} vs ${natural[0].answers[k]}`);
+      }
     }
   });
 });
