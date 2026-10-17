@@ -179,8 +179,8 @@ function Cards({ cards, dueTomorrow, own }) {
 }
 
 // Not the activity colours above (reading / flashcards / quiz time): those would mean two things on one screen.
-const FIRST_TRY = { label: 'First try', color: 'var(--ink-2)' };
-const BEST = { label: 'Best', color: 'var(--accent)' };
+const FIRST_TRY = { label: 'First try', color: 'var(--score-first, var(--ink-2))' };
+const BEST = { label: 'Best', color: 'var(--score-best, var(--accent))' };
 
 // One bar when only one quiz is finished (its first try is also its best), two otherwise.
 const scoreRows = (q) =>

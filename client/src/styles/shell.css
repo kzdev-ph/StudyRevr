@@ -55,6 +55,13 @@
   pointer-events: none;
   display: none;
 }
+/* AMA and AMA Dark: the margin line and the rule under the header are the maroon brand accent */
+:root:is([data-theme='ama'], [data-theme='ama-dark']) .main::before {
+  background: var(--margin);
+}
+:root:is([data-theme='ama'], [data-theme='ama-dark']) .header {
+  border-bottom-color: var(--margin);
+}
 .main:not(:has(.lesson-view)):has(.mnote, .lesson, .days, .figures, .study-pile__n)::before {
   display: block;
 }
@@ -106,6 +113,10 @@
 /* the open one: the highlighter under its label, nothing else */
 .tab[aria-current='page'] {
   color: var(--ink);
+}
+/* AMA: the open tab is AMA blue on the gold (5.0:1) */
+:root[data-theme='ama'] .tab[aria-current='page'] {
+  color: var(--accent);
 }
 
 @media (min-width: 40rem) {

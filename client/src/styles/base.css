@@ -108,6 +108,10 @@ button {
   gap: 12px;
 }
 
+/* AMA and AMA Dark: page titles are the maroon brand accent (never a state: the failed-lesson title stays ink) */
+:root:is([data-theme='ama'], [data-theme='ama-dark']) :is(.screen-title, .lesson-head__title, .study-head__title, .empty__title):not(.screen-title--error) {
+  color: var(--margin);
+}
 .screen-title {
   font-family: var(--font-read);
   font-size: 1.875rem;
@@ -175,6 +179,29 @@ button {
 .btn--danger {
   background: var(--danger);
   color: var(--paper);
+}
+/* AMA and AMA Dark: the primary button is maroon, so a destructive one must not look like it: an outline with a trash icon
+   and the word (--danger edge and text for admin's delete; ink for a student's own), never a solid fill */
+:root:is([data-theme='ama'], [data-theme='ama-dark']) .btn--destroy {
+  border-color: var(--ink);
+  background: transparent;
+  color: var(--ink);
+}
+:root:is([data-theme='ama'], [data-theme='ama-dark']) .btn--danger.btn--destroy {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+:root:is([data-theme='ama'], [data-theme='ama-dark']) .btn--destroy:not(:disabled):hover {
+  background: var(--accent-wash);
+}
+:root:is([data-theme='ama'], [data-theme='ama-dark']) .btn--destroy::before {
+  content: '';
+  flex: none;
+  width: 20px;
+  height: 20px;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 7h14M9.5 7V5.5c0-.3.2-.5.5-.5h4c.3 0 .5.2.5.5V7M7 7l.8 11.2c0 .5.5.8 1 .8h6.4c.5 0 1-.3 1-.8L17 7'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 7h14M9.5 7V5.5c0-.3.2-.5.5-.5h4c.3 0 .5.2.5.5V7M7 7l.8 11.2c0 .5.5.8 1 .8h6.4c.5 0 1-.3 1-.8L17 7'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 .btn--ok {
   background: var(--ok-wash);
@@ -249,6 +276,11 @@ p .link-btn {
   color: var(--mk-ink);
   font-weight: 700;
   background: linear-gradient(to bottom, transparent var(--mk-top), var(--hi) var(--mk-top) 92%, transparent 92%);
+}
+/* AMA: the chosen option is gold behind dark ink, edge to edge (a stroke's edge would cut through the letters) */
+:root[data-theme='ama'] .segmented__item input:checked + span,
+:root[data-theme='ama-dark'] .segmented__item input:checked + span {
+  background: var(--hi);
 }
 .segmented__item input:focus-visible + span {
   outline: 3px solid var(--accent);
@@ -480,4 +512,67 @@ p .link-btn {
   animation: none;
   border-right-color: currentColor;
   opacity: 0.6;
+}
+
+/* AMA Dark: blue is only for links. The focus ring, the pen loop and the other marks that borrow --accent in the other
+   themes are AMA gold here (8:1 on the paper), so nothing but a link is tinted blue. */
+:root[data-theme='ama-dark'] :focus-visible,
+:root[data-theme='ama-dark'] .segmented__item input:focus-visible + span,
+:root[data-theme='ama-dark'] .rate[tabindex='-1']:focus-visible {
+  outline-color: var(--hi);
+}
+:root[data-theme='ama-dark']
+  :is(
+    .count--new,
+    .upload--over,
+    .upload__icon,
+    .chip--busy,
+    .chip--admin,
+    .step--active,
+    .field__input:focus-visible,
+    .quiz-sheet__bubble--now,
+    .quiz-score__ring,
+    .endcard__action,
+    .check__answer-label
+  ) {
+  --accent: var(--hi);
+}
+/* AMA Dark: the admin checkboxes take the link red (5.0:1 on the paper), not lavender or gold */
+:root[data-theme='ama-dark'] .check-row input {
+  accent-color: var(--link);
+}
+
+/* AMA Dark: the deep red button gets a lighter red edge so it still reads against the paper (3:1) */
+:root[data-theme='ama-dark'] .btn--primary:not(.btn--destroy) {
+  border-color: var(--ink-btn-edge);
+  border-width: 1px;
+}
+
+/* AMA and AMA Dark: a teacher's red pen. The strike through a wrong option and the X beside it are the brand red (the
+   same --margin as the titles); the wrong option's text, "Not quite" and its icon stay neutral, and the strike shape and
+   the X remain, so a wrong answer never relies on colour. The circle round the picked number stays the student's pen
+   (--accent), the tick stays --ok and the right answer stays on the gold marker. */
+:root:is([data-theme='ama'], [data-theme='ama-dark']) .pen-strike {
+  background: var(--margin);
+}
+:root:is([data-theme='ama'], [data-theme='ama-dark']) .quiz-opt--wrong .quiz-opt__mark {
+  color: var(--margin);
+}
+
+/* AMA and AMA Dark: text links are the brand red (--link), still underlined so they never rely on colour alone. Hover is
+   a step darker (AMA) or lighter (AMA Dark), visited a step in between. The focus ring and the pen circle are not links. */
+:root:is([data-theme='ama'], [data-theme='ama-dark']) :is(.link-btn, .data-table a, details.table-view summary) {
+  color: var(--link);
+  text-decoration-line: underline;
+}
+:root:is([data-theme='ama'], [data-theme='ama-dark']) :is(.link-btn, .data-table a):visited {
+  color: var(--link-visited);
+}
+:root:is([data-theme='ama'], [data-theme='ama-dark']) :is(.link-btn, .data-table a, details.table-view summary):hover {
+  color: var(--link-hover);
+}
+/* AMA Dark: the student's pen circle is the red too (not the lavender --accent); the strike and X are the teacher's, so the
+   circle is told apart by its shape and by sitting round the number */
+:root[data-theme='ama-dark'] .pen-loop {
+  --accent: var(--link);
 }

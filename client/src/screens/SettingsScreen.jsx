@@ -9,6 +9,8 @@ const CHOICES = [
   { id: 'system', label: 'Match my device' },
   { id: 'light', label: 'Light' },
   { id: 'dark', label: 'Dark' },
+  { id: 'ama', label: 'AMA' },
+  { id: 'ama-dark', label: 'AMA Dark' },
 ];
 
 const MOTION = [
@@ -22,8 +24,10 @@ export default function SettingsScreen() {
   const [motion, setMotion] = useState(getMotionChoice);
   const participant = useParticipant();
   const choose = (id) => {
+    if (id === theme) return;
     setThemeChoice(id);
     setTheme(id);
+    api.logSettingEvent('theme', id);
   };
 
   const chooseMotion = (id) => {

@@ -141,7 +141,7 @@ export default function LessonRow({ lesson, admin = false, onDelete, onDeleteOwn
               {working ? 'Sharing…' : 'Share lesson'}
             </button>
           ) : (
-            <button type="button" className={onDelete ? 'btn btn--danger' : 'btn btn--primary'} onClick={() => finish(onDelete ?? onDeleteOwn)} disabled={working}>
+            <button type="button" className={onDelete ? 'btn btn--danger btn--destroy' : 'btn btn--primary btn--destroy'} onClick={() => finish(onDelete ?? onDeleteOwn)} disabled={working}>
               {working ? 'Deleting…' : 'Delete lesson'}
             </button>
           )}

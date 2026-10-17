@@ -73,7 +73,7 @@ export function sessionsRouter({ db, access, clock = () => new Date() }) {
   router.post('/setting-events', (req, res) => {
     const { id: participantId } = requireParticipant(db, req);
     const body = settingEventBody.safeParse(req.body ?? {});
-    if (!body.success) throw new HttpError(400, 'Send setting (motion) and its value (system, less or full).');
+    if (!body.success) throw new HttpError(400, 'Send a setting and its value: motion (system, less or full) or theme (system, light, dark, ama or ama-dark).');
     const id = logSettingEvent(db, { participantId, ...body.data, now: clock(), config: config() });
     res.status(201).json({ id });
   });

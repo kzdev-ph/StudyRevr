@@ -9,6 +9,31 @@
     <meta name="description" content="Upload a lesson and study it as a short review, flashcards and mock quizzes." />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>StudyRevr</title>
+    <script>
+      /* Apply the saved theme and motion before the first paint, so there is no flash of another theme. Same rules as
+         src/lib/theme.js and src/lib/motion.js (which keep them in step afterwards): no saved choice = AMA. */
+      (function () {
+        var root = document.documentElement;
+        var theme = 'ama';
+        var motion = '';
+        try {
+          var t = localStorage.getItem('studyrevr-theme');
+          if (t === 'system' || t === 'light' || t === 'dark' || t === 'ama' || t === 'ama-dark') theme = t;
+          var m = localStorage.getItem('studyrevr-motion');
+          if (m === 'less' || m === 'full') motion = m;
+        } catch (e) {}
+        if (theme !== 'system') root.setAttribute('data-theme', theme);
+        if (motion) root.setAttribute('data-motion', motion);
+        var bar = { ama: '#f7f3e8', 'ama-dark': '#1b1a18' }[theme];
+        if (bar) {
+          var tag = document.createElement('meta');
+          tag.name = 'theme-color';
+          tag.content = bar;
+          tag.setAttribute('data-theme-override', '');
+          document.head.insertBefore(tag, document.head.firstChild);
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
