@@ -7,7 +7,7 @@ import { openDb, runMigrations } from '../src/db/index.js';
 import { failInterruptedJobs, getJobStatus, queueJob } from '../src/pipeline/jobs.js';
 import { createPipelineRunner } from '../src/pipeline/runner.js';
 import { resolveAiConfig } from '../src/services/settings.js';
-import { cleanReview, keepAllCandidates, quoteFromPrompt, studyFetch, TEST_PIN } from './helpers.js';
+import { cleanCheckReview, cleanReview, groundedChecks, keepAllCandidates, quoteFromPrompt, studyFetch, TEST_PIN } from './helpers.js';
 
 const fetch = studyFetch; // as participant P00, with the admin PIN (see helpers.js)
 
@@ -32,7 +32,7 @@ function fakeAi({ fail } = {}) {
             {
               title: `Section ${n}`,
               content: `Content of section ${n}, long enough to be valid.`,
-              check_questions: [1, 2, 3].map((i) => ({ question: `Question ${i}?`, answer: `Answer ${i}.` })),
+              check_questions: groundedChecks(user, 3),
             },
           ],
         };
@@ -42,6 +42,8 @@ function fakeAi({ fail } = {}) {
         value = { key_points: [`Point ${n}a.`, `Point ${n}b.`] };
       } else if (label.startsWith('the quiz review')) {
         value = cleanReview(user);
+      } else if (label.startsWith('the quick check review')) {
+        value = cleanCheckReview(user);
       } else if (label.startsWith('the quiz answer options')) {
         const numbers = [...user.matchAll(/^\[(\d+)\] Question:/gm)].map((m) => Number(m[1]));
         value = { items: numbers.map((n) => ({ n, wrong: ['Plants make more starch.', 'Cells store some water.', 'Light warms the leaves.'] })) };
@@ -85,7 +87,7 @@ describe('pipeline', () => {
     assert.equal(status.lesson.status, 'ready');
     assert.equal(status.lesson.error, null);
     assert.deepEqual({ stage: status.job.stage, status: status.job.status, error: status.job.error }, { stage: 'done', status: 'done', error: null });
-    assert.deepEqual(ai.calls.map((c) => c.label), ['the review sections', 'the key points', 'the key terms', 'the flashcards', 'the flashcards for list items without a card', 'the quiz answer options', 'the quiz review']);
+    assert.deepEqual(ai.calls.map((c) => c.label), ['the review sections', 'the key points', 'the key terms', 'the flashcards', 'the flashcards for list items without a card', 'the quiz answer options', 'the quiz review', 'the quick check review']);
 
     const [section] = rows('sections', id);
     assert.equal(section.position, 1);
@@ -234,7 +236,7 @@ describe('pipeline', () => {
     assert.equal(getJobStatus(db, id).lesson.status, 'processing');
     const healthy = fakeAi();
     await run(healthy, id);
-    assert.deepEqual(healthy.calls.map((c) => c.label), ['the key points', 'the key terms', 'the flashcards', 'the flashcards for list items without a card', 'the quiz answer options', 'the quiz review'], 'sections are not regenerated');
+    assert.deepEqual(healthy.calls.map((c) => c.label), ['the key points', 'the key terms', 'the flashcards', 'the flashcards for list items without a card', 'the quiz answer options', 'the quiz review', 'the quick check review'], 'sections are not regenerated');
     status = getJobStatus(db, id);
     assert.equal(status.lesson.status, 'ready');
     assert.equal(status.lesson.error, null);
@@ -392,7 +394,7 @@ describe('pipeline API', () => {
     assert.equal(detail.body.lesson.status, 'ready');
     assert.equal(detail.body.sections.length, 1);
     assert.equal(detail.body.sections[0].check_questions.length, 2);
-    assert.deepEqual(detail.body.sections[0].check_questions[0], { question: 'Question 1?', answer: 'Answer 1.' });
+    assert.deepEqual(detail.body.sections[0].check_questions[0], { question: 'Question 1?', answer: 'to Media Channels.', evidence: 'Introduction to Media Channels Television, radio and the' }, 'kept with its lesson quote');
     assert.equal(detail.body.key_points.length, 2);
     assert.equal(detail.body.key_terms.length, 2);
   });

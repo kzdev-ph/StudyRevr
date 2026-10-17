@@ -20,6 +20,7 @@ const WORDS_PER_TERM = 100; // a lesson has about one key concept per this many 
 const text = z.preprocess((v) => (Array.isArray(v) ? v.map(String).join('\n') : v), z.string().trim().min(1));
 const wrapArray = (key, schema) => z.preprocess((v) => (Array.isArray(v) ? { [key]: v } : v), schema);
 
+const checkSchema = z.object({ question: text, answer: text, evidence: z.string().trim().catch('') });
 const sectionsSchema = wrapArray(
   'sections',
   z.object({
@@ -27,8 +28,12 @@ const sectionsSchema = wrapArray(
       z.object({
         title: z.string().trim().min(1).max(200),
         content: text.pipe(z.string().min(20)),
-        // 1-2 quick checks per section; a third is dropped rather than failing the whole reply
-        check_questions: z.array(z.object({ question: text, answer: text })).min(1).transform((q) => q.slice(0, 2)),
+        // 0-2 quick checks per section, each with its lesson quote (checked in code, pipeline/quick-checks.js); a third,
+        // or one without a question or answer, is dropped rather than failing the whole reply
+        check_questions: z
+          .array(z.unknown())
+          .catch([])
+          .transform((qs) => qs.map((q) => checkSchema.safeParse(q)).filter((r) => r.success).map((r) => r.data).slice(0, 2)),
         // the slide / page numbers the section was written from; checked in code (see sources.js), so anything goes here
         sources: z.array(z.unknown()).catch([]),
       }),
@@ -62,7 +67,7 @@ const responseSchemas = {
             properties: {
               title: str,
               content: str,
-              check_questions: { type: 'array', items: { type: 'object', properties: { question: str, answer: str }, required: ['question', 'answer'] } },
+              check_questions: { type: 'array', items: { type: 'object', properties: { question: str, answer: str, evidence: str }, required: ['question', 'answer', 'evidence'] } },
               sources: { type: 'array', items: { type: 'integer' } },
             },
             required: ['title', 'content', 'check_questions'],
@@ -135,7 +140,7 @@ export function sectionRange(chunk) {
   return { min, max };
 }
 
-// -> [{ title, content, check_questions: [{ question, answer }], sources }] in lesson order. `sources` is the sorted
+// -> [{ title, content, check_questions: [{ question, answer, evidence }], sources }] in lesson order. `sources` is the sorted
 // list of slide / page numbers the section was written from, or null when they aren't known: the lesson has no
 // numbers (chunks come without `numbers`), or the model named none that survive the check against the lesson's real
 // count (`sourceTotal`) and the blocks it was shown. onDrop({ title, dropped }) reports refused numbers.

@@ -34,4 +34,12 @@ describe('quizReviewNotice (admin lesson row)', () => {
     });
     assert.equal(quizReviewNotice(lesson({ reviewed: 12, flagged: 0, pending: 0 })).title, 'AI review: all 12 cards passed.');
   });
+  it('the quick checks: not reviewed yet, then how many were dropped', () => {
+    const waiting = quizReviewNotice(lesson({ reviewed: 12, flagged: 0, pending: 0, checks: { reviewed: 0, pending: 7, dropped: 0 } }));
+    assert.deepEqual([waiting.state, waiting.title, waiting.action], ['missing', '7 quick checks aren’t checked by the AI reviewer yet.', 'Review quiz']);
+    const done = quizReviewNotice(lesson({ reviewed: 12, flagged: 2, pending: 0, checks: { reviewed: 6, pending: 0, dropped: 1 } }));
+    assert.equal(done.title, 'AI review: 2 of 12 cards flagged; 1 quick check dropped.');
+    assert.match(done.detail, /left out of the quiz. Dropped quick checks said something the lesson doesn’t/);
+    assert.equal(quizReviewNotice(lesson({ reviewed: 12, flagged: 0, pending: 0, checks: { reviewed: 6, pending: 0, dropped: 0 } })).title, 'AI review: all 12 cards passed.');
+  });
 });

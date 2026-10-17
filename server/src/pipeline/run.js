@@ -4,11 +4,13 @@ import { HttpError } from '../middleware/errors.js';
 import { flashcardsMax } from '../flashcards/config.js';
 import { cardsNeedingDistractors, ensureDistractors } from '../quiz/distractors.js';
 import { prepareVersions, missingVersions } from '../services/prepare-versions.js';
+import { checksToReview, reviewChecks } from '../services/check-review.js';
 import { itemsToReview, reviewQuiz } from '../services/quiz-review.js';
 import { logLessonEvent } from '../services/student-upload.js';
 import { getSetting } from '../services/settings.js';
 import { generateFlashcards } from './flashcards.js';
 import { generateKeyPoints, generateKeyTerms, generateSections } from './generate.js';
+import { groundQuickChecks } from './quick-checks.js';
 import { ON_DEMAND_STAGES, STAGES } from './jobs.js';
 
 class LessonGone extends Error {}
@@ -62,7 +64,7 @@ export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUN
         const summaryLength = getSetting(db, 'summary_length') === 'short' ? 'short' : 'detailed';
         const onDrop = ({ title, dropped }) =>
           log.info?.(`[pipeline] lesson ${lessonId}: section "${title}" named sources that don't exist or weren't in its text; ignored: ${dropped.join(', ')}`);
-        const sections = await generateSections({
+        const made = await generateSections({
           ai,
           chunks,
           sourceKind: lesson.source_kind ?? undefined,
@@ -71,6 +73,13 @@ export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUN
           concurrency,
           onProgress: progress,
           onDrop,
+        });
+        // each quick check needs a lesson quote that states its answer; the failing ones are asked for again once
+        const sections = await groundQuickChecks({
+          ai,
+          sections: made,
+          rawText: lesson.raw_text,
+          onDrop: ({ section, question, reason }) => log.info?.(`[pipeline] lesson ${lessonId}: quick check "${question}" under "${section}" dropped: ${reason}`),
         });
         const insert = db.prepare(
           'INSERT INTO sections (lesson_id, position, title, content, check_questions, sources) VALUES (?, ?, ?, ?, ?, ?)',
@@ -156,9 +165,12 @@ export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUN
     },
     quiz_review: {
       // every card the quiz can ask has a review of what it would show now (a review is redone only when that changes)
-      saved: () => itemsToReview(db, lessonId).length === 0,
+      saved: () => itemsToReview(db, lessonId).length === 0 && checksToReview(db, lessonId).length === 0,
       async run() {
-        const { error } = await reviewQuiz({ db, ai, lessonId, concurrency, madeBy, log, onProgress: progress, now: clock });
+        const cards = await reviewQuiz({ db, ai, lessonId, concurrency, madeBy, log, onProgress: progress, now: clock });
+        // the quick checks under the sections get the same strict look (services/check-review.js)
+        const checks = await reviewChecks({ db, ai, lessonId, concurrency, madeBy, log, now: clock });
+        const error = cards.error ?? checks.error;
         // batches that worked are saved, so a retry only reviews the rest
         if (error) throw new HttpError(502, `The quiz review couldn’t finish: ${error}`);
       },

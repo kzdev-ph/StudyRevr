@@ -85,6 +85,28 @@ describe('quiz building leaves related terms out', () => {
     }
   });
 
+  it('a blanked definition is never a Yes/No false statement (lesson 10: "This is presented in ___ form.")', () => {
+    // lesson 10's term cards as made: only Written's definition names its own term
+    const written = term(147, 'Written Self-Introduction', 'This is presented in written form.');
+    const oral = term(152, 'Oral Self-Introduction', 'This is spoken directly to an audience.');
+    const multi = term(157, 'Multimodal Self-Introduction', 'It combines different ways of communicating.');
+    const cards = [term(142, 'Self-Introduction', 'It is a brief presentation of yourself that helps others know who you are.'), written, oral, multi];
+    const candidates = quizCandidates(cards, { extraTerms: cards.map((c) => c.front) });
+    for (const p of candidates) {
+      for (const s of [...p.falsePool, ...p.falseClean, ...p.reviewable]) assert.ok(!s.includes('___'), `#${p.card.id} offered "${s}"`);
+    }
+    assert.deepEqual(byId(candidates, oral.id).falseClean, [multi.back]);
+    assert.deepEqual(byId(candidates, multi.id).falseClean, [oral.back]);
+    const w = byId(candidates, written.id);
+    assert.equal(w.shown, 'This is presented in ___ form.', 'its own question still shows the blank');
+    assert.deepEqual(w.falseClean.sort(), [oral.back, multi.back].sort(), 'it is still asked, against unblanked definitions');
+    for (let seed = 1; seed <= 30; seed++) {
+      for (const q of buildQuiz({ cards, extraTerms: cards.map((c) => c.front), random: createRng(seed), count: 4 })) {
+        if (q.type === 'tf' && q.answer_index === 1) assert.ok(!q.statement.includes('___'), `seed ${seed}: "${q.statement}"`);
+      }
+    }
+  });
+
   it('a lesson of only related terms asks none of them rather than a question with two right answers', () => {
     assert.equal(usableCount([SELF, WRITTEN], { extraTerms: ['Self-Introduction', 'Written Self-Introduction'] }), 0);
   });

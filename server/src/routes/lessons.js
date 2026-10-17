@@ -11,6 +11,7 @@ import { PREPARE_FAILED_MESSAGE, ownerRecords, safeError } from '../services/les
 import { hasRecords, participantRecords } from '../services/lesson-records.js';
 import { logAdminEvent } from '../services/backup.js';
 import { missingVersions, versionCounts } from '../services/prepare-versions.js';
+import { checkSummary } from '../services/check-review.js';
 import { reviewSummary } from '../services/quiz-review.js';
 import { parseFilipino, parseSimple } from '../services/section-versions.js';
 import { getBoolSetting, uploadsPerDay } from '../services/settings.js';
@@ -234,7 +235,7 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin, { ac
           ...(counts && {
             quiz_options: { ...quizOptionCounts(lesson.id), status: own ? job.status : null, error: own ? job.error : null },
             leaks: { cards: leakyCards(lesson.id) },
-            quiz_review: { ...reviewSummary(db, lesson.id), status: reviewing ? job.status : null, error: reviewing ? job.error : null },
+            quiz_review: { ...reviewSummary(db, lesson.id), checks: checkSummary(db, lesson.id), status: reviewing ? job.status : null, error: reviewing ? job.error : null },
             flashcards: { total: cardTotals.get(lesson.id) ?? 0, status: making ? job.status : null, error: making ? job.error : null },
           }),
           section_versions: {

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { mapLimit } from '../ai/pool.js';
 import { quizReviewPrompt, regenerateCardsPrompt } from '../ai/prompts.js';
 import { comparable } from '../pipeline/evidence.js';
+import { contentWords } from '../quiz/leaks.js';
 import { termKey } from '../pipeline/terms.js';
 import { quizCandidates } from '../quiz/build.js';
 import { usableFamilies } from '../quiz/related.js';
@@ -246,8 +247,13 @@ async function regenerateFlagged({ db, ai, lessonId, fixes, rawText, concurrency
         try {
           // checked against every other card as it is now, the ones written again in this run included
           const rest = all.filter((c) => c.id !== f.card.id);
-          next.push(checkNewCard({ card: f.card, reply: term ? { definition: r.definition } : r, rawText, others: rest }));
-          Object.assign(all.find((c) => c.id === f.card.id), next.at(-1));
+          const card = checkNewCard({ card: f.card, reply: term ? { definition: r.definition } : r, rawText, others: rest });
+          if (unchangedRewrite(f.card, card)) {
+            log.info?.(`[quiz-review] lesson ${lessonId}: card ${f.card.id} came back unchanged ("${card.back}"), so it stays left out`);
+            continue;
+          }
+          next.push(card);
+          Object.assign(all.find((c) => c.id === f.card.id), card);
         } catch (err) {
           log.info?.(`[quiz-review] lesson ${lessonId}: card ${f.card.id} not written again (${err.message})`);
         }
@@ -272,6 +278,15 @@ async function regenerateFlagged({ db, ai, lessonId, fixes, rawText, concurrency
   });
   return { changed, error };
 }
+
+// A rewrite that keeps every content word of the old card ("It is presented…" -> "This is presented…") changed nothing a
+// student would notice: it counts as failed, is not saved, and spends no round-2 call.
+const sameWords = (a, b) => {
+  const x = new Set(contentWords(a));
+  const y = new Set(contentWords(b));
+  return x.size === y.size && [...x].every((w) => y.has(w));
+};
+export const unchangedRewrite = (old, next) => sameWords(old.back, next.back) && (old.kind === 'term' || sameWords(old.front, next.front));
 
 const reason = (flags) => flags.map((f) => (f.why ? `${f.flag}: ${f.why}` : f.flag));
 
@@ -343,9 +358,12 @@ export async function reviewQuiz({ db, ai, lessonId, concurrency = 1, madeBy = n
     error ??= filled.error;
   }
 
-  // round 2: only what was made again; what is still flagged then stays left out
-  const fixed = new Set([...optionFixes.map((f) => f.card.id), ...regenerated.changed]);
-  const second = fixed.size ? await run(itemsToReview(db, lessonId).filter((x) => fixed.has(x.card.id)), 2, ROUND2_LABEL) : [];
+  // round 2: everything whose review went out of date in the fix round: what was made again, and every card whose
+  // options or statements changed with it (another term's new definition, another card's new answer). What is still
+  // flagged then stays left out; nothing is left "not reviewed yet". A rewrite that came back unchanged changed
+  // nothing, so it costs no call here.
+  const stale = optionFixes.length || regenerated.changed.length ? itemsToReview(db, lessonId) : [];
+  const second = stale.length ? await run(stale, 2, ROUND2_LABEL) : [];
 
   const stillFlagged = second.filter((r) => hasFlags(r.flags)).length;
   log.info?.(

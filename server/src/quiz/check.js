@@ -1,4 +1,5 @@
 import { quizBuildOptions } from './options.js';
+import { checkSummary } from '../services/check-review.js';
 import { reviewItems } from '../services/quiz-review.js';
 import { describe } from './review-flags.js';
 import { QUIZ_LENGTH, quizCandidates, usableCount } from './build.js';
@@ -100,9 +101,26 @@ export function lessonLeakReport(db, lessonId) {
       })),
   };
 
+  // the sections' quick checks (pipeline/quick-checks.js, services/check-review.js): how many have their lesson quote,
+  // the review's counts and what it dropped. A database from before migration 014 has no reviews.
+  let checks = null;
+  try {
+    const sections = db.prepare('SELECT title, check_questions, check_review FROM sections WHERE lesson_id = ? ORDER BY position').all(lessonId);
+    const all = sections.flatMap((x) => JSON.parse(x.check_questions ?? '[]') ?? []);
+    checks = {
+      total: all.length,
+      no_quote: all.filter((c) => !c.evidence).length,
+      ...checkSummary(db, lessonId),
+      dropped_checks: sections.flatMap((x) => (JSON.parse(x.check_review ?? 'null')?.dropped ?? []).map((d) => ({ section: x.title, ...d }))),
+    };
+  } catch {
+    checks = null;
+  }
+
   const usable = usableCount(cards, opts);
   return {
     review,
+    checks,
     lesson: { id: lesson.id, title: lesson.title, status: lesson.status },
     cards: { total: cards.length, term: cards.filter((c) => c.kind === 'term').length, concept: cards.filter((c) => c.kind !== 'term').length, flagged, names_term: namesTerm },
     quiz: { multiple_choice: mc, yes_no_false: falses, masked, never, usable_cards: usable, clean_questions: Math.min(QUIZ_LENGTH, usable) },
@@ -150,6 +168,13 @@ export function formatReport(report, { examples = 5 } = {}) {
       ].filter(Boolean);
       lines.push(`    #${c.card_id} "${cut(c.front, 60)}" (round ${c.round}): ${cut(parts.join(' | '), 400)}`);
     }
+  }
+  const { checks } = report;
+  if (checks) {
+    lines.push(
+      `  Quick checks: ${checks.total}${checks.no_quote ? ` (${checks.no_quote} without a lesson quote)` : ''}; AI review: ${checks.reviewed} reviewed${checks.pending ? `, ${checks.pending} not reviewed yet or changed since` : ''}, ${checks.dropped} dropped`,
+    );
+    for (const d of checks.dropped_checks.slice(0, examples)) lines.push(`    "${cut(d.section, 40)}": "${cut(d.question, 80)}" dropped (${cut(d.why, 120)})`);
   }
   lines.push(`  Clean questions available: ${quiz.clean_questions} of ${QUIZ_LENGTH}`);
   return lines.join('\n');

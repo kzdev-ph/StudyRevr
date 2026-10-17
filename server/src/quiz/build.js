@@ -85,6 +85,7 @@ export function quizCandidates(cards, { distractors = new Map(), extraTerms = []
   const conceptCards = cards.filter((c) => c.kind !== 'term');
   const masked = new Map(termCards.map((c) => [c.id, maskTerm(c.back, c.front)]));
   const shown = (card) => (card.kind === 'term' ? masked.get(card.id) : card.back);
+  const blanked = (card) => masked.get(card.id) !== card.back;
   // checked again after blanking: a definition that still shows its term is neither asked nor used as a false statement
   const stillShows = new Map(termCards.map((c) => [c.id, termInText(c.front, masked.get(c.id))]));
   const groups = listGroups(lessonText);
@@ -123,7 +124,9 @@ export function quizCandidates(cards, { distractors = new Map(), extraTerms = []
       // only other definitions: another kind of card's answer under "Does this describe X?" is plainly not a definition.
       // Rule e as for concept cards: not one that names the asked term, is negative beside a positive definition, is in
       // another language or is nearly this card's own definition.
-      const others = termCards.filter((c) => c.id !== card.id && !stillShows.get(c.id) && unrelated(c.front, shown(c)));
+      // Another term's blanked definition ("presented in ___ form") is never a false statement: under "Does this
+      // describe Oral Self-Introduction?" the gap reads as a misprint and points at No.
+      const others = termCards.filter((c) => c.id !== card.id && !stillShows.get(c.id) && !blanked(c) && unrelated(c.front, shown(c)));
       const falsePool = usableWrong(others.map(shown), shown(card), Infinity);
       const falseCode = falsePool.filter((s) => !termInText(card.front, s) && !falseStatementProblems(s, shown(card)).length);
       const reviewable = [...new Set([...mcWrong, ...falseCode])];

@@ -5,7 +5,7 @@ import { keyPointsPrompt, keyTermsMergePrompt, keyTermsPrompt, sectionsPrompt } 
 import { openDb, runMigrations } from '../src/db/index.js';
 import { generateKeyTerms, sectionRange, targetSectionCount } from '../src/pipeline/generate.js';
 import { getJobStatus, queueJob } from '../src/pipeline/jobs.js';
-import { cleanReview, keepAllCandidates, quoteFromPrompt } from './helpers.js';
+import { cleanCheckReview, cleanReview, groundedChecks, keepAllCandidates, quoteFromPrompt } from './helpers.js';
 import { createPipelineRunner } from '../src/pipeline/runner.js';
 
 const quiet = { error() {}, warn() {}, log() {} };
@@ -33,7 +33,7 @@ function timedAi({ delay = () => 3, fail } = {}) {
       log.finished.push(label);
       let value;
       if (label.startsWith('the review sections')) {
-        value = { sections: [{ title: `S ${label}`, content: `Content for ${label}, long enough.`, check_questions: [{ question: 'Q?', answer: 'A.' }] }] };
+        value = { sections: [{ title: `S ${label}`, content: `Content for ${label}, long enough.`, check_questions: groundedChecks(user, 1) }] };
       } else if (label.startsWith('the merged key terms')) {
         value = keepAllCandidates(user);
       } else if (label.startsWith('the key points') || label.startsWith('the merged')) {
@@ -42,6 +42,8 @@ function timedAi({ delay = () => 3, fail } = {}) {
         value = { cards: [] };
       } else if (label.startsWith('the quiz review')) {
         value = cleanReview(user);
+      } else if (label.startsWith('the quick check review')) {
+        value = cleanCheckReview(user);
       } else {
         const evidence = quoteFromPrompt(user);
         value = { terms: [{ term: `Term ${n}`, definition: `Defined by ${label}.`, evidence }, { term: 'Shared', definition: 'Same everywhere.', evidence }] };

@@ -8,8 +8,8 @@ import { formatReport, lessonLeakReport } from '../src/quiz/check.js';
 import { loadDistractors } from '../src/quiz/distractors.js';
 import { quizBuildOptions } from '../src/quiz/options.js';
 import { cardHash, readReview } from '../src/quiz/review-flags.js';
-import { contextForBatch, itemsToReview, resetReviews, reviewQuiz, reviewSummary } from '../src/services/quiz-review.js';
-import { addCodes, seedLesson, startStudyApp, TEST_PIN } from './helpers.js';
+import { contextForBatch, itemsToReview, resetReviews, reviewQuiz, reviewSummary, unchangedRewrite } from '../src/services/quiz-review.js';
+import { addCodes, cleanCheckReview, seedLesson, startStudyApp, TEST_PIN } from './helpers.js';
 
 const quiet = { error() {}, warn() {}, log() {}, info() {} };
 
@@ -46,6 +46,7 @@ function fakeAi({ review = () => ({}), families = [], remake = (n) => [`Alpha to
         const numbers = [...user.matchAll(/^\[(\d+)\] Question:/gm)].map((m) => Number(m[1]));
         return schema.parse({ items: numbers.map((n) => ({ n, wrong: remake(n) })) });
       }
+      if (label.startsWith('the quick check review')) return schema.parse(cleanCheckReview(user));
       if (label === 'the flashcards the quiz review flagged') {
         const numbers = [...user.matchAll(/^\[(\d+)\] (?:Term|Concept) card/gm)].map((m) => Number(m[1]));
         return schema.parse({ cards: numbers.map((n) => ({ n, ...rewrite(n) })) });
@@ -173,6 +174,56 @@ describe('quiz review', () => {
     assert.ok(candidates(db, lessonId).find((p) => p.card.id === cards[0]).mcClean.length === 3, 'asked again once it passes');
   });
 
+  describe('term cards: a new definition is another term\'s false statement', () => {
+    const TEXT = 'Landforms. Glacier: ice that moves slowly down a valley, and later flows down it as a river of ice. Delta: land formed where a river meets the sea. Dune: a hill of sand shaped by the wind. Reef: a ridge of rock or coral near the surface of the water.';
+    const TERMS = [
+      ['Glacier', 'Ice that moves slowly down a valley.'],
+      ['Delta', 'Land formed where a river meets the sea.'],
+      ['Dune', 'A hill of sand shaped by the wind.'],
+      ['Reef', 'A ridge of rock or coral near the surface of the water.'],
+    ];
+    let termLesson;
+    let termCards;
+    beforeEach(() => {
+      termLesson = Number(db.prepare("INSERT INTO lessons (title, filename, raw_text, word_count, status, created_at) VALUES ('Landforms', 'l.pptx', ?, 60, 'ready', '2026-10-01T00:00:00.000Z')").run(TEXT).lastInsertRowid);
+      const insert = db.prepare("INSERT INTO flashcards (lesson_id, kind, front, back, evidence, position) VALUES (?, 'term', ?, ?, ?, ?)");
+      termCards = TERMS.map(([t, d], i) => Number(insert.run(termLesson, t, d, d.replace(/\.$/, '').toLowerCase(), i + 1).lastInsertRowid));
+    });
+    const glacierFlagged = (it, label) => (label === 'the quiz review' && it.question.startsWith('Ice that moves') ? { card: [{ flag: 'vague', why: 'could be any ice' }] } : {});
+
+    it('after a rewrite every card that shows the new definition is reviewed again: nothing is left "not reviewed yet"', async () => {
+      const before = itemsToReview(db, termLesson);
+      assert.ok(before.find((x) => x.card.id === termCards[1]).item.options.some((o) => o.text === TERMS[0][1]), 'Delta is asked against Glacier\'s definition');
+      const ai = fakeAi({ review: glacierFlagged, rewrite: () => ({ definition: 'Ice that flows down a valley as a river of ice.' }) });
+      const result = await reviewQuiz({ db, ai, lessonId: termLesson, log: quiet });
+      assert.deepEqual(labels(ai), ['the quiz review', 'the flashcards the quiz review flagged', 'the quiz review (after fixes)']);
+      assert.equal(result.regenerated, 1);
+      const round2 = parseItems(ai.calls[2].user);
+      assert.ok(round2.some((it) => it.question.startsWith('Ice that flows')), 'the card written again');
+      assert.ok(round2.some((it) => it.question === TERMS[1][1] && it.options.some((o) => o.text === 'Ice that flows down a valley as a river of ice.')), 'a card that now shows the new definition');
+      assert.equal(reviewSummary(db, termLesson).pending, 0);
+      assert.ok(rows(db, termLesson).filter((r) => r.round === 2).length >= 2);
+    });
+
+    it('a rewrite that comes back with the same words is not saved and spends no second review', async () => {
+      const ai = fakeAi({ review: glacierFlagged, rewrite: () => ({ definition: 'Ice that moves slowly down the valley.' }) });
+      const result = await reviewQuiz({ db, ai, lessonId: termLesson, log: quiet });
+      assert.deepEqual(labels(ai), ['the quiz review', 'the flashcards the quiz review flagged'], 'no round 2: nothing changed');
+      assert.equal(result.regenerated, 0);
+      assert.equal(db.prepare('SELECT back FROM flashcards WHERE id = ?').get(termCards[0]).back, TERMS[0][1]);
+      assert.deepEqual(reviewSummary(db, termLesson), { reviewed: 4, flagged: 1, pending: 0 });
+      const glacier = candidates(db, termLesson).find((p) => p.card.id === termCards[0]);
+      assert.deepEqual([glacier.mcClean.length, glacier.falseClean.length], [0, 0], 'it stays left out');
+    });
+
+    it('unchangedRewrite compares content words only', () => {
+      const old = { kind: 'concept', front: 'What does a glacier do?', back: 'It moves slowly.' };
+      assert.ok(unchangedRewrite(old, { ...old, back: 'It moves slowly!' }));
+      assert.ok(!unchangedRewrite(old, { ...old, front: 'Which landform moves slowly down a valley?' }));
+      assert.ok(unchangedRewrite({ kind: 'term', front: 'Glacier', back: 'It is ice that moves.' }, { kind: 'term', front: 'Glacier', back: 'This is ice that moves.' }));
+    });
+  });
+
   it('never writes a card again once participants have records: the card is left out instead', async () => {
     addCodes(db, 'P01');
     db.prepare("INSERT INTO events (participant_id, type, lesson_id, created_at, study_date) VALUES ((SELECT id FROM participants WHERE code = 'P01'), 'stats_view', ?, '2026-10-01T00:00:00Z', '2026-10-01')").run(lessonId);
@@ -239,7 +290,7 @@ describe('quiz review stage and Review again', () => {
     assert.deepEqual(labels(ai), ['the quiz answer options', 'the quiz review']);
     assert.equal(getJobStatus(t.db, lessonId).job.status, 'done');
     const row = (await call('GET', '/api/lessons?counts=1')).body.lessons.find((l) => l.id === lessonId);
-    assert.deepEqual(row.quiz_review, { reviewed: 3, flagged: 0, pending: 0, status: null, error: null });
+    assert.deepEqual(row.quiz_review, { reviewed: 3, flagged: 0, pending: 0, checks: { reviewed: 0, pending: 0, dropped: 0 }, status: null, error: null }, 'seeded sections have no quick checks');
     const student = (await t.call('GET', '/api/lessons', { as: 'P00' })).body.lessons.find((l) => l.id === lessonId);
     assert.equal(student.quiz_review, undefined, 'students never get it');
   });
@@ -260,6 +311,35 @@ describe('quiz review stage and Review again', () => {
     await runner.idle();
     assert.deepEqual(labels(ai).slice(before), ['the quiz review']);
     assert.equal(getJobStatus(t.db, lessonId).lesson.status, 'ready');
+  });
+
+  it('the sections’ quick checks are reviewed in the same stage, counted on the row, and in Review again', async () => {
+    const check = { question: 'What comes with each topic of the lesson?', answer: 'A right and a wrong answer.', evidence: 'with a right and a wrong answer' };
+    t.db.prepare('UPDATE sections SET check_questions = ? WHERE lesson_id = ? AND position = 0').run(JSON.stringify([check]), lessonId);
+    await call('POST', `/api/lessons/${lessonId}/quiz-options`);
+    await runner.idle();
+    assert.deepEqual(labels(ai), ['the quiz answer options', 'the quiz review', 'the quick check review']);
+    const row = async () => (await call('GET', '/api/lessons?counts=1')).body.lessons.find((l) => l.id === lessonId).quiz_review;
+    assert.deepEqual((await row()).checks, { reviewed: 1, pending: 0, dropped: 0 });
+
+    // a changed check is all Review quiz looks at
+    t.db.prepare('UPDATE sections SET check_questions = ? WHERE lesson_id = ? AND position = 0').run(JSON.stringify([{ ...check, question: 'What does each topic of the lesson come with?' }]), lessonId);
+    assert.deepEqual((await row()).checks, { reviewed: 0, pending: 1, dropped: 0 });
+    let before = ai.calls.length;
+    assert.equal((await call('POST', `/api/admin/lessons/${lessonId}/quiz-review`)).status, 202);
+    await runner.idle();
+    assert.deepEqual(labels(ai).slice(before), ['the quick check review']);
+
+    // nothing pending: Review again looks at the cards and the quick checks again
+    before = ai.calls.length;
+    await call('POST', `/api/admin/lessons/${lessonId}/quiz-review`);
+    await runner.idle();
+    assert.deepEqual(labels(ai).slice(before), ['the quiz review', 'the quick check review']);
+
+    // a lesson with quick checks and no quiz questions can still be reviewed
+    t.db.prepare('DELETE FROM flashcards WHERE lesson_id = ?').run(lessonId);
+    assert.equal((await call('POST', `/api/admin/lessons/${lessonId}/quiz-review`)).status, 202);
+    await runner.idle();
   });
 
   it('a failed review leaves the lesson ready and the job failed, for admin to retry', async () => {
