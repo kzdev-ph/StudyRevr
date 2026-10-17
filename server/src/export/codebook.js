@@ -138,6 +138,10 @@ quiz_answers.csv - one row per question of each attempt above
                     statement (true/false) is stored masked: where a definition names its term (or a form of it),
                     the term is written as ___, so the definition doesn't give the term away. The flashcard itself
                     is unchanged.
+                    Options are also stored as shown with their trailing punctuation made alike: when some
+                    options (or, for true/false, the statement and its sibling statements) end in a full stop,
+                    colon or ellipsis and others don't, that mark is taken off all of them, so the mark can't
+                    point at the right one. The flashcard and its saved wrong answers keep their text.
   chosen_answer, right_answer, correct (1/0; blank if not answered), time_ms on the question
 
 events.csv - self-monitoring events
