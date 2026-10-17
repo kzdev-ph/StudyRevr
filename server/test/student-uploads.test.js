@@ -8,7 +8,7 @@ import { createPipelineRunner } from '../src/pipeline/runner.js';
 import http from 'node:http';
 import { CARDS_FAILED_MESSAGE, PREPARE_FAILED_MESSAGE, UPLOAD_FAILED_MESSAGE } from '../src/services/lesson-access.js';
 import { BURST_MAX, QUEUE_LIMIT, createUploadGuard } from '../src/services/student-upload.js';
-import { addCodes, keepAllCandidates, quoteFromPrompt, seedLesson, startStudyApp, TEST_PIN } from './helpers.js';
+import { addCodes, cleanReview, keepAllCandidates, quoteFromPrompt, seedLesson, startStudyApp, TEST_PIN } from './helpers.js';
 
 // Phase 7B: students upload their own lessons (off by default). The switch, the limits, the content checks, the events,
 // the failure text, the delete and share rules, and one processing job at a time.
@@ -614,6 +614,7 @@ describe('student uploads', () => {
           else if (label.startsWith('the merged key terms')) value = keepAllCandidates(user);
           else if (label.startsWith('the key points') || label.startsWith('the merged')) value = { key_points: ['A takeaway.'] };
           else if (label.startsWith('the flashcards')) value = { cards: [] };
+          else if (label.startsWith('the quiz review')) value = cleanReview(user);
           else if (label.startsWith('the quiz')) value = { cards: [] };
           else value = { terms: [{ term: 'Term', definition: 'Defined.', evidence: quoteFromPrompt(user) }] };
           return schema.parse(value);

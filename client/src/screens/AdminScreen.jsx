@@ -40,7 +40,7 @@ function LessonsSection() {
   }, [load]);
   // keep refreshing while a lesson is being prepared, or its quiz answers or simpler / Taglish versions are being made
   const anyProcessing = lessons?.some(
-    (l) => l.status === 'processing' || RUNNING.includes(l.flashcards?.status) || RUNNING.includes(l.quiz_options?.status) || RUNNING.includes(l.section_versions?.status),
+    (l) => l.status === 'processing' || RUNNING.includes(l.flashcards?.status) || RUNNING.includes(l.quiz_options?.status) || RUNNING.includes(l.quiz_review?.status) || RUNNING.includes(l.section_versions?.status),
   );
   useEffect(() => {
     if (!anyProcessing) return undefined;
@@ -114,6 +114,16 @@ function LessonsSection() {
     await load();
   };
 
+  const reviewQuiz = async (id) => {
+    setProblem(null);
+    try {
+      await api.reviewQuiz(id);
+    } catch (err) {
+      setProblem(err.message);
+    }
+    await load();
+  };
+
   const makeQuizOptions = async (id) => {
     setProblem(null);
     try {
@@ -134,7 +144,7 @@ function LessonsSection() {
       {lessons?.length > 0 && (
         <ul className="lessons">
           {lessons.map((lesson) => (
-            <LessonRow key={lesson.id} lesson={lesson} admin onDelete={remove} onRetry={retryLesson} onShare={shareLesson} onMakeFlashcards={makeFlashcards} onMakeQuizOptions={makeQuizOptions} onPrepareVersions={prepareVersions} onCardsChanged={load} />
+            <LessonRow key={lesson.id} lesson={lesson} admin onDelete={remove} onRetry={retryLesson} onShare={shareLesson} onMakeFlashcards={makeFlashcards} onMakeQuizOptions={makeQuizOptions} onReviewQuiz={reviewQuiz} onPrepareVersions={prepareVersions} onCardsChanged={load} />
           ))}
         </ul>
       )}

@@ -85,7 +85,7 @@ lesson_events.csv - what happened to students' uploads, one row per event
   detail  lesson_uploaded: the file's extension only (.docx, .pptx or .pdf), never its name.  lesson_upload_failed: too_large | wrong_type | bad_signature (not a real
           docx/pptx/pdf) | wrong_content (a zip that is not a Word or PowerPoint file) | unreadable | no_text (nothing to
           read), or processing:<stage> when the AI pipeline failed on the lesson (stage: sections, key_points,
-          key_terms, flashcards, quiz_options) or processing:interrupted when the server stopped while it was being
+          key_terms, flashcards, quiz_options, quiz_review) or processing:interrupted when the server stopped while it was being
           prepared.
   lesson_id and lesson_title stay even after the lesson is deleted. A refused upload (switch off, daily limit) is not
   an upload and is not listed. The daily limit counts lesson_uploaded rows per study_date, so deleting a lesson does

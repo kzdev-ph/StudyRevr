@@ -8,6 +8,7 @@ export const STAGES = [
   { id: 'key_terms', doing: 'Finding the key terms', done: 'Key terms found' },
   { id: 'flashcards', doing: 'Making the flashcards', done: 'Flashcards made' },
   { id: 'quiz_options', doing: 'Preparing the quiz answers', done: 'Quiz answers ready' },
+  { id: 'quiz_review', doing: 'Checking the quiz questions', done: 'Quiz questions checked' },
 ];
 
 // Under the upload button: how many uploads the student has left today. `status` is GET /api/my-uploads.

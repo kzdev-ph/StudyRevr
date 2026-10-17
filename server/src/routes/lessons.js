@@ -11,6 +11,8 @@ import { PREPARE_FAILED_MESSAGE, ownerRecords, safeError } from '../services/les
 import { hasRecords, participantRecords } from '../services/lesson-records.js';
 import { logAdminEvent } from '../services/backup.js';
 import { missingVersions, versionCounts } from '../services/prepare-versions.js';
+import { checkSummary } from '../services/check-review.js';
+import { reviewSummary } from '../services/quiz-review.js';
 import { parseFilipino, parseSimple } from '../services/section-versions.js';
 import { getBoolSetting, uploadsPerDay } from '../services/settings.js';
 import { assertCanUpload, assertQueueRoom, assertUploadsOn, createUploadGuard, logLessonEvent, uploadStatus, uploadsUsedToday } from '../services/student-upload.js';
@@ -202,7 +204,8 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin, { ac
   // Filipino-Taglish versions still missing (`missing` of `total`, two per section) and, when the last job was making
   // them ("Prepare"), its `status`, `error` and `progress`. `flashcards` (admin's list only): how many cards the lesson
   // has and, when the last job was making them, its `status` and `error` (the "Make cards" button, which used to be on
-  // the Flashcard tab: admin keeps the PIN only on the admin screens).
+  // the Flashcard tab: admin keeps the PIN only on the admin screens). `quiz_review` (admin's list only): the AI exam
+  // reviewer's cards `reviewed`, `flagged` (left out in part or whole) and `pending`, and its job's `status` and `error`.
   const quizOptionCounts = (lessonId) => {
     const missing = cardsNeedingDistractors(db, lessonId).length;
     return { missing, weak: cardsNeedingDistractors(db, lessonId, { includeFailing: true }).length - missing };
@@ -223,6 +226,7 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin, { ac
         const own = job?.stage === 'quiz_options';
         const preparing = job?.stage === 'section_versions';
         const making = job?.stage === 'flashcards';
+        const reviewing = job?.stage === 'quiz_review';
         const row = shape(lesson, viewer);
         return {
           ...row,
@@ -231,6 +235,7 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin, { ac
           ...(counts && {
             quiz_options: { ...quizOptionCounts(lesson.id), status: own ? job.status : null, error: own ? job.error : null },
             leaks: { cards: leakyCards(lesson.id) },
+            quiz_review: { ...reviewSummary(db, lesson.id), checks: checkSummary(db, lesson.id), status: reviewing ? job.status : null, error: reviewing ? job.error : null },
             flashcards: { total: cardTotals.get(lesson.id) ?? 0, status: making ? job.status : null, error: making ? job.error : null },
           }),
           section_versions: {

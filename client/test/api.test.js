@@ -10,7 +10,7 @@ import { getParticipant, setParticipant, switchParticipant } from '../src/lib/pa
 
 // always admin: they send the PIN
 const ADMIN = [
-  'listLessonsWithCounts', 'shareLesson', 'makeQuizOptions', 'lessonLeaks', 'regenerateCard', 'prepareVersions', 'makeFlashcards',
+  'listLessonsWithCounts', 'shareLesson', 'makeQuizOptions', 'reviewQuiz', 'lessonLeaks', 'regenerateCard', 'prepareVersions', 'makeFlashcards',
   'adminParticipants', 'addParticipants', 'adminStats', 'appSettings', 'saveAppSettings', 'aiSettings', 'saveAiSettings', 'aiModels',
   'testAi', 'aiProblems', 'deleteStudentKeys', 'downloadBackup', 'lastBackup', 'downloadExport',
 ];

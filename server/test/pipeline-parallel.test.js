@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { AiError } from '../src/ai/client.js';
 import { keyPointsPrompt, keyTermsMergePrompt, keyTermsPrompt, sectionsPrompt } from '../src/ai/prompts.js';
 import { openDb, runMigrations } from '../src/db/index.js';
-import { generateKeyTerms, targetSectionCount } from '../src/pipeline/generate.js';
+import { generateKeyTerms, sectionRange, targetSectionCount } from '../src/pipeline/generate.js';
 import { getJobStatus, queueJob } from '../src/pipeline/jobs.js';
-import { keepAllCandidates, quoteFromPrompt } from './helpers.js';
+import { cleanCheckReview, cleanReview, groundedChecks, keepAllCandidates, quoteFromPrompt } from './helpers.js';
 import { createPipelineRunner } from '../src/pipeline/runner.js';
 
 const quiet = { error() {}, warn() {}, log() {} };
@@ -33,13 +33,17 @@ function timedAi({ delay = () => 3, fail } = {}) {
       log.finished.push(label);
       let value;
       if (label.startsWith('the review sections')) {
-        value = { sections: [{ title: `S ${label}`, content: `Content for ${label}, long enough.`, check_questions: [{ question: 'Q?', answer: 'A.' }] }] };
+        value = { sections: [{ title: `S ${label}`, content: `Content for ${label}, long enough.`, check_questions: groundedChecks(user, 1) }] };
       } else if (label.startsWith('the merged key terms')) {
         value = keepAllCandidates(user);
       } else if (label.startsWith('the key points') || label.startsWith('the merged')) {
         value = { key_points: [`Takeaway from ${label}.`] };
       } else if (label.startsWith('the flashcards')) {
         value = { cards: [] };
+      } else if (label.startsWith('the quiz review')) {
+        value = cleanReview(user);
+      } else if (label.startsWith('the quick check review')) {
+        value = cleanCheckReview(user);
       } else {
         const evidence = quoteFromPrompt(user);
         value = { terms: [{ term: `Term ${n}`, definition: `Defined by ${label}.`, evidence }, { term: 'Shared', definition: 'Same everywhere.', evidence }] };
@@ -348,10 +352,24 @@ describe('prompts', () => {
   });
 
   it('sections: aims for a section count that scales with the chunk size', () => {
-    assert.match(sectionsPrompt({ text, index: 0, total: 1, summaryLength: 'detailed', targetSections: 1 }).system, /about 1 section for the text/);
-    assert.match(sectionsPrompt({ text, index: 0, total: 1, summaryLength: 'detailed', targetSections: 40 }).system, /about 40 sections/);
+    assert.match(sectionsPrompt({ text, index: 0, total: 1, summaryLength: 'detailed', targetSections: 1 }).system, /about 1 section for the text/i);
+    assert.match(sectionsPrompt({ text, index: 0, total: 1, summaryLength: 'detailed', targetSections: 40 }).system, /about 40 sections/i);
+    assert.match(sectionsPrompt({ text, index: 0, total: 1, summaryLength: 'detailed', minSections: 3, maxSections: 6 }).system, /between 3 and 6 sections/);
     assert.equal(targetSectionCount(10), 1);
     assert.equal(targetSectionCount(2000), 4);
     assert.equal(targetSectionCount(30_000), 54, 'a ~30000-token Gemini chunk is ~15000 words');
+  });
+
+  it('sections: the range follows the lesson structure, never folding separate slides into one section', () => {
+    // the self-introduction deck: 7 slides, ~300 words with notes -> 4 to 6 sections (it used to get 1)
+    assert.deepEqual(sectionRange({ tokens: 628, numbers: [1, 2, 3, 4, 5, 6, 7], text: '' }), { min: 4, max: 6 });
+    // 40 slides, ~2000 words: at least the size-based count, at most one per slide
+    const deck = sectionRange({ tokens: 4000, numbers: Array.from({ length: 40 }, (_, i) => i + 1), text: '' });
+    assert.ok(deck.min >= targetSectionCount(4000) && deck.min <= 20 && deck.max <= 40, JSON.stringify(deck));
+    // a Word lesson: its topics are its heading-like paragraphs
+    const doc = ['Introduction', 'Some text here.', 'Methods', 'More text.', 'Results', 'Text.'].join('\n\n');
+    assert.deepEqual(sectionRange({ tokens: 900, text: doc }), { min: 2, max: 3 });
+    // one long page of prose: the size-based target
+    assert.deepEqual(sectionRange({ tokens: 2000, numbers: [1], text: '' }), { min: 4, max: 4 });
   });
 });

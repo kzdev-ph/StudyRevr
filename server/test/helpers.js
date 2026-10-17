@@ -39,6 +39,18 @@ export const schema = z.object({ answer: z.string().min(1), n: z.number() });
 export const quoteFromPrompt = (user, words = 6) =>
   (/<lesson_text>\n([^]*?)\n<\/lesson_text>/.exec(user)?.[1] ?? '').split(/\s+/).slice(0, words).join(' ');
 
+// Quick checks a sections mock can return that pass the grounding in code (pipeline/quick-checks.js): each quotes the
+// start of the lesson text in the prompt (its [Slide N] labels left out) and answers with words of that quote.
+export const groundedChecks = (user, n = 2) => {
+  const text = (/<lesson_text>\n([^]*?)\n<\/lesson_text>/.exec(user)?.[1] ?? '').replace(/^\[(?:Slide|Page|Paragraph) \d+\]\n/gm, '');
+  const quote = text.split(/\s+/).slice(0, 8).join(' ');
+  const words = quote.split(' ');
+  return Array.from({ length: n }, (_, i) => ({ question: `Question ${i + 1}?`, answer: `${words.slice(i + 1, i + 4).join(' ')}.`, evidence: quote }));
+};
+
+// A quick-check review mock (services/check-review.js) that flags nothing: one clean entry per section in the prompt.
+export const cleanCheckReview = (user) => ({ sections: [...user.matchAll(/^\[(\d+)\] Section:/gm)].map((m) => ({ n: Number(m[1]), checks: [] })) });
+
 // A key-terms merge mock that keeps every candidate, in the order given (version 1 each).
 export const keepAllCandidates = (user) => ({ terms: [...user.matchAll(/^\[(\d+)\] /gm)].map((m) => ({ id: Number(m[1]) })) });
 
@@ -125,3 +137,9 @@ export function liveRoutes(app) {
   walk(app.router.stack, '');
   return { routes, untagged };
 }
+
+// A quiz-review mock (services/quiz-review.js) that flags nothing: one clean entry per item in the prompt.
+export const cleanReview = (user) => ({
+  items: [...user.matchAll(/^\[(\d+)\] (?:Term|Concept) card/gm)].map((m) => ({ n: Number(m[1]), card: [], set: [], true_statement: [], options: [] })),
+  families: [],
+});

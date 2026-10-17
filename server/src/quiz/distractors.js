@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { mapLimit } from '../ai/pool.js';
 import { distractorsPrompt } from '../ai/prompts.js';
 import { quizCandidates, usableWrong } from './build.js';
+import { listGroups, siblingItems } from './list-items.js';
 import { answerInQuestion, cardLeaks, language, lessonWords as lessonWordsOf, optionSetProblems, wrongOptionProblems } from './leaks.js';
 
 // Wrong answer options for a lesson's concept cards: made by the AI as the last step of lesson processing (the
@@ -52,13 +53,16 @@ export function cardsNeedingDistractors(db, lessonId, { includeFailing = false }
        LEFT JOIN quiz_distractors d ON d.flashcard_id = f.id WHERE f.lesson_id = ? AND f.kind = 'concept' ORDER BY f.position, f.id`,
     )
     .all(lessonId);
-  // a card whose question holds its answer (a) or whose answer only restates it (k) is never asked: no wrong answers
-  const askable = (r) => !answerInQuestion(r.front, r.back) && !cardLeaks(r).some((p) => p.rule === 'k');
+  // a card whose question holds its answer (a) or whose answer only restates it (k) is never asked: no wrong answers;
+  // nor a list item, whose wrong options are the other items of its list (quiz/list-items.js)
+  const lessonText = lessonTextOf(db, lessonId);
+  const groups = listGroups(lessonText);
+  const askable = (r) => !answerInQuestion(r.front, r.back) && !cardLeaks(r).some((p) => p.rule === 'k') && !siblingItems(groups, r.back);
   if (!includeFailing) return rows.filter((r) => !r.has_saved && askable(r)).map(cardFields);
-  const candidates = quizCandidates(rows, { distractors: loadDistractors(db, lessonId), lessonText: lessonTextOf(db, lessonId) });
+  const candidates = quizCandidates(rows, { distractors: loadDistractors(db, lessonId), lessonText });
   const failing = new Set(
     candidates
-      .filter((p) => p.card.has_saved && !p.card.settled && p.mcClean.length < WRONG_PER_QUESTION && !p.problems.some((x) => x.rule === 'a' || x.rule === 'k'))
+      .filter((p) => p.card.has_saved && !p.card.settled && p.mcClean.length < WRONG_PER_QUESTION && askable(p.card))
       .map((p) => p.card.id),
   );
   return rows.filter((r) => (!r.has_saved && askable(r)) || failing.has(r.id)).map(cardFields);
@@ -101,7 +105,7 @@ export function checkWrong(list, correct, lessonWords = null, otherAnswers = [])
 // One call for `cards`. `earlier` (card id -> the first try's result) makes it the follow-up: the prompt shows what
 // was rejected and why, and the clean answers from the first try are kept behind the new ones.
 // -> [{ card, wrong, ok, problems, clean, rejected }]
-async function makeBatch({ ai, cards, keyTerms, answers, lessonWords, earlier = null }) {
+async function makeBatch({ ai, cards, keyTerms, answers, lessonWords, earlier = null, label: callLabel = null }) {
   const numbered = cards.map((c, i) => {
     const before = earlier?.get(c.id);
     return {
@@ -115,7 +119,7 @@ async function makeBatch({ ai, cards, keyTerms, answers, lessonWords, earlier = 
     };
   });
   const { system, user } = distractorsPrompt({ cards: numbered, keyTerms });
-  const label = earlier ? 'the quiz answer options (second try)' : 'the quiz answer options';
+  const label = callLabel ?? (earlier ? 'the quiz answer options (second try)' : 'the quiz answer options');
   const reply = await ai.generateJSON({ system, user, schema: replySchema, responseSchema, maxTokens: 4000, label });
   const byN = new Map(reply.items.map((item) => [item.n, item.wrong]));
   return cards.map((card, i) => {
@@ -147,6 +151,46 @@ export function ensureDistractors(options) {
   return entry.promise;
 }
 
+// Saves each card's new wrong answers. A card deleted or written again while the call ran (lesson deleted, cards remade,
+// "Regenerate this card") is skipped: these wrong answers were made for its old text. -> how many were saved
+function saveResults(db, results, now) {
+  const save = db.prepare('INSERT OR REPLACE INTO quiz_distractors (flashcard_id, choices, made_at, settled) VALUES (?, ?, ?, ?)');
+  let made = 0;
+  db.transaction(() => {
+    for (const { card, wrong, settled } of results) {
+      const nowCard = db.prepare('SELECT front, back FROM flashcards WHERE id = ?').get(card.id);
+      if (nowCard?.front === card.front && nowCard.back === card.back) made += save.run(card.id, JSON.stringify(wrong), now().toISOString(), settled ? 1 : 0).changes;
+    }
+  })();
+  return made;
+}
+
+// The AI review's one fix for wrong answers it flagged (services/quiz-review.js): ONE call per batch, like the
+// follow-up above, with the reviewer's reasons as the rejected answers and the unflagged ones kept. Whatever is
+// clean is saved; a set still not clean is settled. `fixes`: [{ card: { id, front, back, evidence }, keep: [text],
+// rejected: [{ text, why }] }]. -> { made, error }
+export async function remakeFlagged({ db, ai, lessonId, fixes, concurrency = 1, batchSize = BATCH_SIZE, now = () => new Date(), log = console }) {
+  if (!fixes.length) return { made: 0, error: null };
+  const lessonWords = lessonWordsOf(lessonTextOf(db, lessonId));
+  const keyTerms = db.prepare('SELECT term FROM key_terms WHERE lesson_id = ? ORDER BY id').all(lessonId).map((t) => t.term);
+  const answers = db.prepare("SELECT id, back FROM flashcards WHERE lesson_id = ? AND kind <> 'term'").all(lessonId);
+  const batches = [];
+  for (let i = 0; i < fixes.length; i += batchSize) batches.push(fixes.slice(i, i + batchSize));
+  let made = 0;
+  let error = null;
+  await mapLimit(batches, concurrency, async (batch) => {
+    try {
+      const earlier = new Map(batch.map((x) => [x.card.id, { clean: x.keep, rejected: x.rejected, problems: [] }]));
+      const results = await makeBatch({ ai, cards: batch.map((x) => x.card), keyTerms, answers, lessonWords, earlier, label: 'the quiz answer options (after review)' });
+      made += saveResults(db, results.map((r) => ({ ...r, settled: !r.ok })), now);
+    } catch (err) {
+      error ??= err.message;
+      log.warn(`[quiz-review] lesson ${lessonId}: remaking ${batch.length} flagged set(s) failed: ${err.message}`);
+    }
+  });
+  return { made, error };
+}
+
 async function makeDistractors({ db, ai, lessonId, includeFailing = false, concurrency = 1, batchSize = BATCH_SIZE, now = () => new Date(), log = console, onProgress }) {
   const cards = cardsNeedingDistractors(db, lessonId, { includeFailing });
   if (!cards.length) return { made: 0, error: null };
@@ -157,7 +201,6 @@ async function makeDistractors({ db, ai, lessonId, includeFailing = false, concu
   const batches = [];
   for (let i = 0; i < cards.length; i += batchSize) batches.push(cards.slice(i, i + batchSize));
 
-  const save = db.prepare('INSERT OR REPLACE INTO quiz_distractors (flashcard_id, choices, made_at, settled) VALUES (?, ?, ?, ?)');
   let made = 0;
   let error = null;
   let done = 0;
@@ -181,14 +224,7 @@ async function makeDistractors({ db, ai, lessonId, includeFailing = false, concu
           log.warn(`[quiz] lesson ${lessonId}: the second try for ${retry.length} card(s) failed: ${err.message}`);
         }
       }
-      db.transaction(() => {
-        // a card deleted or written again while the call ran (lesson deleted, cards remade, "Regenerate this card") is
-        // skipped: these wrong answers were made for its old text
-        for (const { card, wrong, settled } of results) {
-          const nowCard = db.prepare('SELECT front, back FROM flashcards WHERE id = ?').get(card.id);
-          if (nowCard?.front === card.front && nowCard.back === card.back) made += save.run(card.id, JSON.stringify(wrong), now().toISOString(), settled ? 1 : 0).changes;
-        }
-      })();
+      made += saveResults(db, results, now);
       const short = results.filter((r) => !r.ok).length;
       if (short) log.warn(`[quiz] lesson ${lessonId}: ${short} card(s) got no clean set of 3 wrong answers; they are asked as true / false`);
     } catch (err) {

@@ -57,7 +57,7 @@ export function createApp(db, config, { ai, runner, clock = () => new Date(), ra
   };
 
   app.get('/api/health', (_req, res) => res.json({ ok: true, admin: Boolean(config.adminPin) }));
-  mount('/api/admin', adminRouter({ db, ai, clock, requireAdmin }));
+  mount('/api/admin', adminRouter({ db, ai, runner, clock, requireAdmin }));
   mount('/api', participantsRouter({ db }));
   mount('/api', sessionsRouter({ db, clock, access }));
   mount('/api', statsRouter({ db, clock }));

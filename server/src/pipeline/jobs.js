@@ -3,9 +3,11 @@ import { logLessonEvent } from '../services/student-upload.js';
 // Job bookkeeping. One `jobs` row per lesson run: `stage` is where it is (or stopped), `status` is
 // queued | running | done | failed. The lesson row mirrors the outcome (processing | ready | failed).
 
-// `quiz_options` (the AI's wrong answers for the mock quiz) comes last. A lesson stays usable if it fails: only the
-// job records the failure, and the quiz makes the options itself when first started.
-export const STAGES = ['sections', 'key_points', 'key_terms', 'flashcards', 'quiz_options'];
+// `quiz_options` (the AI's wrong answers for the mock quiz) and `quiz_review` (the AI exam reviewer's pass over every
+// quiz item, services/quiz-review.js) come last. A lesson stays usable if either fails: only the job records the
+// failure, the quiz makes missing options itself when first started, and an unreviewed card is asked as the code checks
+// allow.
+export const STAGES = ['sections', 'key_points', 'key_terms', 'flashcards', 'quiz_options', 'quiz_review'];
 
 // Steps admin runs on a ready lesson when wanted, never as part of processing: `section_versions` makes the shared
 // Explain simpler and Filipino/Taglish versions of every section ahead of study day ("Prepare"). A job queued at one

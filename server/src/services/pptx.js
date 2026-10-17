@@ -5,6 +5,23 @@ const NOTES_LABEL = 'Notes:';
 
 const clean = (s) => (typeof s === 'string' ? s.replace(/\s+/g, ' ').trim() : '');
 
+// OOXML writes characters XML can't hold as _xHHHH_ (a vertical tab, a soft return inside a run, is _x000B_).
+const decodeOoxml = (s) => String(s ?? '').replace(/_x([0-9a-f]{4})_/gi, (_, h) => String.fromCharCode(parseInt(h, 16)));
+// Two sentences with no space between them ("trust.Share your background.") are two lines that lost their break:
+// officeparser joins the runs of a paragraph as they are, so a bullet typed or pasted without its break arrives glued.
+// Split after a word ending in two lowercase letters and . ! or ?, before a capitalised word, so "e.g.The" and
+// "St.Mary" stay whole.
+const GLUED = /(?<=\p{Ll}{2}[.!?])(?=\p{Lu}\p{Ll})/u;
+
+// The lines one paragraph or list item really holds: a soft return ("\n", a vertical tab, a line separator) or two
+// glued sentences start a new line. Empty pieces are dropped.
+export const textLines = (text) =>
+  decodeOoxml(text)
+    .split(/[\n\v\u2028]/)
+    .flatMap((part) => part.split(GLUED))
+    .map(clean)
+    .filter(Boolean);
+
 // A typed bullet glyph ("• item") or dash ("- item") at the start of a list item; we add our own "- " prefix.
 const TYPED_BULLET = /^(?:[•●▪■◦‣»]\s*|[-–]\s+)/;
 // Compares lines regardless of list prefixes so the same text isn't added twice.
@@ -16,13 +33,16 @@ function nodeLines(node, out = []) {
     case 'paragraph':
     case 'heading': // title placeholders
       // a soft line break inside a paragraph arrives as "\n"; keep each side as its own line
-      for (const part of String(node.text ?? '').split('\n')) if (clean(part)) out.push(clean(part));
+      out.push(...textLines(node.text));
       break;
     case 'list': {
-      const text = clean(node.text).replace(TYPED_BULLET, '');
-      if (!text) break;
+      // every line of a bullet is a bullet of its own ("- Build trust.", "- Share your background."); an ordered
+      // item keeps its number on its first line, the rest follow as plain lines
+      const lines = textLines(node.text).map((l) => l.replace(TYPED_BULLET, '')).filter(Boolean);
+      if (!lines.length) break;
       const { listType, itemIndex = 0 } = node.metadata ?? {};
-      out.push(listType === 'ordered' ? `${itemIndex + 1}. ${text}` : `- ${text}`);
+      if (listType === 'ordered') out.push(`${itemIndex + 1}. ${lines[0]}`, ...lines.slice(1));
+      else out.push(...lines.map((l) => `- ${l}`));
       break;
     }
     case 'table':
@@ -59,7 +79,8 @@ export function drawingMlLines(xml) {
   for (const para of xml.matchAll(/<a:p[ >][\s\S]*?<\/a:p>/g)) {
     for (const segment of para[0].split(/<a:br\b[^>]*?(?:\/>|>[\s\S]*?<\/a:br>)/)) {
       const text = [...segment.matchAll(/<a:t(?: [^>]*)?>([^<]*)<\/a:t>/g)].map((m) => decodeEntities(m[1])).join('');
-      if (clean(text)) lines.push(clean(text));
+      // a raw newline inside <a:t> is only XML whitespace (a real break is <a:br> or _x000B_)
+      lines.push(...textLines(clean(text)));
     }
   }
   return lines;

@@ -8,7 +8,10 @@ import { lastBackup, logAdminEvent, makeBackup, removeTemp } from '../services/b
 import { addParticipants, findParticipant, parseCodeList, UNKNOWN_CODE } from '../participants/codes.js';
 import { defaultAiProblems } from '../services/ai-problems.js';
 import { lessonLeakReport } from '../quiz/check.js';
+import { getJobStatus, queueJob } from '../pipeline/jobs.js';
 import { regenerateBlock, regenerateCard } from '../services/regenerate-card.js';
+import { checkItems, checksToReview, resetChecks } from '../services/check-review.js';
+import { itemsToReview, resetReviews, reviewItems } from '../services/quiz-review.js';
 import { deleteAllStudentKeys } from '../services/student-ai.js';
 import { participantStats, summaryTable } from '../stats/participant.js';
 
@@ -21,7 +24,7 @@ const parseId = (value, what) => {
 };
 
 // The researcher's admin area. Every route here sits behind requireAdmin (ADMIN_PIN). Mounted at /api/admin.
-export function adminRouter({ db, ai, clock = () => new Date(), requireAdmin, log = console }) {
+export function adminRouter({ db, ai, runner, clock = () => new Date(), requireAdmin, log = console }) {
   const router = Router();
   router.use(requireAdmin);
   const opts = (req) => ({ now: clock(), config: loadSchedulerConfig(db), includeP00: ['1', 'true', 'yes'].includes(String(req.query.include_p00 ?? '')) });
@@ -113,6 +116,28 @@ export function adminRouter({ db, ai, clock = () => new Date(), requireAdmin, lo
     } catch (e) {
       next(e);
     }
+  });
+
+  // "Review quiz" / "Review again": with cards or quick checks not reviewed yet (or changed since), the AI exam reviewer
+  // looks at just those; with none, at every quiz item and quick check of the lesson again, with one more round of
+  // making the flagged parts again (services/quiz-review.js, services/check-review.js). A job at the quiz_review stage; the lesson stays ready.
+  router.post('/lessons/:id/quiz-review', (req, res) => {
+    const lessonId = parseId(req.params.id, 'Lesson');
+    const status = getJobStatus(db, lessonId);
+    if (!status) throw new HttpError(404, 'Lesson not found.');
+    if (status.lesson.status !== 'ready') throw new HttpError(409, 'The quiz can be reviewed once the lesson has finished processing.');
+    if (status.job && ['queued', 'running'].includes(status.job.status)) throw new HttpError(409, 'This lesson is already being worked on.');
+    if (!reviewItems(db, lessonId).length && !checkItems(db, lessonId).length) throw new HttpError(409, 'This lesson has no quiz questions to review.');
+    db.transaction(() => {
+      // the cards and the sections' quick checks together: anything not reviewed yet first, else everything again
+      if (!itemsToReview(db, lessonId).length && !checksToReview(db, lessonId).length) {
+        resetReviews(db, lessonId);
+        resetChecks(db, lessonId);
+      }
+      queueJob(db, lessonId, { stage: 'quiz_review', keepLesson: true });
+    })();
+    runner.enqueue(lessonId);
+    res.status(202).json(getJobStatus(db, lessonId));
   });
 
   // When the last backup was downloaded: { last: { file, created_at } | null }

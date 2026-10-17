@@ -106,6 +106,8 @@ export const api = {
   retryLesson: (id, { admin = false } = {}) => request(`/lessons/${id}/retry`, { method: 'POST', admin }),
   // makes the AI wrong answers for the quiz (the retry for that step, and for lessons made before it existed)
   makeQuizOptions: (id) => request(`/lessons/${id}/quiz-options`, { method: 'POST', admin: true }),
+  // the AI exam reviewer looks at every quiz item again ("Review again")
+  reviewQuiz: (id) => request(`/admin/lessons/${id}/quiz-review`, { method: 'POST', admin: true }),
   // admin ({ admin: true }), or a student deleting their own upload before they have studied it
   deleteLesson: (id, { admin = false } = {}) => request(`/lessons/${id}`, { method: 'DELETE', admin }),
   // flashcards and quiz questions that give their answer away, and writing one card again (only before participants study it)

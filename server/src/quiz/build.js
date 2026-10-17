@@ -1,5 +1,8 @@
 import { termKey } from '../pipeline/terms.js';
 import { answerInQuestion, cardLeaks, falseStatementProblems, lessonWords as lessonWordsOf, maskTerm, optionSetProblems, sharesWord, termInText, wrongOptionProblems } from './leaks.js';
+import { listGroups, sameItem, siblingItems } from './list-items.js';
+import { familyIndex, relatedTerms } from './related.js';
+import { describe, optionFlags, reviewFor } from './review-flags.js';
 
 // Turning a lesson's flashcards into quiz questions. Pure: the caller passes the cards, the saved wrong answers and a
 // `random` function (tests pass a seeded one), so the same inputs always give the same quiz.
@@ -9,6 +12,8 @@ import { answerInQuestion, cardLeaks, falseStatementProblems, lessonWords as les
 //   concept card  multiple choice with the 3 wrong answers the AI made for it (quiz_distractors). With fewer:
 //                 true / false, where the false statement is a saved wrong answer or, with none saved, another concept
 //                 card's answer on the same subject (sharing a word with the question).
+//   list item     a concept card whose answer is an item of a list in the lesson (3 or more bullets on one slide): the
+//                 wrong options and false statements are the other items of that list (list-items.js), no AI call.
 // About 3 in 10 questions are true / false for variety, even when every card could be multiple choice.
 //
 // Nothing that gives its answer away is asked (see leaks.js): a concept card whose question holds its answer is
@@ -16,6 +21,11 @@ import { answerInQuestion, cardLeaks, falseStatementProblems, lessonWords as les
 // the other way or not at all. A definition that holds its own term is shown with the term blanked ("___"), and is
 // checked again after blanking: one that still shows the term is not asked. So a lesson whose cards can't fill 10
 // clean questions gets a shorter quiz instead of leaking ones.
+//
+// A related term (one holds the other, "Self-Introduction" and "Written Self-Introduction", or the AI review put them
+// in one family) is never a wrong option or false statement for the other (related.js). What the AI exam reviewer
+// flagged (review-flags.js) is left out: a flagged card is not asked, a flagged option or false statement is not shown,
+// a flagged set is not asked as multiple choice and a flagged true statement not as Yes/No.
 
 export const QUIZ_LENGTH = 10;
 export const TF_SHARE = 0.3;
@@ -58,10 +68,14 @@ function arrange(correct, wrong, random) {
 // What each card could be asked as, before and after the leak checks:
 //   { card, shown (the text shown for its answer: a term's definition with the term blanked, else the answer),
 //     mcWrong / falsePool (every candidate), mcClean / falseClean (what passed), problems (why the card itself or
-//     its option set can't be used: [{ rule, detail }]) }
+//     its option set can't be used: [{ rule, detail }]), reviewable (the wrong options and false statements that passed
+//     the code checks: what the AI reviewer is shown), mcCode (the wrong options of those, for multiple choice), excluded ([{ text, rule, detail }]: left out as a related term,
+//     rule r, or flagged by the AI reviewer, rule ai; text null for a flag on the whole set or the true statement) }
 // `npm run quiz:check` reports the candidates; the quiz only uses mcClean and falseClean.
-export function quizCandidates(cards, { distractors = new Map(), extraTerms = [], lessonText = null } = {}) {
+// termFamilies: [[term, ...]] from the AI review; reviews: Map card id -> readReview(row) (review-flags.js).
+export function quizCandidates(cards, { distractors = new Map(), extraTerms = [], lessonText = null, termFamilies = [], reviews = new Map() } = {}) {
   const lessonWords = lessonWordsOf(lessonText);
+  const families = familyIndex(termFamilies);
   const names = new Map(); // termKey -> spelling, from term cards first, then key terms without a card
   for (const name of [...cards.filter((c) => c.kind === 'term').map((c) => c.front), ...extraTerms]) {
     const key = termKey(name);
@@ -71,25 +85,55 @@ export function quizCandidates(cards, { distractors = new Map(), extraTerms = []
   const conceptCards = cards.filter((c) => c.kind !== 'term');
   const masked = new Map(termCards.map((c) => [c.id, maskTerm(c.back, c.front)]));
   const shown = (card) => (card.kind === 'term' ? masked.get(card.id) : card.back);
+  const blanked = (card) => masked.get(card.id) !== card.back;
   // checked again after blanking: a definition that still shows its term is neither asked nor used as a false statement
   const stillShows = new Map(termCards.map((c) => [c.id, termInText(c.front, masked.get(c.id))]));
+  const groups = listGroups(lessonText);
 
   return cards.map((card) => {
+    const review = reviewFor(reviews, card);
+    const excluded = [];
+    // the reviewer's verdict on one option: a flagged one is left out (and listed in `excluded`)
+    const passesReview = (text) => {
+      const flags = optionFlags(review, text);
+      if (flags.length) excluded.push({ text, rule: 'ai', detail: describe(flags) });
+      return !flags.length;
+    };
+    // what the reviewer said about the card as a whole, its multiple-choice set and its true statement
+    const reviewProblems = review?.card.length ? [{ rule: 'ai', detail: describe(review.card) }] : [];
+    const setFlagged = Boolean(review?.set.length);
+    const trueFlagged = Boolean(review?.trueStatement.length);
+    if (setFlagged) excluded.push({ text: null, rule: 'ai', detail: `multiple choice: ${describe(review.set)}` });
+    if (trueFlagged) excluded.push({ text: null, rule: 'ai', detail: `Yes/No: ${describe(review.trueStatement)}` });
+
     if (card.kind === 'term') {
       const visible = stillShows.get(card.id);
-      if (visible) return { card, shown: shown(card), mcWrong: [], mcClean: [], falsePool: [], falseClean: [], problems: [{ rule: 'd', detail: `the term still shows after blanking (${visible.join(', ')})` }] };
+      if (visible) return { card, shown: shown(card), mcWrong: [], mcClean: [], falsePool: [], falseClean: [], reviewable: [], mcCode: [], excluded, problems: [{ rule: 'd', detail: `the term still shows after blanking (${visible.join(', ')})` }] };
       const own = termKey(card.front);
+      // a related term is not wrong for this definition: never offered, never used as a false statement
+      const unrelated = (name, text = name) => {
+        if (!relatedTerms(card.front, name, families)) return true;
+        excluded.push({ text, rule: 'r', detail: `a related term (${name})` });
+        return false;
+      };
       const mcWrong = usableWrong(
         [...names].filter(([key]) => key !== own).map(([, name]) => name),
         card.front,
         Infinity,
-      );
+      ).filter((name) => unrelated(name));
       // only other definitions: another kind of card's answer under "Does this describe X?" is plainly not a definition.
       // Rule e as for concept cards: not one that names the asked term, is negative beside a positive definition, is in
       // another language or is nearly this card's own definition.
-      const falsePool = usableWrong(termCards.filter((c) => c.id !== card.id && !stillShows.get(c.id)).map(shown), shown(card), Infinity);
-      const falseClean = falsePool.filter((s) => !termInText(card.front, s) && !falseStatementProblems(s, shown(card)).length);
-      return { card, shown: shown(card), mcWrong, mcClean: mcWrong, falsePool, falseClean, problems: [] };
+      // Another term's blanked definition ("presented in ___ form") is never a false statement: under "Does this
+      // describe Oral Self-Introduction?" the gap reads as a misprint and points at No.
+      const others = termCards.filter((c) => c.id !== card.id && !stillShows.get(c.id) && !blanked(c) && unrelated(c.front, shown(c)));
+      const falsePool = usableWrong(others.map(shown), shown(card), Infinity);
+      const falseCode = falsePool.filter((s) => !termInText(card.front, s) && !falseStatementProblems(s, shown(card)).length);
+      const reviewable = [...new Set([...mcWrong, ...falseCode])];
+      if (reviewProblems.length) return { card, shown: shown(card), mcWrong, mcClean: [], falsePool, falseClean: [], reviewable, mcCode: mcWrong, excluded, problems: reviewProblems };
+      const mcClean = setFlagged ? [] : mcWrong.filter(passesReview);
+      const falseClean = trueFlagged ? [] : falseCode.filter(passesReview);
+      return { card, shown: shown(card), mcWrong, mcClean, falsePool, falseClean, reviewable, mcCode: mcWrong, excluded, problems: [] };
     }
 
     const problems = [];
@@ -97,12 +141,17 @@ export function quizCandidates(cards, { distractors = new Map(), extraTerms = []
     if (given) problems.push({ rule: 'a', detail: given });
     problems.push(...cardLeaks(card).filter((p) => p.rule === 'k'));
 
-    const saved = usableWrong(distractors.get(card.id), card.back);
-    const otherAnswers = conceptCards.filter((c) => c.id !== card.id).map((c) => c.back);
+    // a list item's wrong options are the other items of its list (list-items.js), not saved AI ones; those items are
+    // other cards' answers too, which is accepted here as for term cards (they don't answer this question)
+    const siblings = siblingItems(groups, card.back);
+    const saved = siblings ? usableWrong(siblings, card.back, Infinity) : usableWrong(distractors.get(card.id), card.back);
+    const otherAnswers = conceptCards.filter((c) => c.id !== card.id && !(siblings && siblings.some((s) => sameItem(s, c.back)))).map((c) => c.back);
     const savedClean = saved.filter((w) => !wrongOptionProblems(w, card.back, { lessonWords, otherAnswers }).length);
-    const setProblems = savedClean.length >= WRONG_PER_QUESTION ? optionSetProblems(card.front, card.back, savedClean, { lessonWords }) : [];
-    problems.push(...setProblems);
-    const mcClean = !given && !problems.length && savedClean.length >= WRONG_PER_QUESTION ? savedClean : [];
+    const reviewedClean = savedClean.filter(passesReview);
+    // with more than 3 siblings: the first 3 that make a set where the right answer doesn't stand out
+    const set = pickSet(card, reviewedClean, lessonWords);
+    problems.push(...set.problems, ...reviewProblems);
+    const mcClean = !given && !setFlagged && !problems.length && set.wrong.length >= WRONG_PER_QUESTION ? set.wrong : [];
 
     // without saved wrong answers, other concept answers on the same subject; one about something else is plainly "No"
     const others = usableWrong(
@@ -115,9 +164,28 @@ export function quizCandidates(cards, { distractors = new Map(), extraTerms = []
     const plausible = (s) => !falseStatementProblems(s, card.back).length;
     const cardOk = !problems.some((p) => p.rule === 'a' || p.rule === 'k');
     const savedFalse = saved.filter((s) => plausible(s) && !wrongOptionProblems(s, card.back, { lengths: false, otherAnswers }).some((p) => p.detail.startsWith('another card')));
-    const falseClean = !cardOk ? [] : saved.length ? savedFalse : others.filter((s) => plausible(s) && onTopic(s));
-    return { card, shown: card.back, mcWrong: saved, mcClean, falsePool, falseClean, problems };
+    const falseCode = !cardOk ? [] : saved.length ? savedFalse : others.filter((s) => plausible(s) && onTopic(s));
+    const reviewable = cardOk ? [...new Set([...savedClean, ...falseCode])] : [];
+    const flagged = new Set(excluded.map((x) => x.text));
+    const falseClean = reviewProblems.length || trueFlagged ? [] : falseCode.filter((s) => (flagged.has(s) ? false : passesReview(s)));
+    return { card, shown: card.back, mcWrong: saved, mcClean, falsePool, falseClean, reviewable, mcCode: cardOk ? savedClean : [], excluded, problems };
   });
+}
+
+// The first 3 of `clean` that pass the set checks (rules b, c, f as a set). -> { wrong, problems }: wrong is [] when
+// there are fewer than 3, or no 3 pass (problems then say why, for the first set tried).
+function pickSet(card, clean, lessonWords) {
+  if (clean.length < WRONG_PER_QUESTION) return { wrong: [], problems: [] };
+  let first = null;
+  for (let i = 0; i < clean.length; i++)
+    for (let j = i + 1; j < clean.length; j++)
+      for (let k = j + 1; k < clean.length; k++) {
+        const wrong = [clean[i], clean[j], clean[k]];
+        const problems = optionSetProblems(card.front, card.back, wrong, { lessonWords });
+        if (!problems.length) return { wrong, problems };
+        first ??= problems;
+      }
+  return { wrong: [], problems: first };
 }
 
 const canMc = (p) => p.mcClean.length >= WRONG_PER_QUESTION;
@@ -155,17 +223,18 @@ function trueFalse({ card, shown, falseClean }, random) {
 }
 
 // How many cards can be asked without giving the answer away (the most questions a quiz on them can have).
-// opts: { distractors, extraTerms, lessonText } as for buildQuiz.
+// opts: as for buildQuiz.
 export function usableCount(cards, opts = {}) {
   return quizCandidates(cards, opts).filter(usable).length;
 }
 
 // cards: [{ id, kind, front, back, evidence }]; distractors: Map card id -> [wrong answer]; extraTerms: key-term names
-// that have no card; lessonText: the lesson's raw text (wrong options about nothing in it are left out).
+// that have no card; lessonText: the lesson's raw text (wrong options about nothing in it are left out); termFamilies,
+// reviews: what the AI review said (quizBuildOptions in options.js).
 // -> questions in the order they are asked:
 //   [{ flashcard_id, type 'mc'|'tf', kind, question, statement, choices, answer_index, answer_text, evidence }]
-export function buildQuiz({ cards, distractors = new Map(), extraTerms = [], lessonText = null, count = QUIZ_LENGTH, random = Math.random }) {
-  const candidates = quizCandidates(cards, { distractors, extraTerms, lessonText }).filter(usable);
+export function buildQuiz({ cards, count = QUIZ_LENGTH, random = Math.random, ...opts }) {
+  const candidates = quizCandidates(cards, opts).filter(usable);
   const picked = shuffle(candidates, random).slice(0, count);
   const forced = picked.filter((p) => !canMc(p)).length;
   const variety = picked.length >= 4 ? Math.round(picked.length * TF_SHARE) : 0;
