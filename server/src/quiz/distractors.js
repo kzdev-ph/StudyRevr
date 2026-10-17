@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { mapLimit } from '../ai/pool.js';
 import { distractorsPrompt } from '../ai/prompts.js';
-import { quizCandidates, usableWrong } from './build.js';
+import { hasText, quizCandidates, usableWrong } from './build.js';
 import { listGroups, siblingItems } from './list-items.js';
 import { answerInQuestion, cardLeaks, language, lessonWords as lessonWordsOf, optionSetProblems, wrongOptionProblems } from './leaks.js';
 
@@ -25,7 +25,7 @@ const MAX_WRONG_WORDS = 40; // same cap as a flashcard answer
 const WRONG_PER_QUESTION = 3;
 
 const replySchema = z.object({
-  items: z.array(z.object({ n: z.coerce.number().int(), wrong: z.array(z.string()).catch([]) })),
+  items: z.array(z.object({ n: z.coerce.number().int(), wrong: z.array(z.string()).catch([]).transform((list) => list.filter(hasText)) })),
 });
 const str = { type: 'string' };
 const responseSchema = {
@@ -71,7 +71,7 @@ export function cardsNeedingDistractors(db, lessonId, { includeFailing = false }
 // Map card id -> [wrong answer] for every saved row of the lesson.
 export function loadDistractors(db, lessonId) {
   const rows = db.prepare('SELECT d.flashcard_id, d.choices FROM quiz_distractors d JOIN flashcards f ON f.id = d.flashcard_id WHERE f.lesson_id = ?').all(lessonId);
-  return new Map(rows.map((r) => [r.flashcard_id, JSON.parse(r.choices)]));
+  return new Map(rows.map((r) => [r.flashcard_id, JSON.parse(r.choices).filter(hasText)]));
 }
 
 // The first 3 of `clean` that make a set where the right answer doesn't stand out. -> { wrong, ok, problems }; when
@@ -159,7 +159,7 @@ function saveResults(db, results, now) {
   db.transaction(() => {
     for (const { card, wrong, settled } of results) {
       const nowCard = db.prepare('SELECT front, back FROM flashcards WHERE id = ?').get(card.id);
-      if (nowCard?.front === card.front && nowCard.back === card.back) made += save.run(card.id, JSON.stringify(wrong), now().toISOString(), settled ? 1 : 0).changes;
+      if (nowCard?.front === card.front && nowCard.back === card.back) made += save.run(card.id, JSON.stringify(wrong.filter(hasText)), now().toISOString(), settled ? 1 : 0).changes;
     }
   })();
   return made;

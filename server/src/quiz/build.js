@@ -36,12 +36,20 @@ const WRONG_PER_QUESTION = 3;
 const plain = (s) => String(s ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
 export const sameAnswer = (a, b) => plain(a) === plain(b);
 
+// Whether a text says anything: a letter or digit is left once whitespace, invisible characters (zero-width space,
+// soft hyphen, BOM...) and the "___" gap of a blanked term are taken away. An option or statement without text is
+// never saved, shown or asked.
+export const hasText = (s) => /[\p{L}\p{N}]/u.test(String(s ?? '').replace(/[\p{Z}\p{Cc}\p{Cf}_]/gu, ''));
+
+// A built question with a blank choice, statement or question text (never asked).
+export const hasBlank = (q) => !hasText(q.question) || (q.type === 'mc' ? !q.choices.every(hasText) : !hasText(q.statement));
+
 // Wrong answers that can be shown next to `correct`: no blanks, none equal to it or to each other, at most `limit`.
 export function usableWrong(wrong, correct, limit = WRONG_PER_QUESTION) {
   const kept = [];
   for (const w of wrong ?? []) {
     const text = String(w ?? '').trim();
-    if (!text || sameAnswer(text, correct) || kept.some((k) => sameAnswer(k, text))) continue;
+    if (!hasText(text) || sameAnswer(text, correct) || kept.some((k) => sameAnswer(k, text))) continue;
     kept.push(text);
     if (kept.length === limit) break;
   }
@@ -108,6 +116,8 @@ export function quizCandidates(cards, { distractors = new Map(), extraTerms = []
 
     if (card.kind === 'term') {
       const visible = stillShows.get(card.id);
+      // a definition that is only its own term is "___" once blanked: nothing to ask
+      if (!hasText(shown(card))) return { card, shown: shown(card), mcWrong: [], mcClean: [], falsePool: [], falseClean: [], reviewable: [], mcCode: [], excluded, problems: [{ rule: 'd', detail: 'the definition is only the term, blank once the term is hidden' }] };
       if (visible) return { card, shown: shown(card), mcWrong: [], mcClean: [], falsePool: [], falseClean: [], reviewable: [], mcCode: [], excluded, problems: [{ rule: 'd', detail: `the term still shows after blanking (${visible.join(', ')})` }] };
       const own = termKey(card.front);
       // a related term is not wrong for this definition: never offered, never used as a false statement
@@ -239,7 +249,7 @@ export function buildQuiz({ cards, count = QUIZ_LENGTH, random = Math.random, ..
   const forced = picked.filter((p) => !canMc(p)).length;
   const variety = picked.length >= 4 ? Math.round(picked.length * TF_SHARE) : 0;
   const extraTf = new Set(shuffle(picked.filter((p) => canMc(p) && p.falseClean.length), random).slice(0, Math.max(0, variety - forced)));
-  return picked.map((p) => (canMc(p) && !extraTf.has(p) ? multipleChoice(p, random) : trueFalse(p, random)));
+  return picked.map((p) => (canMc(p) && !extraTf.has(p) ? multipleChoice(p, random) : trueFalse(p, random))).filter((q) => !hasBlank(q));
 }
 
 // A retake: the same questions in a new order, multiple-choice options shuffled again (true / false stays True, False).

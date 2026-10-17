@@ -122,6 +122,10 @@ const FORM_SUFFIXES = [
   'ment', 'ments', 'er', 'ers', 'or', 'ors', 'ic', 'ical', 'ize', 'ized', 'izes', 'izing', 'ent', 'ents', 'ence', 'ences', 'ant', 'ance', 'able', 'ible', 'ful',
 ];
 const FORM_MIN_LETTERS = 5;
+// Plain inflections (formed / forms / forming -> form) may leave a 4-letter base: they only add a verb or plural ending.
+// The derivational suffixes above keep 5, so "state" never links to "statement".
+const INFLECTIONS = new Set(['s', 'es', 'd', 'ed', 'ing']);
+const INFLECTION_MIN_LETTERS = 4;
 const formCache = new Map();
 function wordForms(word) {
   let forms = formCache.get(word);
@@ -130,7 +134,8 @@ function wordForms(word) {
     forms = new Set([base(word)]);
     for (const suffix of FORM_SUFFIXES) {
       const rest = base(word.slice(0, word.length - suffix.length));
-      if (word.endsWith(suffix) && rest.length >= FORM_MIN_LETTERS) forms.add(rest);
+      const min = INFLECTIONS.has(suffix) ? INFLECTION_MIN_LETTERS : FORM_MIN_LETTERS;
+      if (word.endsWith(suffix) && rest.length >= min) forms.add(rest);
     }
     formCache.set(word, forms);
   }
@@ -239,8 +244,15 @@ export function answerInQuestion(question, answer) {
 // what the item is. Only the unmistakable shapes: "first impression", "first aid" or "the first step of the method"
 // ask about content and are not matched.
 const PLACE = 'first|second|third|fourth|fifth|sixth|last|final';
-const LIST_NOUNS = 'item|bullet|entry|aim|purpose|goal|objective|component|characteristic|feature|benefit|reason|key element';
+const LIST_NOUNS = 'item|bullet|entry|aim|purpose|goal|objective|component|characteristic|feature|benefit|reason|key element|way|method|type|kind|approach|technique|example';
+// "a second way ...", "another third reason": an ordinal after an article asks for the item at that place. "first" is
+// left out here ("a first impression", "a first draft" are ordinary phrases); step and stage are not nouns of this
+// pattern, since a process lesson may teach its order.
+const LATER_PLACE = 'second|third|fourth|fifth|sixth|2nd|3rd|[4-6]th';
+const LATER_NOUNS = 'way|method|type|kind|form|approach|technique|reason|example|benefit|aim|purpose|goal|feature|characteristic|item';
 const POSITION_PATTERNS = [
+  new RegExp(`\\b(?:a|an|another|one more)\\s+(?:${LATER_PLACE})\\s+(?:${LATER_NOUNS})s?\\b`, 'i'),
+  new RegExp(`\\b(?:the|which|what)\\s+(?:2nd|3rd|[4-6]th)\\s+(?:${LIST_NOUNS})s?\\b`, 'i'),
   new RegExp(`\\b(?:listed|mentioned|named|presented|shown|given)\\s+(?:${PLACE})\\b`, 'i'),
   new RegExp(`\\b(?:${PLACE})[- ](?:listed|mentioned|named)\\b`, 'i'),
   new RegExp(`\\b(?:the|which|what)\\s+(?:${PLACE})\\s+(?:${LIST_NOUNS})s?\\b`, 'i'),

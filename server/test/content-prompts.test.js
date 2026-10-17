@@ -94,6 +94,19 @@ describe('the exam reviewer', () => {
     assert.match(system, /a cause, effect or purpose connecting things the lesson only lists, or a rewording with a new meaning \("workplace readiness" for "professionalism"\)/);
   });
 
+  it('teaches two_correct by meaning with invented examples, and keeps the sibling-item exemption', () => {
+    assert.match(system, /Judge by meaning, not by words/);
+    assert.match(system, /would a student who knows the lesson be wrong to pick this\?/);
+    for (const example of [/Thermograph[^]*"Data logger"[^]*two_correct/, /compost help a garden[^]*improves the soil[^]*two_correct/, /drawback of cycling[^]*take longer[^]*two_correct/]) assert.match(system, example);
+    assert.match(system, /never flag it as "off_topic" or "two_correct" only because it is in the lesson or about the same subject/);
+    // the lessons we grade stay unseen: none of their words in the prompt
+    for (const word of ['RSCH2120', 'Longitudinal', 'Panel Studies', 'Cross-Sectional', 'GNMT', 'translat', 'everyday lives', 'Nature of Inquiry', 'interlingua']) assert.ok(!system.includes(word), word);
+  });
+
+  it('never calls an option off_topic when its text is in the lesson', () => {
+    assert.match(system, /An option whose text appears in the lesson \(even word for word\) is NEVER "off_topic"/);
+  });
+
   it('keeps its flag names (the saved reviews and their hashes read them)', () => {
     for (const flag of ['card_reveals', 'not_in_lesson', 'vague', 'giveaway', 'two_correct', 'reversed', 'off_topic']) assert.match(system, new RegExp(`"${flag}"`));
   });

@@ -460,3 +460,34 @@ describe('list-item cards and the wrong-answers stage', () => {
     db.close();
   });
 });
+
+describe('quiz review: off_topic and the lesson text', () => {
+  let db;
+  let lessonId;
+  let cards;
+  beforeEach(() => {
+    db = openDb(':memory:');
+    runMigrations(db);
+    ({ lessonId, cards } = seedLesson(db, { n: 2 }));
+    cards.forEach((id, i) => saveWrong(db, id, [`Alpha topic answer ${i + 1}.`, `Beta topic answer ${i + 1}.`, `Gamma topic answer ${i + 1}.`]));
+    // card 1's "Beta" option is a sentence of the lesson itself (punctuation and case differ from the option's)
+    db.prepare('UPDATE lessons SET raw_text = raw_text || ? WHERE id = ?').run('\n\nbeta TOPIC answer 1 - said in class.\n\nBeta topic answer 2 is here too.', lessonId);
+  });
+  afterEach(() => db.close());
+
+  const offTopic = (it) => ({ options: it.options.map((o) => ({ o: o.o, flag: 'off_topic', why: 'not in the lesson' })) });
+
+  it('ignores an off_topic flag on an option whose text is in the lesson, keeps it on one that is not', async () => {
+    const ai = fakeAi({ review: offTopic });
+    await reviewQuiz({ db, ai, lessonId, log: quiet });
+    const saved = rows(db, lessonId);
+    assert.deepEqual(Object.keys(JSON.parse(saved[0].option_flags)).sort(), ['Alpha topic answer 1.', 'Gamma topic answer 1.'], '"Beta topic answer 1." is lesson text: its flag is dropped');
+    assert.deepEqual(Object.keys(JSON.parse(saved[1].option_flags)).sort(), ['Alpha topic answer 2.', 'Gamma topic answer 2.']);
+  });
+
+  it('only off_topic is ignored: two_correct on a lesson-text option stays', async () => {
+    const ai = fakeAi({ review: (it) => ({ options: it.options.filter((o) => /^Beta/.test(o.text)).map((o) => ({ o: o.o, flag: 'two_correct', why: 'also right' })) }) });
+    await reviewQuiz({ db, ai, lessonId, log: quiet });
+    assert.deepEqual(JSON.parse(rows(db, lessonId)[0].option_flags), { 'Beta topic answer 1.': [{ flag: 'two_correct', why: 'also right' }] });
+  });
+});

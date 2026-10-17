@@ -55,6 +55,17 @@ describe('quiz wrong answers', () => {
     assert.equal(ai.calls.length, 1, 'the second quiz reuses them');
   });
 
+  it('never saves or loads a blank wrong answer (zero-width space, gap marks, whitespace)', async () => {
+    const [id] = addCards(1);
+    const ai = fakeAi((cards) => ({ items: cards.map((c) => ({ n: c.n, wrong: ['​', ...CLEAN, '   ', '___', '...'] })) }));
+    await ensureDistractors({ db, ai, lessonId, log: quiet });
+    assert.deepEqual(loadDistractors(db, lessonId).get(id), CLEAN);
+    assert.deepEqual(JSON.parse(db.prepare('SELECT choices FROM quiz_distractors WHERE flashcard_id = ?').get(id).choices), CLEAN, 'not in the database either');
+    // a set saved before the guard existed is read without its blanks
+    db.prepare('UPDATE quiz_distractors SET choices = ? WHERE flashcard_id = ?').run(JSON.stringify([CLEAN[0], '', '​', CLEAN[1]]), id);
+    assert.deepEqual(loadDistractors(db, lessonId).get(id), [CLEAN[0], CLEAN[1]]);
+  });
+
   it(`splits more than ${BATCH_SIZE} concept cards into batches of at most ${BATCH_SIZE}`, async () => {
     addCards(32);
     const ai = fakeAi(threeClean);
