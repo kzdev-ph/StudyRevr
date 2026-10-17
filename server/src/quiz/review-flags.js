@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto';
 //     card_reveals    the question gives its own answer away
 //     not_in_lesson   the right answer says something the lesson doesn't
 //     vague           the question doesn't name its topic ("your presentation"), so it has no single answer
+//     off_topic       the card is about the lesson's learning objectives / outline / agenda, not what it teaches
 //   set             the multiple-choice set as a whole:
 //     giveaway        the right option can be picked without the lesson (it stands out)
 //   true_statement  the right answer shown as a Yes/No statement:
@@ -16,7 +17,7 @@ import { createHash } from 'node:crypto';
 //     reversed        it is the right answer turned around or negated, ruled out at a glance
 //     off_topic       it is about something else, or about nothing in the lesson
 //     giveaway        it is a silly caricature nobody would pick
-export const CARD_FLAGS = ['card_reveals', 'not_in_lesson', 'vague'];
+export const CARD_FLAGS = ['card_reveals', 'not_in_lesson', 'vague', 'off_topic'];
 export const SET_FLAGS = ['giveaway'];
 export const TRUE_FLAGS = ['giveaway', 'not_in_lesson'];
 export const OPTION_FLAGS = ['two_correct', 'reversed', 'off_topic', 'giveaway'];

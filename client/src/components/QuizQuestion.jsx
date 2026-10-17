@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { CheckIcon, CloseIcon } from './Icons.jsx';
 import { PenLoop, PenStrike, PenTick } from './Pen.jsx';
 import { truncateAtWord } from '../lib/format.js';
-import { questionLead, yesNo, yesNoAsk } from '../lib/quiz.js';
+import { capitalFirst, questionLead, yesNo, yesNoAsk } from '../lib/quiz.js';
 
 const EVIDENCE_MAX = 220;
 // the marks, after the answer is saved: the student's loop round their number, then the teacher's tick or strike
@@ -47,20 +47,24 @@ export default function QuizQuestion({ question: q, feedback, onAnswer, busy, re
     <article className="quiz-q" aria-labelledby="quiz-q-text" aria-describedby="quiz-counter" onPointerDown={feedback ? finishMarks : undefined}>
       <p className="flashcard__kicker">{questionLead(q)}</p>
       {tf ? (
-        <h2 id="quiz-q-text" className="quiz-q__ask" tabIndex={-1} ref={headingRef}>
-          <span>
-            {ask.before} <span className={q.kind === 'term' ? 'quiz-q__term' : 'quiz-q__question'}>{ask.subject}</span>
-            {ask.after}
-          </span>{' '}
-          <span className="quiz-q__statement">“{q.statement}”</span>
-        </h2>
+        <>
+          <h2 id="quiz-q-text" className="quiz-q__question" tabIndex={-1} ref={headingRef}>
+            {q.kind === 'term' ? <span className="quiz-q__term">{ask.heading}</span> : ask.heading}
+          </h2>
+          <p className="quiz-q__for">
+            <span className="quiz-q__for-label">{ask.label}</span> {ask.context}
+          </p>
+          <p id="quiz-q-ask" className="quiz-q__prompt">
+            {ask.ask}
+          </p>
+        </>
       ) : (
         <h2 id="quiz-q-text" className="quiz-q__question" tabIndex={-1} ref={headingRef}>
           {q.question}
         </h2>
       )}
 
-      <div className={`quiz-opts${tf ? ' quiz-opts--tf' : ''}`} role="group" aria-labelledby="quiz-q-text" ref={optsRef}>
+      <div className={`quiz-opts${tf ? ' quiz-opts--tf' : ''}`} role="group" aria-labelledby={tf ? 'quiz-q-text quiz-q-ask' : 'quiz-q-text'} ref={optsRef}>
         {q.choices.map((choice, i) => {
           const state = optionState(i, feedback);
           const chosen = feedback?.chosen_index === i;
@@ -79,7 +83,7 @@ export default function QuizQuestion({ question: q, feedback, onAnswer, busy, re
               </kbd>
               <span className="quiz-opt__text">
                 <span>
-                  {yesNo(q, choice)}
+                  {tf ? yesNo(q, choice) : capitalFirst(choice)}
                   {state === 'wrong' && strike && <PenStrike duration={MARK_MS} delay={MARK_DELAY_MS} track={marks} />}
                 </span>
               </span>

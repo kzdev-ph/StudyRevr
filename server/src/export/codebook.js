@@ -125,8 +125,9 @@ quiz_attempts.csv - one row per quiz attempt, including ones left part-way
 
 quiz_answers.csv - one row per question of each attempt above
   type mc (multiple choice) | tf (true/false); kind term | concept (the flashcard it came from)
-  true/false questions are shown to students as a Yes/No question ("Does this describe [term]?" for a term card, "Is
-  this the right answer to [question]?" for a concept card, with the statement under it), but they are stored and
+  true/false questions are shown to students as a Yes/No question: the thing judged is the heading (the term for a
+  term card, with "Suggested meaning:" and the definition under it, then "Does this match?"; the suggested answer for
+  a concept card, with "For:" and the card's question under it, then "Is this the answer?"), but they are stored and
   exported as true/false: choices, chosen_answer and right_answer say True or False (Yes = True, No = False).
   question, statement  as the student saw them. For a term card, the definition in question (multiple choice) or
                     statement (true/false) is stored masked: where a definition names its term (or a form of it),

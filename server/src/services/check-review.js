@@ -12,7 +12,7 @@ import { quickCheckReviewPrompt } from '../ai/prompts.js';
 import { askAgain } from '../pipeline/quick-checks.js';
 import { contextForBatch } from './quiz-review.js';
 
-export const CHECK_FLAGS = ['not_in_lesson', 'not_answered', 'vague'];
+export const CHECK_FLAGS = ['not_in_lesson', 'not_answered', 'vague', 'off_topic'];
 export const CHECK_REVIEW_LABEL = 'the quick check review';
 export const CHECK_REWRITE_LABEL = 'the quick checks the review flagged';
 export const CHECK_ROUND2_LABEL = 'the quick check review (after fixes)';

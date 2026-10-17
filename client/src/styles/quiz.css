@@ -110,18 +110,26 @@
   gap: 14px;
   overflow-wrap: anywhere;
 }
-.quiz-q__question,
-.quiz-q__ask {
+.quiz-q__question {
   font-family: var(--font-read);
   font-size: 1.25rem;
   font-weight: 600;
   line-height: 1.45;
 }
-.quiz-q__ask {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 10px;
+/* a yes / no question: the thing judged is the heading, what it is judged against a smaller line, then the question */
+.quiz-q__for {
+  margin: -4px 0 0;
+  color: var(--ink-2);
+  font-size: 1rem;
+  line-height: 1.5;
+}
+.quiz-q__for-label {
+  font-weight: 650;
+}
+.quiz-q__prompt {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 650;
 }
 .quiz-q__term {
   padding: 0 3px;
@@ -132,10 +140,6 @@
   font-weight: 700;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
-}
-.quiz-q__statement {
-  display: block;
-  font-weight: 400;
 }
 
 .quiz-opts {
@@ -355,8 +359,7 @@
 }
 
 @media (min-width: 40rem) {
-  .quiz-q__question,
-  .quiz-q__ask {
+  .quiz-q__question {
     font-size: 1.5rem;
   }
 }
@@ -364,8 +367,7 @@
 /* a wide page: the question on its measure, the options as two columns of ruled lines with their keys beside them;
    the results with the missed questions beside the score */
 @media (min-width: 64rem) {
-  .quiz-q__question,
-  .quiz-q__ask {
+  .quiz-q__question {
     max-width: 48rem;
     font-size: 1.625rem;
   }

@@ -116,7 +116,7 @@ describe('quiz wrong answers', () => {
       assert.equal(ai.calls.length, 2);
       assert.equal(ai.calls[1].label, 'the quiz answer options (second try)');
       assert.match(ai.calls[1].user, /Kept: "It is used to save time and money\."/);
-      assert.match(ai.calls[1].user, /Rejected: "It is used to hide data from many people\." \(tone: [^)]+\); "It is never used/);
+      assert.match(ai.calls[1].user, /Rejected: "It is used to hide data from many people\." \(tone: [^)]+(?:\([^)]*\))?\); "It is never used/);
       assert.match(ai.calls[1].system, /rejected answers and why/);
       assert.deepEqual(loadDistractors(db, lessonId).get(id), [CLEAN[1], CLEAN[2], CLEAN[0]], 'the new answers first, then the kept one');
     });

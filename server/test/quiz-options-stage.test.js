@@ -24,7 +24,7 @@ const fakeAi = () => {
       ai.calls += 1;
       if (ai.fail) throw ai.fail;
       const numbers = [...user.matchAll(/^\[(\d+)\] Question:/gm)].map((m) => Number(m[1]));
-      return schema.parse({ items: numbers.map((n) => ({ n, wrong: [`Alpha topic answer ${n}.`, `Beta topic answer ${n}.`, `Gamma topic answer ${n}.`] })) });
+      return schema.parse({ items: numbers.map((n) => ({ n, wrong: [`Alpha topic ${n} stays silent.`, `Beta topic ${n} stays silent.`, `Gamma topic ${n} stays silent.`] })) });
     },
   };
   return ai;

@@ -25,12 +25,19 @@ export function questionLead(q) {
   return q.kind === 'term' ? 'Which term matches this description?' : 'Choose the best answer';
 }
 
+// A display-only capital for the first letter of a sentence or option (the stored text is never changed). A word whose
+// second letter is a capital ("iPhone", "pH") is left as it is.
+export const capitalFirst = (text) => String(text ?? '').replace(/^(\s*["“'(]?)(\p{Ll})(?!\p{Lu})/u, (_, lead, letter) => lead + letter.toUpperCase());
+
 // A true / false question is shown as a Yes / No question; the server still stores and exports it as True / False
-// (choices, chosen_answer, right_answer). Term: "Does this describe [term]?"; concept: "Is this the right answer to
-// [question]?" -> { before, subject, after }, with the statement shown under it.
+// (choices, chosen_answer, right_answer). What is judged is the big heading, then a smaller line saying what it is
+// judged against, then the short question above Yes / No:
+//   term:    [the term] / "Suggested meaning:" + the definition / "Does this match?"
+//   concept: [the suggested answer] / "For:" + the card's question / "Is this the answer?"
+// -> { heading, label, context, ask }
 export function yesNoAsk(q) {
-  if (q.kind === 'term') return { before: 'Does this describe', subject: q.question, after: '?' };
-  return { before: 'Is this the right answer to', subject: String(q.question).replace(/[?\s]+$/, ''), after: '?' };
+  if (q.kind === 'term') return { heading: q.question, label: 'Suggested meaning:', context: capitalFirst(q.statement), ask: 'Does this match?' };
+  return { heading: capitalFirst(q.statement), label: 'For:', context: q.question, ask: 'Is this the answer?' };
 }
 
 // "True" / "False" as the student sees them on a true / false question; any other text is left as it is.
@@ -39,11 +46,12 @@ export function yesNo(q, text) {
   return text === 'True' ? 'Yes' : text === 'False' ? 'No' : text;
 }
 
-// The whole question in one sentence, for screen readers and the results list.
+// The whole question as one text, for screen readers and the results list, in the order it is shown.
 export function questionText(q) {
   if (q.type !== 'tf') return q.question;
-  const { before, subject, after } = yesNoAsk(q);
-  return `${before} ${subject}${after} “${q.statement}”`;
+  const { heading, label, context, ask } = yesNoAsk(q);
+  const sentence = (s) => (/[.!?]["”’)]*$/.test(String(s).trim()) ? String(s).trim() : `${String(s).trim()}.`);
+  return `${sentence(heading)} ${label} ${sentence(context)} ${ask}`;
 }
 
 export const percent = (score, total) => (total ? Math.round((score / total) * 100) : 0);

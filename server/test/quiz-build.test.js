@@ -213,8 +213,8 @@ for (const lesson of [EN_LESSON, FIL_LESSON]) {
     });
 
     it('a lesson that can’t fill 10 clean questions gets fewer', () => {
-      assert.equal(usableCount(lesson.cards, opts), 6);
-      for (const quiz of quizzes) assert.equal(quiz.length, 6);
+      assert.equal(usableCount(lesson.cards, opts), 5);
+      for (const quiz of quizzes) assert.equal(quiz.length, 5);
     });
 
     it('cards whose question holds the answer, or whose every wrong answer is a reversal, are never asked', () => {

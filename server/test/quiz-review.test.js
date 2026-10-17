@@ -417,8 +417,8 @@ describe('the quiz a student gets', () => {
     term(3, 'Glaciers', 'Slow sheets of ice on high mountains.'),
     term(4, 'Deserts', 'Dry land that gets very little rain.'),
     term(5, 'Oceans', 'Huge bodies of salt water between continents.'),
-    { id: 6, kind: 'concept', front: 'Q6: what is said about the topic?', back: 'Topic answer 6: forests and valleys.', evidence: 'quote' },
-    { id: 7, kind: 'concept', front: 'Q7: what is said about the topic?', back: 'Topic answer 7: islands and meadows.', evidence: 'quote' },
+    { id: 6, kind: 'concept', front: 'Q6: what is said about the topic?', back: 'Forests and valleys of the north.', evidence: 'quote' },
+    { id: 7, kind: 'concept', front: 'Q7: what is said about the topic?', back: 'Islands and meadows of the south.', evidence: 'quote' },
   ];
   const lessonText = 'The topic of this lesson: alpha, beta and gamma, with a right and a wrong answer. ' + cards.map((c) => `${c.front} ${c.back}`).join(' ');
   const distractors = new Map([
