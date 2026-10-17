@@ -2,9 +2,10 @@ import { z } from 'zod';
 import { studyDate } from '../stats/days.js';
 
 // Settings a participant changed, logged in setting_events (migration 011). One zod schema per setting, so another
-// setting (theme) is one more entry here.
+// setting is one more entry here.
 export const SETTING_VALUES = {
   motion: ['system', 'less', 'full'], // Match my device | Less motion | Full motion
+  theme: ['system', 'light', 'dark', 'ama', 'ama-dark'], // Match my device | Light | Dark | AMA | AMA Dark
 };
 
 export const settingEventBody = z.discriminatedUnion(

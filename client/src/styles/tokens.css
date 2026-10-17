@@ -71,7 +71,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
+  :root:not([data-theme='light']):not([data-theme='ama']):not([data-theme='ama-dark']) {
     --paper: #1b1a18;
     --sheet: #24231f;
     --desk: #121110;
@@ -149,6 +149,97 @@
 
   --card-edge: #2e2d29;
   --series-reading: #e4e9ff;
+  --series-flashcards: #e39a2e;
+  --series-quiz: #2a8f8a;
+  --card-shadow: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 10px 18px -10px rgb(0 0 0 / 0.75);
+
+  color-scheme: dark;
+}
+
+/* AMA: a light theme on a warmer cream paper. The text is Light's own ink and muted ink; AMA blue (#2a367d) is for
+   links, focus rings and the open tab's icon; AMA maroon (#7a1b1b) is for the primary buttons, page titles, the margin line
+   and the header rule; AMA gold (#e7a323) is the highlighter, a fill behind dark ink.
+   Only what differs from Light is set here; every other token is Light's.
+   Gold is 1.96:1 on paper, so it is only ever a fill behind ink text (the marker, selected options, text selection), never a
+   text colour, an edge or a bar. A marked word is always full ink (--mk-ink): muted ink on gold would be 3.2:1.
+   The maroon is a brand accent. It is never a state: wrong answers, errors, Again and the pen strike stay grey with an icon
+   and a word, and a destructive button is an outline with a trash icon (base.css), so red never means both "go" and "danger". */
+:root[data-theme='ama'] {
+  --paper: #f7f3e8; /* cream, a touch warmer than Light's #f6f5f0 */
+  --sheet: #fffdf6; /* the page / cards: 1.09:1 above the paper, the same step as Light */
+  --desk: #e8e1ce; /* around the page on a wide screen */
+  --ink: #1c1d22; /* Light's own text colour: 16:1 on paper, 7.7:1 on gold */
+  --ink-2: #55575f; /* Light's muted text colour */
+  --line: #ddd6c3;
+  --line-strong: #bdb59a;
+  --control-border: #7b7667; /* 4.1:1 on paper, 4.5:1 on the sheet */
+
+  --accent: #2a367d; /* AMA blue: 9.9:1 on paper (links, focus rings), 10.9:1 behind white text */
+  --accent-hover: #1f2862;
+
+  --ink-btn: #7a1b1b; /* AMA maroon buttons: 10.5:1 behind white text, 9.5:1 against the paper */
+  --ink-btn-press: #5f1414;
+
+  --hi: #e7a323; /* AMA gold; --on-hi stays Light's dark ink (7.7:1 on gold) */
+  --mk-top: 6%; /* a fill behind the words, like Dark's marker, not a stroke whose edge cuts through the letters */
+  --mk-ink: var(--ink);
+  --margin: #7a1b1b; /* page titles 9.5:1, the margin line and header rule, the logo's rule */
+  --link: #7a1b1b; /* text links: the same red as the titles, underlined; 9.5:1 on paper */
+  --link-hover: #5f1414;
+  --link-visited: #681717;
+
+  --card-edge: #e9e3d0;
+  --series-reading: #2a367d;
+
+  color-scheme: light;
+}
+
+/* AMA Dark: Dark with the AMA accents. Paper, sheet, desk, cards, lines, text and the neutral controls are exactly Dark's
+   (near-black, no blue tint). The three AMA colours are the only additions: a deep red for the primary buttons (with a lighter 1px edge), a clear
+   red for page titles, the margin line and the header rule, and AMA gold for the highlighter, the focus ring and the
+   pen loop. Blue is only for links (--accent). Every token the dark theme sets is set here, because Light's values would
+   otherwise show through. The deep fill cannot reach 3:1 on the paper by itself, so the button has a lighter red edge (--ink-btn-edge) that does.
+   The title red has to be lighter (4.5:1 text), so it cannot be as deep as the button.
+   Never a state: wrong answers, errors, Again and the pen strike stay grey with an icon and a word. */
+:root[data-theme='ama-dark'] {
+  --paper: #1b1a18;
+  --sheet: #24231f;
+  --desk: #121110;
+  --ink: #e9e6de;
+  --ink-2: #aeaaa0;
+  --line: #36342f;
+  --line-strong: #4d4a42;
+  --control-border: #837f76;
+
+  --accent: #a9bcff; /* links only */
+  --accent-hover: #c3d0ff;
+  --on-accent: #1b1a18;
+  --accent-wash: #2d2b27; /* the hover / chip ground, neutral (Dark's is blue-grey) */
+
+  --ink-btn: #7a1b1b; /* exactly AMA's maroon: white text 10.5:1 */
+  --ink-btn-press: #5f1414;
+  --ink-btn-edge: #ce2e2e; /* the same red, lightened only until its 1px edge reads: 3.4:1 against the paper, 3.0:1 against the sheet (the fill alone is 1.6:1) */
+  --on-ink-btn: #ffffff;
+
+  --hi: #e7a323; /* AMA gold; also the focus ring and the pen loop */
+  --on-hi: #1b1a18;
+  --mk-top: 6%;
+  --mk-ink: #1b1a18; /* on gold: 8.0:1 */
+  --margin: #da5656; /* the maroon's hue and saturation, lightened only to the darkest shade that reads: titles 4.5:1 on the paper (the pages are on the paper) */
+  --link: #dd6363; /* text links, underlined: the title red lightened a step more, because a few links sit on the sheet (the end card): 5.0:1 on paper, 4.5:1 on the sheet */
+  --link-hover: #e57474;
+  --link-visited: #e06c6c;
+
+  --learn: #d7a35a;
+  --ok: #79cfa3;
+  --ok-wash: #1d3328;
+  --warn: #f2c46d;
+  --warn-wash: #3a3020;
+  --danger: #ff8f9f;
+  --danger-wash: #43242a;
+
+  --card-edge: #2e2d29;
+  --series-reading: #e9e6de; /* Dark's is pale blue; here neutral cream, apart from the orange and the teal */
   --series-flashcards: #e39a2e;
   --series-quiz: #2a8f8a;
   --card-shadow: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 10px 18px -10px rgb(0 0 0 / 0.75);

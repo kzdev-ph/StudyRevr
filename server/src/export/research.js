@@ -211,7 +211,7 @@ function lessonEvents(db, { includeP00 }) {
   );
 }
 
-// Settings a participant changed (setting_events): setting motion, value system | less | full.
+// Settings a participant changed (setting_events): setting motion (value system | less | full) or theme (system | light | dark | ama | ama-dark).
 function settingEvents(db, { includeP00 }) {
   const rows = db
     .prepare(

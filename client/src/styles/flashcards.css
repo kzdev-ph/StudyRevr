@@ -382,17 +382,19 @@
   background: linear-gradient(270deg, transparent, var(--ink));
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) .flashcard__shade {
+  :root:not([data-theme='light']):not([data-theme='ama']):not([data-theme='ama-dark']) .flashcard__shade {
     background: linear-gradient(90deg, transparent, var(--desk));
   }
-  :root:not([data-theme='light']) .flashcard__shade--back {
+  :root:not([data-theme='light']):not([data-theme='ama']):not([data-theme='ama-dark']) .flashcard__shade--back {
     background: linear-gradient(270deg, transparent, var(--desk));
   }
 }
-:root[data-theme='dark'] .flashcard__shade {
+:root[data-theme='dark'] .flashcard__shade,
+:root[data-theme='ama-dark'] .flashcard__shade {
   background: linear-gradient(90deg, transparent, var(--desk));
 }
-:root[data-theme='dark'] .flashcard__shade--back {
+:root[data-theme='dark'] .flashcard__shade--back,
+:root[data-theme='ama-dark'] .flashcard__shade--back {
   background: linear-gradient(270deg, transparent, var(--desk));
 }
 .flashcard--flat {

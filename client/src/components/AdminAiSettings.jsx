@@ -303,7 +303,7 @@ function StudySettings() {
         <div className="stack stack--tight" role="group" aria-label="Delete all student keys">
           <p>Delete every saved student key? Students would have to paste theirs again. This can’t be undone.</p>
           <div className="admin-actions">
-            <button type="button" className="btn btn--primary" onClick={deleteKeys} disabled={busy}>
+            <button type="button" className="btn btn--primary btn--destroy" onClick={deleteKeys} disabled={busy}>
               Yes, delete all
             </button>
             <button type="button" className="btn btn--quiet" onClick={() => setConfirmingKeys(false)} disabled={busy}>

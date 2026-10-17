@@ -151,10 +151,20 @@ describe('setting changes (setting_events)', () => {
     await start();
     assert.equal((await send({ setting: 'motion', value: 'reduce' })).status, 400);
     assert.equal((await send({ setting: 'motion' })).status, 400);
-    assert.equal((await send({ setting: 'theme', value: 'dark' })).status, 400); // not logged yet
+    assert.equal((await send({ setting: 'theme', value: 'sepia' })).status, 400);
+    assert.equal((await send({ setting: 'theme', value: 'less' })).status, 400); // a Motion value on Theme
+    assert.equal((await send({ setting: 'motion', value: 'ama' })).status, 400); // a Theme value on Motion
+    assert.equal((await send({ setting: 'theme' })).status, 400);
     assert.equal((await send({ setting: 'volume', value: 'less' })).status, 400);
     assert.equal((await send({ setting: 'motion', value: 'less' }, null)).status, 401);
     assert.equal(t.db.prepare('SELECT COUNT(*) n FROM setting_events').get().n, 0);
+  });
+
+  it('logs each Theme choice (Match my device, Light, Dark, AMA, AMA Dark) with the participant and study day', async () => {
+    await start();
+    const values = ['system', 'light', 'dark', 'ama', 'ama-dark'];
+    for (const value of values) assert.equal((await send({ setting: 'theme', value })).status, 201);
+    assert.deepEqual(t.db.prepare('SELECT setting, value, study_date FROM setting_events ORDER BY id').all(), values.map((value) => ({ setting: 'theme', value, study_date: '2026-10-05' })));
   });
 
   it('leaves the events table and its type list alone', async () => {

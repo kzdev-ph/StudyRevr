@@ -77,7 +77,7 @@ export default function Processing({ lessonId, title, warning, onReady }) {
         All lessons
       </a>
       <div>
-        <h1 className="screen-title">{failed ? 'We couldn’t finish this lesson' : 'Preparing your review'}</h1>
+        <h1 className={failed ? 'screen-title screen-title--error' : 'screen-title'}>{failed ? 'We couldn’t finish this lesson' : 'Preparing your review'}</h1>
         <p className="muted processing__title">{title}</p>
       </div>
 

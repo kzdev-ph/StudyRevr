@@ -93,7 +93,7 @@ export default function MyAiSettings() {
         Remove your saved key{state.key ? ` (${state.key.provider_label} …${state.key.last4})` : ''}? You would need to paste it again to use it.
       </p>
       <div className="admin-actions">
-        <button type="button" className="btn btn--primary" onClick={remove} disabled={busy !== null}>
+        <button type="button" className="btn btn--primary btn--destroy" onClick={remove} disabled={busy !== null}>
           {busy === 'remove' ? 'Removing…' : 'Yes, remove it'}
         </button>
         <button type="button" className="btn btn--quiet" ref={keepButton} onClick={() => setConfirming(false)} disabled={busy !== null}>

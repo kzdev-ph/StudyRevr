@@ -159,6 +159,10 @@
   font-weight: 700;
   background: linear-gradient(to bottom, transparent var(--mk-top), var(--hi) var(--mk-top) 92%, transparent 92%);
 }
+:root[data-theme='ama'] .chip-btn[aria-pressed='true'],
+:root[data-theme='ama-dark'] .chip-btn[aria-pressed='true'] {
+  background: var(--hi);
+}
 
 /* reading text */
 .prose {

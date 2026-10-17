@@ -20,7 +20,7 @@ describe('LessonRow', () => {
   it("renders, and a student's own unstudied upload can be deleted with an ink (not red) confirm", () => {
     assert.equal(r.studentHasDelete, true);
     assert.equal(r.studentConfirmOpen, true);
-    assert.equal(r.studentConfirmButtonClass, 'btn btn--primary');
+    assert.equal(r.studentConfirmButtonClass, 'btn btn--primary btn--destroy'); // --destroy only changes the AMA themes (an outline with a trash icon)
     assert.equal(r.studentLink, '#/review/7');
   });
 
@@ -32,7 +32,7 @@ describe('LessonRow', () => {
   it("admin's row opens the read-only preview, says whose it is, and asks with the red button", () => {
     assert.equal(r.adminLink, '#/admin/lessons/7');
     assert.match(r.adminNote, /Uploaded by P07/);
-    assert.equal(r.adminConfirmButtonClass, 'btn btn--danger');
+    assert.equal(r.adminConfirmButtonClass, 'btn btn--danger btn--destroy');
   });
 
   it("admin's list is where a failed lesson shows its real error and is retried", () => {

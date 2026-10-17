@@ -91,6 +91,7 @@ describe('research export', () => {
     await t.call('POST', '/api/events', { as: 'P00', body: { type: 'stats_view' } });
     await t.call('POST', '/api/setting-events', { as, body: { setting: 'motion', value: 'less' } });
     await t.call('POST', '/api/setting-events', { as: 'P00', body: { setting: 'motion', value: 'full' } });
+    await t.call('POST', '/api/setting-events', { as, body: { setting: 'theme', value: 'ama-dark' } });
     t.now = '2026-10-06T09:00:00.000Z';
   });
   afterEach(() => t.close());
@@ -118,13 +119,15 @@ describe('research export', () => {
 
   it('setting_events.csv lists each setting change; the codebook explains it and says time_ms is not affected', async () => {
     const rows = parseCsv(await file('setting_events'));
-    assert.deepEqual(rows.map((r) => [r.participant, r.setting, r.value, r.study_date]), [['P01', 'motion', 'less', parseCsv(await file('events')).find((r) => r.participant === 'P01').study_date]]);
+    const day = parseCsv(await file('events')).find((r) => r.participant === 'P01').study_date;
+    assert.deepEqual(rows.map((r) => [r.participant, r.setting, r.value, r.study_date]), [['P01', 'motion', 'less', day], ['P01', 'theme', 'ama-dark', day]]);
     assert.ok('event_id' in rows[0] && 'created_at' in rows[0]);
     const all = parseCsv(await file('setting_events', '?include_p00=1'));
-    assert.deepEqual(all.map((r) => [r.participant, r.value]), [['P00', 'full'], ['P01', 'less']]);
+    assert.deepEqual(all.map((r) => [r.participant, r.value]), [['P00', 'full'], ['P01', 'less'], ['P01', 'ama-dark']]);
     const zip = await JSZip.loadAsync(Buffer.from(await (await t.call('GET', '/api/admin/export.zip', { pin: TEST_PIN, raw: true })).arrayBuffer()));
     const readme = await zip.file('README.txt').async('string');
     assert.ok(/setting_events.csv/.test(readme) && /never changes time_ms/.test(readme));
+    assert.ok(/ama-dark/.test(readme) && /theme/.test(readme));
   });
 
   it('leaves P00 out unless asked', async () => {
