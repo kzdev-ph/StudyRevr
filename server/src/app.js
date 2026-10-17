@@ -33,8 +33,8 @@ export function createApp(db, config, { ai, runner, clock = () => new Date(), ra
     ai,
     clock,
     tuning: () => {
-      const { chunkTokens, concurrency, keyTermsMax, provider, model } = resolveAiConfig(db, config.ai);
-      return { chunkTokens, concurrency, keyTermsMax, madeBy: { provider, model } };
+      const { chunkTokens, concurrency, keyTermsMax, provider, model, reasoningEffort } = resolveAiConfig(db, config.ai);
+      return { chunkTokens, concurrency, keyTermsMax, madeBy: { provider, model }, thinkingSupported: reasoningEffort };
     },
   });
 

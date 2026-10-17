@@ -117,9 +117,9 @@ function finalError(error) {
 export function logAiCall(db, row, { now, config }) {
   db.prepare(
     `INSERT INTO ai_calls (participant_id, lesson_id, section_id, section_index, kind, outcome, source, provider, model, fallback_steps,
-       fallback_reasons, from_cache, saved_shared, error_code, ms, created_at, study_date)
+       fallback_reasons, from_cache, saved_shared, error_code, ms, created_at, study_date, thinking)
      VALUES (@participant_id, @lesson_id, @section_id, @section_index, @kind, @outcome, @source, @provider, @model, @fallback_steps,
-       @fallback_reasons, @from_cache, @saved_shared, @error_code, @ms, @created_at, @study_date)`,
+       @fallback_reasons, @from_cache, @saved_shared, @error_code, @ms, @created_at, @study_date, 'off')`, // live calls never think
   ).run({ ...row, created_at: now.toISOString(), study_date: studyDate(now, config) });
 }
 

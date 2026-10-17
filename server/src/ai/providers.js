@@ -7,6 +7,7 @@
 //   temperature  sampling temperature for the pipeline's calls (low: faithful to the lesson, steady JSON)
 //   timeoutMs    how long one request may take before it is abandoned (and retried once)
 //   jsonSchema   the endpoint accepts response_format: { type: 'json_schema' } (zod still validates every reply)
+//   reasoningEffort  the endpoint accepts reasoning_effort, which "Think harder when preparing lessons" sends (Google only)
 //   models       per-model tuning that replaces the preset's: { [model id]: { timeoutMs, requestsPerMinute, extraBody } },
 //                where requestsPerMinute is a client-side limit on HTTP requests (retries included) to that model and
 //                extraBody is merged into that model's requests (e.g. Gemma's reasoning_effort)
@@ -42,6 +43,7 @@ export const PRESETS = {
     keyEnv: 'GOOGLE_API_KEY',
     needsKey: true,
     jsonSchema: true,
+    reasoningEffort: true, // accepts reasoning_effort (probed: "high" works, "none" is a 400); lesson processing may ask for it
     models: {
       // Normal calls take 1-4 s, so a request silent for 25 s is stuck; the free tier allows 15 requests a minute.
       'gemini-3.5-flash-lite': { timeoutMs: 25_000, requestsPerMinute: 15 },

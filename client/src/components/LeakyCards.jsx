@@ -8,6 +8,7 @@ const RULE_TEXT = {
   i: 'a yes/no or either/or question',
   j: 'the question holds another card’s answer',
   k: 'the answer only repeats the question',
+  l: 'it asks by place in the list (“the one listed first”)',
 };
 
 // Why the cards can't be regenerated now (regenerate_blocked from the leaks report).
@@ -84,9 +85,9 @@ export default function LeakyCards({ lesson, onChanged }) {
         <p className="lesson__extra-text">
           <span>
             <strong>
-              {count} {count === 1 ? 'flashcard gives' : 'flashcards give'} the answer away.
+              {count} {count === 1 ? 'flashcard needs' : 'flashcards need'} a rewrite.
             </strong>{' '}
-            Students could answer {count === 1 ? 'it' : 'them'} without studying.
+            {count === 1 ? 'It gives' : 'They give'} the answer away or {count === 1 ? 'asks' : 'ask'} by place in a list, so students could answer without studying.
           </span>
         </p>
       )}
@@ -116,7 +117,7 @@ export default function LeakyCards({ lesson, onChanged }) {
                 {card.back}
               </p>
               <p>
-                <span className="visually-hidden">Why it gives the answer away: </span>
+                <span className="visually-hidden">Why it needs a rewrite:</span>
                 {[...new Set(card.rules.map((r) => RULE_TEXT[r.rule] ?? r.rule))].join('; ')}
               </p>
             </div>

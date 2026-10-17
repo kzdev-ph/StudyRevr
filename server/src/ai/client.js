@@ -20,6 +20,11 @@ const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_RETRY_DELAYS_MS = [2_000, 6_000, 15_000, 30_000];
 const MAX_RETRY_AFTER_MS = 60_000; // a provider asking for a longer wait gets this one (then the next attempt)
 const MAX_TOKENS_CEILING = 16_000; // upper bound when a cut-off reply is retried with a bigger budget
+// Lesson processing can ask for thinking (`reasoning: 'high'`, see chat()). The model's thinking tokens count against
+// max_tokens and take seconds, so a thinking call gets more room and a longer wait than the model's usual tuning.
+export const THINKING_HEADROOM_TOKENS = 8_000;
+export const THINKING_TIMEOUT_MS = 120_000;
+const THINKING_MAX_TOKENS = 32_000;
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 const LIVE_MAX_QUEUE_MS = 3_000; // a live call waits at most this long for the client-side request limit
 
@@ -48,7 +53,7 @@ export function retryAfterMs(header, bodyText = '', now = Date.now()) {
 // One onAttempt event as a log line: "the key terms #1 start", "the key terms #1 ok 1.9s",
 // "the flashcards #1 FAIL timeout after 25.0s, retry in 2.0s", "the flashcards #2 waited 4.0s for the request limit".
 export function describeAttempt(e) {
-  const tag = `${e.label} #${e.attempt}`;
+  const tag = `${e.label} #${e.attempt}${e.think ? ` (think=${e.think})` : ''}`;
   const secs = (ms) => `${(ms / 1000).toFixed(1)}s`;
   if (e.type === 'throttle') return `${tag} waited ${secs(e.waitMs)} for the request limit`;
   if (e.type === 'start') return `${tag} start`;
@@ -97,6 +102,9 @@ export function createAiClient({
     failedAttempts: {},
     retries: {},
     throttledMs: 0,
+    // calls that asked for thinking, and the thinking tokens they used (the provider counts them in total_tokens only)
+    thinkingCalls: 0,
+    thinkingTokens: 0,
   };
   const limiter = createRateLimiter({ now, sleep });
   const noJsonSchema = new Set(); // hosts that rejected response_format; not sent there again
@@ -136,6 +144,7 @@ export function createAiClient({
       model: cfg.model || '',
       extraBody: cfg.extraBody && typeof cfg.extraBody === 'object' ? cfg.extraBody : undefined,
       jsonSchema: Boolean(cfg.jsonSchema),
+      reasoningEffort: Boolean(cfg.reasoningEffort), // the endpoint accepts reasoning_effort (Google's does)
       temperature: typeof cfg.temperature === 'number' ? cfg.temperature : undefined,
       timeoutMs: cfg.timeoutMs > 0 ? cfg.timeoutMs : timeoutMs,
       requestsPerMinute: cfg.requestsPerMinute > 0 ? cfg.requestsPerMinute : 0,
@@ -213,14 +222,14 @@ export function createAiClient({
   }
 
   // One failed attempt: counted by reason, reported to onAttempt (and onRetry when it will be retried).
-  function attemptFailed({ label, attempt, startedAt, reason, status, retry, waitMs }) {
+  function attemptFailed({ label, attempt, startedAt, reason, status, retry, waitMs, think }) {
     stats.failedAttempts[reason] = (stats.failedAttempts[reason] ?? 0) + 1;
     if (retry) {
       stats.httpRetries += 1;
       stats.retries[reason] = (stats.retries[reason] ?? 0) + 1;
       onRetry({ reason: status ? `HTTP ${status}` : reason, waitMs, attempt });
     }
-    onAttempt({ type: 'fail', label, attempt, ms: now() - startedAt, reason, status, retry, waitMs: retry ? waitMs : 0 });
+    onAttempt({ type: 'fail', label, attempt, ms: now() - startedAt, reason, status, retry, waitMs: retry ? waitMs : 0, think });
   }
 
   // One HTTP exchange -> the parsed JSON reply. Rate limits (429), 5xx and dropped connections are retried after a
@@ -229,7 +238,7 @@ export function createAiClient({
   // (cfg.requestsPerMinute) and is reported to onAttempt: 'throttle' (waited for a slot), 'start', 'ok', 'fail'.
   // `live` (a student is waiting, and a fallback is ready): one attempt, no retry waits, and a request that would wait
   // more than LIVE_MAX_QUEUE_MS for the client-side limit fails at once as a rate limit without being sent.
-  async function send(cfg, path, { method = 'GET', body, label = path, live = false } = {}) {
+  async function send(cfg, path, { method = 'GET', body, label = path, live = false, think } = {}) {
     const headers = { Accept: 'application/json' };
     if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`;
     if (body !== undefined) headers['Content-Type'] = 'application/json';
@@ -243,16 +252,16 @@ export function createAiClient({
       const waitedMs = await limiter.acquire(limitKey, cfg.requestsPerMinute, live ? { maxWaitMs: LIVE_MAX_QUEUE_MS } : undefined);
       if (waitedMs === null) {
         stats.failedAttempts.rate_limit = (stats.failedAttempts.rate_limit ?? 0) + 1;
-        onAttempt({ type: 'fail', label, attempt, ms: 0, reason: 'rate_limit', retry: false, waitMs: 0, local: true });
+        onAttempt({ type: 'fail', label, attempt, ms: 0, reason: 'rate_limit', retry: false, waitMs: 0, local: true, think });
         throw new AiError('rate_limit', `Too many AI requests to ${cfg.model} right now (the app's own limit of ${cfg.requestsPerMinute} a minute). Try again shortly.`);
       }
       if (waitedMs) {
         stats.throttledMs += waitedMs;
-        onAttempt({ type: 'throttle', label, attempt, waitMs: waitedMs });
+        onAttempt({ type: 'throttle', label, attempt, waitMs: waitedMs, think });
       }
       stats.attempts += 1;
       const startedAt = now();
-      onAttempt({ type: 'start', label, attempt });
+      onAttempt({ type: 'start', label, attempt, think });
       let res;
       let text;
       try {
@@ -269,14 +278,14 @@ export function createAiClient({
         const hopeless = /ECONNREFUSED|ENOTFOUND/.test(String(err?.cause?.code)) || (failure.code === 'timeout' && timedOut);
         const retry = canRetry && !hopeless;
         const waitMs = retry ? jitter(retryDelaysMs[attempt - 1]) : 0;
-        attemptFailed({ label, attempt, startedAt, reason: failure.code, retry, waitMs });
+        attemptFailed({ label, attempt, startedAt, reason: failure.code, retry, waitMs, think });
         if (!retry) throw failure;
         if (failure.code === 'timeout') timedOut = true;
         await sleep(waitMs);
         continue;
       }
       if (res.ok) {
-        onAttempt({ type: 'ok', label, attempt, ms: now() - startedAt, status: res.status });
+        onAttempt({ type: 'ok', label, attempt, ms: now() - startedAt, status: res.status, think });
         return parseReply(text, cfg);
       }
       if (canRetry && RETRYABLE_STATUS.has(res.status)) {
@@ -286,7 +295,7 @@ export function createAiClient({
         const waitMs = jitter(named !== null ? Math.min(named, MAX_RETRY_AFTER_MS) : retryDelaysMs[attempt - 1]); // jitter only adds: Retry-After is still respected
         // Under a client-side limit, the provider's wait holds every call to this model, not just this one.
         if (named !== null && cfg.requestsPerMinute > 0) limiter.pause(limitKey, now() + waitMs);
-        attemptFailed({ label, attempt, startedAt, reason, status: res.status, retry: true, waitMs });
+        attemptFailed({ label, attempt, startedAt, reason, status: res.status, retry: true, waitMs, think });
         await sleep(waitMs);
         continue;
       }
@@ -297,7 +306,7 @@ export function createAiClient({
         const named = retryAfterMs(res.headers.get('retry-after'), await res.clone().text().catch(() => ''), now());
         if (named !== null) limiter.pause(limitKey, now() + Math.min(named, MAX_RETRY_AFTER_MS));
       }
-      attemptFailed({ label, attempt, startedAt, reason, status: res.status, retry: false });
+      attemptFailed({ label, attempt, startedAt, reason, status: res.status, retry: false, think });
       throw await describeFailure(res, cfg);
     }
   }
@@ -314,30 +323,48 @@ export function createAiClient({
   // `responseSchema` ({ name, schema } as JSON Schema) is sent as response_format only to providers that support it;
   // if one turns out not to, the request is repeated without it and the host is remembered.
   // AI_EXTRA_BODY options are merged in, but can't replace the model or the messages.
-  async function chat({ messages, maxTokens = 4000, temperature, responseSchema, config, label, live = false }) {
-    const cfg = readConfig({ needModel: true }, config);
+  // `reasoning: 'high'` (lesson processing only) asks the model to think: reasoning_effort goes in the body after
+  // AI_EXTRA_BODY, max_tokens grows by THINKING_HEADROOM_TOKENS (thinking counts against it) and the request may take
+  // THINKING_TIMEOUT_MS. Ignored for a provider whose preset does not take reasoning_effort.
+  async function chat({ messages, maxTokens = 4000, temperature, responseSchema, config, label, live = false, reasoning }) {
+    const base = readConfig({ needModel: true }, config);
+    const think = reasoning === 'high' && base.reasoningEffort ? 'high' : undefined;
+    const cfg = think ? { ...base, timeoutMs: Math.max(base.timeoutMs, THINKING_TIMEOUT_MS) } : base;
     // sampling temperature: this call > the provider's setting (preset default 0.2); AI_EXTRA_BODY can still override it
-    const body = { temperature: temperature ?? cfg.temperature ?? 0.2, max_tokens: maxTokens, stream: false, ...cfg.extraBody, model: cfg.model, messages };
+    const body = {
+      temperature: temperature ?? cfg.temperature ?? 0.2,
+      max_tokens: think ? Math.min(maxTokens + THINKING_HEADROOM_TOKENS, THINKING_MAX_TOKENS) : maxTokens,
+      stream: false,
+      ...cfg.extraBody,
+      ...(think ? { reasoning_effort: think } : {}),
+      model: cfg.model,
+      messages,
+    };
     const useSchema = Boolean(responseSchema) && cfg.jsonSchema && !noJsonSchema.has(cfg.host);
     let data;
     if (useSchema) {
       const withFormat = { ...body, response_format: { type: 'json_schema', json_schema: { name: responseSchema.name, schema: responseSchema.schema } } };
       try {
         stats.schemaSent += 1;
-        data = await send(cfg, '/chat/completions', { method: 'POST', body: withFormat, label, live });
+        data = await send(cfg, '/chat/completions', { method: 'POST', body: withFormat, label, live, think });
       } catch (err) {
         if (err.code !== 'bad_request') throw err;
         stats.schemaRejected += 1;
-        data = await send(cfg, '/chat/completions', { method: 'POST', body, label, live });
+        data = await send(cfg, '/chat/completions', { method: 'POST', body, label, live, think });
         noJsonSchema.add(cfg.host); // the same request works without response_format, so that was the problem
       }
     }
-    data ??= await send(cfg, '/chat/completions', { method: 'POST', body, label, live });
+    data ??= await send(cfg, '/chat/completions', { method: 'POST', body, label, live, think });
     const choice = data?.choices?.[0];
     if (!choice) throw new AiError('bad_response', "The AI provider's reply had no answer in it. Check that the model name is a chat model.");
     stats.calls += 1;
     stats.promptTokens += data.usage?.prompt_tokens ?? 0;
     stats.completionTokens += data.usage?.completion_tokens ?? 0;
+    if (think) {
+      stats.thinkingCalls += 1;
+      const u = data.usage ?? {};
+      stats.thinkingTokens += Math.max(0, (u.total_tokens ?? 0) - (u.prompt_tokens ?? 0) - (u.completion_tokens ?? 0));
+    }
     const raw = choice.message?.content;
     const content = Array.isArray(raw) ? raw.map((p) => p?.text ?? '').join('') : (raw ?? '');
     return { content, finishReason: choice.finish_reason ?? null };
@@ -348,7 +375,7 @@ export function createAiClient({
   // A reply cut off by the token limit is retried with double the budget: reasoning models spend max_tokens on
   // thinking before they write any JSON, so the same limit would just fail again.
   // `live`: see send(). The one retry for an unusable reply still applies.
-  async function generateJSON({ system, user, schema, responseSchema, maxTokens, temperature, label = 'this request', config, live = false }) {
+  async function generateJSON({ system, user, schema, responseSchema, maxTokens, temperature, label = 'this request', config, live = false, reasoning }) {
     let problem = '';
     let budget = maxTokens;
     for (let attempt = 1; attempt <= 2; attempt++) {
@@ -366,6 +393,7 @@ export function createAiClient({
         config,
         label,
         live,
+        reasoning,
       });
       if (finishReason === 'length') stats.truncated += 1;
       if (finishReason === 'length' && budget) budget = Math.min(budget * 2, MAX_TOKENS_CEILING);

@@ -131,9 +131,9 @@ describe('admin settings: new cards per day and the student-key switch', () => {
   };
 
   it('reads the defaults, saves both, and the scheduler uses the new limit', async () => {
-    assert.deepEqual((await send('GET')).body, { flashcard_new_per_day: 20, allow_student_keys: false, student_keys_saved: 0, allow_student_uploads: false, student_uploads_per_day: 2 });
+    assert.deepEqual((await send('GET')).body, { flashcard_new_per_day: 20, allow_student_keys: false, student_keys_saved: 0, allow_student_uploads: false, student_uploads_per_day: 2, lesson_thinking: 'off' });
     const saved = await send('PUT', { flashcard_new_per_day: 12, allow_student_keys: true });
-    assert.deepEqual(saved.body, { flashcard_new_per_day: 12, allow_student_keys: true, student_keys_saved: 0, allow_student_uploads: false, student_uploads_per_day: 2 });
+    assert.deepEqual(saved.body, { flashcard_new_per_day: 12, allow_student_keys: true, student_keys_saved: 0, allow_student_uploads: false, student_uploads_per_day: 2, lesson_thinking: 'off' });
     assert.equal(loadSchedulerConfig(db).newPerDay, 12);
   });
 

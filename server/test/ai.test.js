@@ -202,6 +202,8 @@ describe('createAiClient.generateJSON', () => {
       failedAttempts: {},
       retries: {},
       throttledMs: 0,
+      thinkingCalls: 0,
+      thinkingTokens: 0,
     });
   });
 });

@@ -180,7 +180,7 @@ function lessons(db, { includeP00 }) {
     )
     .all();
   return toCsv(
-    ['lesson_id', 'title', 'origin', 'shared', 'shared_at', 'owner', 'status', 'word_count', 'source_kind', 'created_at'],
+    ['lesson_id', 'title', 'origin', 'shared', 'shared_at', 'owner', 'status', 'word_count', 'source_kind', 'processed_thinking', 'created_at'],
     rows.map((l) => ({ ...l, title: l.export_title, lesson_id: l.id, shared: l.origin === 'admin' ? null : l.shared_at !== null })),
   );
 }
@@ -235,7 +235,7 @@ function aiCalls(db, { includeP00 }) {
     )
     .all();
   return toCsv(
-    ['participant', 'call_id', 'lesson_id', 'lesson_title', 'section_index', 'kind', 'outcome', 'ai_source', 'ai_provider', 'ai_model',
+    ['participant', 'call_id', 'lesson_id', 'lesson_title', 'section_index', 'kind', 'outcome', 'ai_source', 'ai_provider', 'ai_model', 'ai_thinking',
       'ai_fallback_steps', 'ai_fallback_reasons', 'from_cache', 'saved_shared', 'error_code', 'ms', 'created_at', 'study_date'],
     rows.map((c) => ({
       ...c,
@@ -243,6 +243,7 @@ function aiCalls(db, { includeP00 }) {
       ai_source: c.source,
       ai_provider: c.provider,
       ai_model: c.model,
+      ai_thinking: c.thinking,
       ai_fallback_steps: c.fallback_steps,
       ai_fallback_reasons: c.fallback_reasons,
       from_cache: Boolean(c.from_cache),

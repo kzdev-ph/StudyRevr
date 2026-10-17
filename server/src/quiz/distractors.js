@@ -57,7 +57,7 @@ export function cardsNeedingDistractors(db, lessonId, { includeFailing = false }
   // nor a list item, whose wrong options are the other items of its list (quiz/list-items.js)
   const lessonText = lessonTextOf(db, lessonId);
   const groups = listGroups(lessonText);
-  const askable = (r) => !answerInQuestion(r.front, r.back) && !cardLeaks(r).some((p) => p.rule === 'k') && !siblingItems(groups, r.back);
+  const askable = (r) => !answerInQuestion(r.front, r.back) && !cardLeaks(r).some((p) => p.rule === 'k' || p.rule === 'l') && !siblingItems(groups, r.back);
   if (!includeFailing) return rows.filter((r) => !r.has_saved && askable(r)).map(cardFields);
   const candidates = quizCandidates(rows, { distractors: loadDistractors(db, lessonId), lessonText });
   const failing = new Set(

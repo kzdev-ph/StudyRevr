@@ -2,6 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   answerInQuestion,
+  asksByPosition,
+  CARD_LEAK_RULES,
   cardLeaks,
   contentWords,
   falseStatementProblems,
@@ -10,6 +12,7 @@ import {
   lessonWords,
   maskTerm,
   optionSetProblems,
+  sameForm,
   questionLeaks,
   stem,
   termInText,
@@ -251,5 +254,56 @@ describe('leak checks: flashcard rules g-k', () => {
   it('every clean card of both lessons passes', () => {
     for (const lesson of [EN_LESSON, FIL_LESSON])
       for (const c of lesson.cards.filter((x) => ![3, 7, 13, 17].includes(x.id))) assert.deepEqual(cardLeaks(c, lesson.cards), [], `${lesson.title} #${c.id}`);
+  });
+});
+
+describe('word forms count as the same word', () => {
+  it('sameForm links a word with its common forms and keeps look-alikes apart', () => {
+    for (const [a, b] of [['professional', 'professionalism'], ['create', 'creates'], ['create', 'creating'], ['create', 'creation'], ['confident', 'confidence'], ['build', 'builds']])
+      assert.ok(sameForm(a, b) && sameForm(b, a), `${a} / ${b}`);
+    for (const [a, b] of [['data', 'database'], ['cell', 'excellent'], ['state', 'statement'], ['plan', 'plant']])
+      assert.ok(!sameForm(a, b), `${a} / ${b}`);
+  });
+
+  it('a one-word answer is given away by a form of it in the question', () => {
+    assert.ok(answerInQuestion('Which quality does a professional presentation show?', 'Professionalism'));
+    assert.ok(answerInQuestion('What does it mean to creates a first impression?', 'Create'));
+    assert.equal(answerInQuestion('What is stored in a database?', 'Data'), null);
+    assert.equal(answerInQuestion('Why is this part excellent?', 'Cell'), null);
+  });
+
+  it('rule b counts a form of a word the right option repeats', () => {
+    const problems = optionSetProblems(
+      'How does a professional introduction help confident speakers?',
+      'It shows professionalism and confidence.',
+      ['It makes the audience bored.', 'It takes a long time to prepare.', 'It replaces the speech.'],
+    );
+    assert.ok(rules(problems).includes('b'), JSON.stringify(problems));
+  });
+});
+
+describe('rule l: questions that ask by place in a list', () => {
+  it('flags the shapes that name a place', () => {
+    for (const q of [
+      'Which aim is listed first?',
+      'What is the second purpose of a self-introduction?',
+      'Which key element is mentioned last?',
+      'What does the third item say?',
+      'Which is first-listed in the slide?',
+      'What is the aim of item 3?',
+      'Which aim comes first in the list?',
+    ]) assert.ok(asksByPosition(q), q);
+  });
+
+  it('leaves questions that merely use an ordinal', () => {
+    for (const q of ['What makes a good first impression?', 'What is first aid?', 'What is the first step of the scientific method?', 'Which purpose builds trust?', ''])
+      assert.ok(!asksByPosition(q), q);
+  });
+
+  it('cardLeaks reports it for a concept card, not a term card', () => {
+    const concept = { kind: 'concept', front: 'Which aim is listed first?', back: 'Builds confidence.' };
+    assert.deepEqual(rules(cardLeaks(concept)), ['l']);
+    assert.ok(CARD_LEAK_RULES.includes('l'));
+    assert.deepEqual(rules(cardLeaks({ kind: 'concept', front: 'What does a self-introduction build?', back: 'Confidence.' })), []);
   });
 });

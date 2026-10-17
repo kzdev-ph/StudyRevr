@@ -139,7 +139,7 @@ export function quizCandidates(cards, { distractors = new Map(), extraTerms = []
     const problems = [];
     const given = answerInQuestion(card.front, card.back);
     if (given) problems.push({ rule: 'a', detail: given });
-    problems.push(...cardLeaks(card).filter((p) => p.rule === 'k'));
+    problems.push(...cardLeaks(card).filter((p) => p.rule === 'k' || p.rule === 'l'));
 
     // a list item's wrong options are the other items of its list (list-items.js), not saved AI ones; those items are
     // other cards' answers too, which is accepted here as for term cards (they don't answer this question)

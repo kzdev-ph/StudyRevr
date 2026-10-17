@@ -179,6 +179,11 @@ function DefaultAi() {
   );
 }
 
+const THINKING = [
+  { id: 'off', label: 'Off' },
+  { id: 'high', label: 'High' },
+];
+
 function StudySettings() {
   const [settings, setSettings] = useState(null);
   const [perDay, setPerDay] = useState('');
@@ -359,6 +364,33 @@ function StudySettings() {
       </form>
       <p id="admin-uploadsperday-note" className="muted">
         The study day starts at 04:00. Deleting an upload doesn’t give it back. Default 2.
+      </p>
+      <fieldset className="choice" aria-describedby="admin-thinking-note">
+        <legend>Think harder when preparing lessons</legend>
+        <div className="segmented">
+          {THINKING.map(({ id, label }) => (
+            <label key={id} className="segmented__item">
+              <input
+                type="radio"
+                name="lesson-thinking"
+                value={id}
+                checked={settings.lesson_thinking === id}
+                disabled={busy}
+                onChange={() =>
+                  save(
+                    { lesson_thinking: id },
+                    id === 'high' ? 'Saved. The next lesson is prepared with thinking.' : 'Saved. The next lesson is prepared without thinking.',
+                  )
+                }
+              />
+              <span>{label}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <p id="admin-thinking-note" className="muted">
+        High asks the AI to think before it writes the review, cards, quiz answers and checks. It is slower and uses more of the daily AI quota, and only applies to
+        lessons prepared from now on. In a test on the self-introduction lesson it added sentences the lesson doesn’t say, so Off is the default. Explain simpler and Filipino/Taglish never think. Each lesson in the list says which it was prepared with.
       </p>
       <p role="status" className="status-ok">
         {message}

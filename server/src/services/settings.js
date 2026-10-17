@@ -67,6 +67,7 @@ export function resolveAiConfig(db, envAi = {}, overrides = {}) {
     // the model's own options (Gemma's reasoning_effort), then AI_EXTRA_BODY for the .env provider
     extraBody: tuning.extraBody || env.extraBody ? { ...tuning.extraBody, ...env.extraBody } : undefined,
     jsonSchema: preset.jsonSchema,
+    reasoningEffort: Boolean(preset.reasoningEffort),
     needsKey: preset.needsKey,
     keyEnv: preset.keyEnv,
     keyTermsMax: Math.min(getIntSetting(db, 'key_terms_max') ?? envAi.keyTermsMax ?? DEFAULT_KEY_TERMS_MAX, MAX_KEY_TERMS_LIMIT),
@@ -122,12 +123,21 @@ export function saveAiSettings(db, input, envAi = {}) {
 //   allow_student_keys        students may use their own AI key for Explain simpler and Filipino/Taglish (default off)
 //   allow_student_uploads     students may upload their own lessons (default off)
 //   student_uploads_per_day   uploads per student per study day (default 2)
+//   lesson_thinking           'off' | 'high': whether lesson processing asks the model to think (default off: a measured run was worse with high; live
+//                             Explain simpler / Filipino-Taglish never do)
 export const DEFAULT_UPLOADS_PER_DAY = 2;
+export const LESSON_THINKING = ['off', 'high'];
+export const DEFAULT_LESSON_THINKING = 'off';
+export function lessonThinking(db) {
+  const value = getSetting(db, 'lesson_thinking');
+  return LESSON_THINKING.includes(value) ? value : DEFAULT_LESSON_THINKING;
+}
 export const appSettingsBody = z.strictObject({
   flashcard_new_per_day: z.number().int().min(0).max(9999).optional(),
   allow_student_keys: z.boolean().optional(),
   allow_student_uploads: z.boolean().optional(),
   student_uploads_per_day: z.number().int().min(0).max(20).optional(),
+  lesson_thinking: z.enum(LESSON_THINKING).optional(),
 });
 
 // Uploads each student may make per study day (0 is allowed: nobody can).
@@ -145,6 +155,7 @@ export function describeAppSettings(db, { newPerDay }) {
     student_keys_saved: db.prepare('SELECT COUNT(*) AS n FROM participant_ai_keys').get().n,
     allow_student_uploads: studentUploadsAllowed(db),
     student_uploads_per_day: uploadsPerDay(db),
+    lesson_thinking: lessonThinking(db),
   };
 }
 
@@ -163,6 +174,7 @@ export function saveAppSettings(db, input, current = null) {
     put('allow_student_keys', input.allow_student_keys, before.allow_student_keys);
     put('allow_student_uploads', input.allow_student_uploads, before.allow_student_uploads);
     put('student_uploads_per_day', input.student_uploads_per_day, before.student_uploads_per_day);
+    put('lesson_thinking', input.lesson_thinking, before.lesson_thinking);
   })();
   return changed;
 }

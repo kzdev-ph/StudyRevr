@@ -42,7 +42,7 @@ const progressBody = z.object({
 // than the file limit plus this is refused before anything is read.
 const MULTIPART_OVERHEAD = 64 * 1024;
 
-const SUMMARY_COLUMNS = 'l.id, l.title, l.filename, l.word_count, l.status, l.error, l.created_at, l.origin, l.owner_participant_id, l.shared_at, l.error_kind';
+const SUMMARY_COLUMNS = 'l.id, l.title, l.filename, l.word_count, l.status, l.error, l.created_at, l.origin, l.owner_participant_id, l.shared_at, l.error_kind, l.processed_thinking';
 const OWNER_CODE = '(SELECT code FROM participants WHERE id = l.owner_participant_id) AS owner_code';
 
 // The upload problems worth a lesson_upload_failed event, by the code the upload checks put on their error
@@ -91,11 +91,13 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin, { ac
   // file name (the title may come from it, but they chose that file themselves); admin gets the owner's code and the
   // file name. A student's own upload that failed for a reason other than its file shows a plain message.
   const shape = (row, viewer) => {
-    const { owner_participant_id: ownerId, owner_code: ownerCode, error_kind: errorKind, ...rest } = row;
+    const { owner_participant_id: ownerId, owner_code: ownerCode, error_kind: errorKind, processed_thinking: processedThinking, ...rest } = row;
     const mine = Boolean(viewer.participant) && ownerId === viewer.participant.id;
     const out = { ...rest, error: safeError(row.error, { origin: row.origin, error_kind: errorKind }, viewer), mine, shared: row.shared_at !== null };
-    if (viewer.admin) out.owner_code = ownerCode ?? null;
-    else delete out.filename;
+    if (viewer.admin) {
+      out.owner_code = ownerCode ?? null;
+      out.processed_thinking = processedThinking ?? null; // what the AI was asked when it prepared the lesson (admin only)
+    } else delete out.filename;
     if (mine && !viewer.admin) {
       const records = ownerRecords(db, row.id, viewer.participant.id);
       out.can_delete = row.origin === 'student' && row.shared_at === null && !hasRecords(records);

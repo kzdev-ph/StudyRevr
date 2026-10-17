@@ -41,6 +41,14 @@ export function rowActions(lesson) {
   return { delete: Boolean(lesson.mine && lesson.can_delete), retry: Boolean(lesson.mine && lesson.can_retry) };
 }
 
+// Admin's note on how the AI prepared a lesson ("Think harder when preparing lessons"); null for a lesson made before
+// the setting existed, and for a student (who never receives the field).
+const THINKING_NAMES = { off: 'Off', high: 'High', mixed: 'Mixed' };
+export function thinkingNote(lesson) {
+  const name = THINKING_NAMES[lesson.processed_thinking];
+  return name ? `Prepared with thinking: ${name}` : null;
+}
+
 // Admin's note on a student's upload: whose it is and who can see it. Null for the teacher's own lessons.
 export function adminLessonNote(lesson) {
   if (lesson.origin !== 'student') return null;

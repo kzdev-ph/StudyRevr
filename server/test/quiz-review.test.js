@@ -97,10 +97,11 @@ describe('quiz review', () => {
     assert.deepEqual(labels(ai), ['the quiz review'], 'nothing to make again: a giveaway true statement just drops Yes/No');
     assert.match(ai.calls[0].user, /o1 \(both\): Alpha topic answer 1\./);
     assert.match(ai.calls[0].user, /<lesson_text>/);
-    assert.deepEqual(result, { reviewed: 3, flagged: 1, regenerated: 0, remade: 0, error: null });
+    assert.deepEqual(result, { reviewed: 4, flagged: 1, regenerated: 0, remade: 0, error: null }, 'the item left out of the reply counts as reviewed');
 
     const saved = rows(db, lessonId);
-    assert.deepEqual(saved.map((r) => r.flashcard_id), cards.slice(0, 3), 'an item left out of the reply is not saved');
+    assert.deepEqual(saved.map((r) => r.flashcard_id), cards.slice(0, 4), 'an item left out of the reply is saved with nothing flagged');
+    assert.deepEqual([saved[3].card_flags, saved[3].set_flags, saved[3].true_flags, saved[3].option_flags], ['[]', '[]', '[]', '{}']);
     assert.deepEqual(JSON.parse(saved[1].true_flags), [{ flag: 'giveaway', why: 'common sense' }]);
     assert.equal(saved[1].card_flags, '[]', 'an unknown flag is ignored');
     assert.equal(saved[2].set_flags, '[]', 'a flag where it does not belong is ignored');
@@ -112,13 +113,11 @@ describe('quiz review', () => {
     assert.equal(second.mcClean.length, 3, 'multiple choice is still fine');
     assert.match(second.excluded.map((x) => x.detail).join(' '), /Yes\/No: giveaway \(common sense\)/);
 
-    // cached: only the card left out is reviewed again
-    assert.deepEqual(itemsToReview(db, lessonId).map((x) => x.card.id), [cards[3]]);
+    // cached: nothing is left to review, so a second run asks for nothing
+    assert.equal(itemsToReview(db, lessonId).length, 0);
     const again = fakeAi();
     await reviewQuiz({ db, ai: again, lessonId, log: quiet });
-    assert.deepEqual(labels(again), ['the quiz review']);
-    assert.equal((again.calls[0].user.match(/^\[\d+\]/gm) ?? []).length, 1);
-    assert.equal(itemsToReview(db, lessonId).length, 0);
+    assert.deepEqual(labels(again), []);
 
     // what the quiz shows changed (a new wrong answer): that card is reviewed again
     saveWrong(db, cards[0], ['Delta topic answer 1.', 'Beta topic answer 1.', 'Gamma topic answer 1.']);
@@ -155,6 +154,24 @@ describe('quiz review', () => {
     const again = fakeAi();
     await reviewQuiz({ db, ai: again, lessonId, log: quiet });
     assert.deepEqual(labels(again), []);
+  });
+
+  it('an option the reviewer calls reversed (the opposite with no negative word) is left out of multiple choice and of Yes/No', async () => {
+    const ai = fakeAi({ review: (it) => ({ options: it.options.filter((o) => /^Beta/.test(o.text)).map((o) => ({ o: o.o, flag: 'reversed', why: 'the right answer turned around' })) }), remake: (n) => [`Beta again topic answer ${n}.`, `Delta topic answer ${n}.`] });
+    await reviewQuiz({ db, ai, lessonId, log: quiet });
+    const first = candidates(db, lessonId).find((p) => p.card.id === cards[0]);
+    assert.ok(!first.mcClean.length, 'with one of three options out, multiple choice has too few');
+    assert.ok(!first.falseClean.some((s) => s.startsWith('Beta')), 'the reversed option is not a Yes/No false statement either');
+    assert.ok(first.excluded.some((x) => x.rule === 'ai' && /^Beta/.test(x.text) && /reversed/.test(x.detail)), JSON.stringify(first.excluded));
+  });
+
+  it('an empty reply, or one that matches none of the cards, fails the batch: nothing is saved and every card stays pending', async () => {
+    const ai = fakeAi({ review: () => ({ omit: true }) });
+    const result = await reviewQuiz({ db, ai, lessonId, log: quiet });
+    assert.match(result.error, /listed none of the cards/);
+    assert.equal(rows(db, lessonId).length, 0);
+    assert.equal(reviewSummary(db, lessonId).pending, 4);
+    assert.equal(itemsToReview(db, lessonId).length, 4);
   });
 
   it('writes a flagged card again in place, makes its options, and reviews it again', async () => {
@@ -293,6 +310,18 @@ describe('quiz review stage and Review again', () => {
     assert.deepEqual(row.quiz_review, { reviewed: 3, flagged: 0, pending: 0, checks: { reviewed: 0, pending: 0, dropped: 0 }, status: null, error: null }, 'seeded sections have no quick checks');
     const student = (await t.call('GET', '/api/lessons', { as: 'P00' })).body.lessons.find((l) => l.id === lessonId);
     assert.equal(student.quiz_review, undefined, 'students never get it');
+  });
+
+  it('after the job is done nothing is "not reviewed yet", even when the reviewer leaves cards out of its reply', async () => {
+    const left = fakeAi({ review: (it) => (it.n % 2 === 0 ? { omit: true } : {}) });
+    ai.generateJSON = left.generateJSON; // the runner and the routes share this fake
+    await call('POST', `/api/lessons/${lessonId}/quiz-options`);
+    await runner.idle();
+    assert.equal(getJobStatus(t.db, lessonId).job.status, 'done');
+    assert.equal(itemsToReview(t.db, lessonId).length, 0);
+    assert.deepEqual(reviewSummary(t.db, lessonId), { reviewed: 3, flagged: 0, pending: 0 });
+    const row = (await call('GET', '/api/lessons?counts=1')).body.lessons.find((l) => l.id === lessonId);
+    assert.equal(row.quiz_review.pending, 0);
   });
 
   it('Review again needs the PIN, refuses a busy or unknown lesson, and reviews every card again', async () => {

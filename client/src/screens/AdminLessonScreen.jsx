@@ -8,7 +8,7 @@ import { useAdminPin } from '../lib/admin.js';
 import { api } from '../lib/api.js';
 import { prettyTitle } from '../lib/format.js';
 import { paths } from '../lib/router.js';
-import { adminLessonNote } from '../lib/uploads.js';
+import { adminLessonNote, thinkingNote } from '../lib/uploads.js';
 
 // Admin's read-only look at one lesson, a student's private upload included. It is not the reader: no study session,
 // no saved progress, no events and no Explain simpler / Taglish (so no AI call). The PIN is kept only while an admin
@@ -72,7 +72,7 @@ export default function AdminLessonScreen({ lessonId }) {
         <>
           <p className="muted">
             {lesson.word_count.toLocaleString()} words
-            {adminLessonNote(lesson) ? ` · ${adminLessonNote(lesson)}` : ''}
+            {[adminLessonNote(lesson), thinkingNote(lesson)].filter(Boolean).map((note) => ` · ${note}`)}
           </p>
           {lesson.status !== 'ready' && (
             <Notice tone={lesson.status === 'failed' ? undefined : 'warn'}>

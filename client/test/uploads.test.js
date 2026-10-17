@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { STAGES, adminLessonNote, ownLessonNote, processingLine, rowActions, uploadsLeftText } from '../src/lib/uploads.js';
+import { STAGES, adminLessonNote, ownLessonNote, processingLine, rowActions, thinkingNote, uploadsLeftText } from '../src/lib/uploads.js';
 
 describe('uploadsLeftText (under the student upload button)', () => {
   it('says nothing while uploads are off', () => {
@@ -73,5 +73,15 @@ describe('flashcardsNotice (admin\'s "Make cards", now in the lesson list)', () 
     assert.equal(flashcardsNotice({ status: 'ready', flashcards: { total: 0, status: 'running' } }).state, 'making');
     const failed = flashcardsNotice({ status: 'ready', flashcards: { total: 0, status: 'failed', error: 'boom' } });
     assert.deepEqual([failed.state, failed.detail, failed.action], ['failed', 'boom', 'Try again']);
+  });
+});
+
+describe('thinkingNote (admin: how a lesson was prepared)', () => {
+  it('names the level, and says nothing for a lesson made before the setting existed or for a student', () => {
+    assert.equal(thinkingNote({ processed_thinking: 'high' }), 'Prepared with thinking: High');
+    assert.equal(thinkingNote({ processed_thinking: 'off' }), 'Prepared with thinking: Off');
+    assert.equal(thinkingNote({ processed_thinking: 'mixed' }), 'Prepared with thinking: Mixed');
+    assert.equal(thinkingNote({ processed_thinking: null }), null);
+    assert.equal(thinkingNote({}), null);
   });
 });
