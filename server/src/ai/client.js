@@ -20,11 +20,14 @@ const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_RETRY_DELAYS_MS = [2_000, 6_000, 15_000, 30_000];
 const MAX_RETRY_AFTER_MS = 60_000; // a provider asking for a longer wait gets this one (then the next attempt)
 const MAX_TOKENS_CEILING = 16_000; // upper bound when a cut-off reply is retried with a bigger budget
-// Lesson processing can ask for thinking (`reasoning: 'high'`, see chat()). The model's thinking tokens count against
+// Lesson processing can ask for thinking (`reasoning: 'low' | 'medium' | 'high'`, see chat()). The model's thinking tokens count against
 // max_tokens and take seconds, so a thinking call gets more room and a longer wait than the model's usual tuning.
 export const THINKING_HEADROOM_TOKENS = 8_000;
 export const THINKING_TIMEOUT_MS = 120_000;
 const THINKING_MAX_TOKENS = 32_000;
+// The reasoning_effort values a processing call may send ('minimal', the setting's default, sends nothing: probed on
+// gemini-3.5-flash-lite, nothing sent and "minimal" both use 0 thinking tokens).
+export const THINKING_EFFORTS = ['low', 'medium', 'high'];
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 const LIVE_MAX_QUEUE_MS = 3_000; // a live call waits at most this long for the client-side request limit
 
@@ -323,12 +326,12 @@ export function createAiClient({
   // `responseSchema` ({ name, schema } as JSON Schema) is sent as response_format only to providers that support it;
   // if one turns out not to, the request is repeated without it and the host is remembered.
   // AI_EXTRA_BODY options are merged in, but can't replace the model or the messages.
-  // `reasoning: 'high'` (lesson processing only) asks the model to think: reasoning_effort goes in the body after
+  // `reasoning: 'low' | 'medium' | 'high'` (lesson processing only) asks the model to think at that level: reasoning_effort goes in the body after
   // AI_EXTRA_BODY, max_tokens grows by THINKING_HEADROOM_TOKENS (thinking counts against it) and the request may take
   // THINKING_TIMEOUT_MS. Ignored for a provider whose preset does not take reasoning_effort.
   async function chat({ messages, maxTokens = 4000, temperature, responseSchema, config, label, live = false, reasoning }) {
     const base = readConfig({ needModel: true }, config);
-    const think = reasoning === 'high' && base.reasoningEffort ? 'high' : undefined;
+    const think = THINKING_EFFORTS.includes(reasoning) && base.reasoningEffort ? reasoning : undefined;
     const cfg = think ? { ...base, timeoutMs: Math.max(base.timeoutMs, THINKING_TIMEOUT_MS) } : base;
     // sampling temperature: this call > the provider's setting (preset default 0.2); AI_EXTRA_BODY can still override it
     const body = {

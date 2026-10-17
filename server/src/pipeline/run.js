@@ -17,6 +17,9 @@ class LessonGone extends Error {}
 
 const NO_TEXT = "This file has no readable text, so there's nothing to summarize. Try a text-based version of the lesson.";
 const NO_TEXT_ERROR = new HttpError(422, NO_TEXT);
+// Added to the content stages' system message when the lesson is prepared with thinking.
+export const RESTATE_ONLY =
+  'Think as much as you need, but your output may only restate what the lesson says. Never add explanations, examples, causes or connecting sentences of your own.';
 
 const parseNumbers = (json) => {
   try {
@@ -40,7 +43,7 @@ const count = (db, table, lessonId) => db.prepare(`SELECT COUNT(*) AS c FROM ${t
 // A job queued at an on-demand stage (ON_DEMAND_STAGES) runs only that stage.
 export async function runPipeline({ db, ai: plainAi, lessonId, chunkTokens = DEFAULT_CHUNK_TOKENS, concurrency = 1, keyTermsMax = 12, madeBy = null, thinkingSupported = true, log = console, clock = () => new Date(), onStage = () => {} }) {
   const lesson = db
-    .prepare('SELECT id, title, raw_text, word_count, status, source_kind, source_numbers, source_total, origin, owner_participant_id, processed_thinking FROM lessons WHERE id = ?')
+    .prepare('SELECT id, title, raw_text, word_count, status, source_kind, source_numbers, source_total, origin, owner_participant_id, thinking_level FROM lessons WHERE id = ?')
     .get(lessonId);
   if (!lesson) return;
   const job = db.prepare('SELECT id, stage FROM jobs WHERE lesson_id = ? ORDER BY id DESC LIMIT 1').get(lessonId);
@@ -48,20 +51,23 @@ export async function runPipeline({ db, ai: plainAi, lessonId, chunkTokens = DEF
   const jobId = job.id;
   const wasReady = lesson.status === 'ready';
 
-  // "Think harder when preparing lessons": with 'high', every AI call of the stages below asks for thinking. Prepare
-  // (section_versions) keeps the plain client, and live taps never come through here. A provider that takes no
-  // reasoning_effort (`thinkingSupported` false) runs as 'off'.
-  const thinking = thinkingSupported ? lessonThinking(db) : 'off';
-  const ai = thinking === 'high' ? { ...plainAi, generateJSON: (request) => plainAi.generateJSON({ ...request, reasoning: 'high' }) } : plainAi;
-  // What the lesson was prepared with (lessons.processed_thinking), written when a run starts its first stage. A lesson
+  // "Think harder when preparing lessons": above 'minimal', every AI call of the stages below asks for thinking at that
+  // level, and the content stages (sections, key points, key terms, flashcards) also get RESTATE_ONLY in their system
+  // message. Prepare (section_versions) keeps the plain client, and live taps never come through here. A provider that
+  // takes no reasoning_effort (`thinkingSupported` false) runs as 'minimal'.
+  const thinking = thinkingSupported ? lessonThinking(db) : 'minimal';
+  const thinks = thinking !== 'minimal';
+  const thinkingAi = thinks ? { ...plainAi, generateJSON: (request) => plainAi.generateJSON({ ...request, reasoning: thinking }) } : plainAi;
+  const ai = thinks ? { ...thinkingAi, generateJSON: (request) => thinkingAi.generateJSON({ ...request, system: `${request.system}\n\n${RESTATE_ONLY}` }) } : plainAi;
+  // What the lesson was prepared with (lessons.thinking_level), written when a run starts its first stage. A lesson
   // that was ready before the setting existed (NULL) was made without thinking; a different level now makes it 'mixed'.
   let recorded = false;
   const recordThinking = () => {
     if (recorded || ON_DEMAND_STAGES.includes(job.stage)) return;
     recorded = true;
-    const before = lesson.processed_thinking ?? (wasReady ? 'off' : null);
+    const before = lesson.thinking_level ?? (wasReady ? 'minimal' : null);
     const after = before === null || before === thinking ? thinking : 'mixed';
-    db.prepare('UPDATE lessons SET processed_thinking = ? WHERE id = ?').run(after, lessonId);
+    db.prepare('UPDATE lessons SET thinking_level = ? WHERE id = ?').run(after, lessonId);
   };
 
   // A deleted lesson cascades away its job row; stop quietly instead of writing to nothing.
@@ -174,7 +180,7 @@ export async function runPipeline({ db, ai: plainAi, lessonId, chunkTokens = DEF
       // no concept cards) means nothing to do.
       saved: () => cardsNeedingDistractors(db, lessonId, { includeFailing: true }).length === 0,
       async run() {
-        const { error } = await ensureDistractors({ db, ai, lessonId, includeFailing: true, concurrency, log, onProgress: progress });
+        const { error } = await ensureDistractors({ db, ai: thinkingAi, lessonId, includeFailing: true, concurrency, log, onProgress: progress });
         // batches that worked are saved, so a retry only asks for the rest
         if (error) throw new HttpError(502, `The quiz answer options couldn’t be made: ${error}`);
       },
@@ -183,9 +189,9 @@ export async function runPipeline({ db, ai: plainAi, lessonId, chunkTokens = DEF
       // every card the quiz can ask has a review of what it would show now (a review is redone only when that changes)
       saved: () => itemsToReview(db, lessonId).length === 0 && checksToReview(db, lessonId).length === 0,
       async run() {
-        const cards = await reviewQuiz({ db, ai, lessonId, concurrency, madeBy, log, onProgress: progress, now: clock });
+        const cards = await reviewQuiz({ db, ai: thinkingAi, lessonId, concurrency, madeBy, log, onProgress: progress, now: clock });
         // the quick checks under the sections get the same strict look (services/check-review.js)
-        const checks = await reviewChecks({ db, ai, lessonId, concurrency, madeBy, log, now: clock });
+        const checks = await reviewChecks({ db, ai: thinkingAi, lessonId, concurrency, madeBy, log, now: clock });
         const error = cards.error ?? checks.error;
         // batches that worked are saved, so a retry only reviews the rest
         if (error) throw new HttpError(502, `The quiz review couldn’t finish: ${error}`);

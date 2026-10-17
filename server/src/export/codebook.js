@@ -76,11 +76,12 @@ lessons.csv - one row per lesson, with where it came from
   owner     the uploader's code; blank for the teacher's lessons and when the uploader was withdrawn (a shared lesson
             stays after its owner is deleted; origin stays student)
   status    ready | processing | failed;  word_count, source_kind (slide | page | paragraph), created_at (UTC)
-  processed_thinking  whether the AI was asked to think while it prepared the lesson (admin setting "Think harder when
-            preparing lessons"): off (no thinking was asked for) | high (every preparation call asked for high
-            thinking) | mixed (a retry finished a lesson an earlier run had begun at the other level, or a lesson made
-            before the setting was prepared again with thinking) | blank (made before the setting existed: no thinking
-            was asked for). It covers the review sections, key points, key terms, flashcards, quiz answer options and
+  thinking_level  how hard the AI was asked to think while it prepared the lesson (admin setting "Think harder when
+            preparing lessons", reasoning_effort): minimal (no thinking was asked for) | low | medium | high (every
+            preparation call asked for that level; above minimal the review, key points, key terms and flashcards
+            were also told to restate only what the lesson says) | mixed (a retry finished a lesson an earlier run had
+            begun at another level, or a lesson made before the setting was prepared again at another level) | blank
+            (made before the setting existed: no thinking was asked for). It covers the review sections, key points, key terms, flashcards, quiz answer options and
             both AI reviews. Explain simpler and Filipino/Taglish never think (ai_calls.csv, ai_thinking).
   P00's private uploads are left out unless P00 is included (one the researcher shared stays, because other
   participants' rows point to it).  title is "Student upload <lesson_id>" for an upload.
@@ -152,7 +153,7 @@ ai_calls.csv - one row per live AI request for Explain simpler (kind simplify) o
                        researcher) | gemma (the backup model, used when the default was busy or down); blank if failed
   ai_provider, ai_model  the provider and model that answered (if failed: the last one tried)
   ai_thinking          always off: these live requests never ask the model to think (only lesson preparation can,
-                       see processed_thinking in lessons.csv)
+                       see thinking_level in lessons.csv)
   ai_fallback_steps    how many times the request moved on to the next step: 0 = the first choice answered (or, if
                        nothing answered, it failed and no other step was tried). Otherwise the steps that failed before
                        the answer or, if nothing answered, the steps tried after the first. The order is the student's

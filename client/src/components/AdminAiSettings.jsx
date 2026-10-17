@@ -180,7 +180,9 @@ function DefaultAi() {
 }
 
 const THINKING = [
-  { id: 'off', label: 'Off' },
+  { id: 'minimal', label: 'Minimal' },
+  { id: 'low', label: 'Low' },
+  { id: 'medium', label: 'Medium' },
   { id: 'high', label: 'High' },
 ];
 
@@ -379,7 +381,7 @@ function StudySettings() {
                 onChange={() =>
                   save(
                     { lesson_thinking: id },
-                    id === 'high' ? 'Saved. The next lesson is prepared with thinking.' : 'Saved. The next lesson is prepared without thinking.',
+                    id === 'minimal' ? 'Saved. The next lesson is prepared without thinking.' : `Saved. The next lesson is prepared with ${id} thinking.`,
                   )
                 }
               />
@@ -389,8 +391,9 @@ function StudySettings() {
         </div>
       </fieldset>
       <p id="admin-thinking-note" className="muted">
-        High asks the AI to think before it writes the review, cards, quiz answers and checks. It is slower and uses more of the daily AI quota, and only applies to
-        lessons prepared from now on. In a test on the self-introduction lesson it added sentences the lesson doesn’t say, so Off is the default. Explain simpler and Filipino/Taglish never think. Each lesson in the list says which it was prepared with.
+        Low, Medium and High ask the AI to think before it writes the review, cards, quiz answers and checks, and to restate only what the lesson says. Higher levels are
+        slower and use more of the daily AI quota; a change only applies to lessons prepared from now on. Low is the default: in a test on three lessons it made the fewest
+        mistakes. Minimal asks for no thinking. Explain simpler and Filipino/Taglish never think.
       </p>
       <p role="status" className="status-ok">
         {message}

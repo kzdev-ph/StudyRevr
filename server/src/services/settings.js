@@ -123,13 +123,15 @@ export function saveAiSettings(db, input, envAi = {}) {
 //   allow_student_keys        students may use their own AI key for Explain simpler and Filipino/Taglish (default off)
 //   allow_student_uploads     students may upload their own lessons (default off)
 //   student_uploads_per_day   uploads per student per study day (default 2)
-//   lesson_thinking           'off' | 'high': whether lesson processing asks the model to think (default off: a measured run was worse with high; live
-//                             Explain simpler / Filipino-Taglish never do)
+//   lesson_thinking           'minimal' | 'low' | 'medium' | 'high': how hard lesson processing asks the model to think (reasoning_effort;
+//                             'minimal' sends nothing, the old 'off'; default 'low' (migration 016); live Explain simpler /
+//                             Filipino-Taglish never think)
 export const DEFAULT_UPLOADS_PER_DAY = 2;
-export const LESSON_THINKING = ['off', 'high'];
-export const DEFAULT_LESSON_THINKING = 'off';
+export const LESSON_THINKING = ['minimal', 'low', 'medium', 'high'];
+export const DEFAULT_LESSON_THINKING = 'low'; // measured: see CLAUDE.md, Thinking for lesson processing
 export function lessonThinking(db) {
   const value = getSetting(db, 'lesson_thinking');
+  if (value === 'off') return 'minimal'; // the setting's old name for no thinking
   return LESSON_THINKING.includes(value) ? value : DEFAULT_LESSON_THINKING;
 }
 export const appSettingsBody = z.strictObject({

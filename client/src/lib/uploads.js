@@ -43,9 +43,9 @@ export function rowActions(lesson) {
 
 // Admin's note on how the AI prepared a lesson ("Think harder when preparing lessons"); null for a lesson made before
 // the setting existed, and for a student (who never receives the field).
-const THINKING_NAMES = { off: 'Off', high: 'High', mixed: 'Mixed' };
+const THINKING_NAMES = { minimal: 'Minimal', low: 'Low', medium: 'Medium', high: 'High', mixed: 'Mixed' };
 export function thinkingNote(lesson) {
-  const name = THINKING_NAMES[lesson.processed_thinking];
+  const name = THINKING_NAMES[lesson.thinking_level];
   return name ? `Prepared with thinking: ${name}` : null;
 }
 
