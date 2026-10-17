@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRng } from '../src/flashcards/scheduler.js';
-import { buildQuiz, quizCandidates, reshuffle, sameAnswer, shuffle, TF_CHOICES, usableCount, usableWrong } from '../src/quiz/build.js';
+import { buildQuiz, hasBlank, hasText, quizCandidates, reshuffle, sameAnswer, shuffle, TF_CHOICES, usableCount, usableWrong } from '../src/quiz/build.js';
 import { questionLeaks } from '../src/quiz/leaks.js';
 import { distractorMap, EN_LESSON, FIL_LESSON } from './fixtures/leak-lessons.js';
 
@@ -32,6 +32,33 @@ describe('quiz building', () => {
   it('drops wrong answers that match the correct answer or each other, and blanks', () => {
     assert.deepEqual(usableWrong(['Answer 1.', ' answer 1. ', 'Other', 'OTHER ', '', 'Third', 'Fourth', 'Fifth'], 'Answer 1.'), ['Other', 'Third', 'Fourth']);
     assert.deepEqual(usableWrong(undefined, 'x'), []);
+  });
+
+  it('never keeps an option without text: zero-width, no-break space, gap marks and bare punctuation are blank too', () => {
+    const blanks = ['', '   ', '​', ' ', '﻿​ ', '___', ' ___ ', '...', '…', '-'];
+    for (const b of blanks) assert.ok(!hasText(b), JSON.stringify(b));
+    for (const t of ['A', '7', 'Ang wika', 'a ___ b']) assert.ok(hasText(t), t);
+    assert.deepEqual(usableWrong(['Other', ...blanks, 'Third'], 'Answer 1.', Infinity), ['Other', 'Third']);
+    assert.ok(hasBlank({ type: 'mc', question: 'Q?', choices: ['a', '​', 'c', 'd'] }));
+    assert.ok(hasBlank({ type: 'tf', question: 'Q?', statement: ' ' }));
+    assert.ok(!hasBlank({ type: 'tf', question: 'Q?', statement: 'It holds.' }));
+  });
+
+  it('a term whose definition is only its own term (blank once hidden) is never asked or shown', () => {
+    const cards = [
+      { id: 1, kind: 'term', front: 'Sampling', back: 'Sampling', evidence: 'x' },
+      { id: 2, kind: 'term', front: 'Survey', back: 'Asks many people the same questions.', evidence: 'x' },
+      { id: 3, kind: 'term', front: 'Interview', back: 'Asks one person questions in depth.', evidence: 'x' },
+      { id: 4, kind: 'term', front: 'Census', back: 'Counts every member of a population.', evidence: 'x' },
+      { id: 5, kind: 'term', front: 'Pilot', back: 'A small trial run before the real study.', evidence: 'x' },
+    ];
+    const [empty, ...others] = quizCandidates(cards);
+    assert.equal(empty.shown, '___');
+    assert.equal(empty.mcClean.length + empty.falseClean.length, 0);
+    for (const c of others) assert.ok(![...c.mcClean, ...c.falseClean].some((t) => !hasText(t)), 'a blank definition is not offered to another term');
+    const qs = buildQuiz({ cards, random: seeded(3) });
+    assert.ok(qs.length > 0);
+    for (const q of qs) assert.ok(!hasBlank(q) && q.flashcard_id !== 1, JSON.stringify(q));
   });
 
   it('makes 10 questions: multiple choice where possible, about 3 true / false', () => {

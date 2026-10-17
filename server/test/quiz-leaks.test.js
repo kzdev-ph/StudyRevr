@@ -259,9 +259,9 @@ describe('leak checks: flashcard rules g-k', () => {
 
 describe('word forms count as the same word', () => {
   it('sameForm links a word with its common forms and keeps look-alikes apart', () => {
-    for (const [a, b] of [['professional', 'professionalism'], ['create', 'creates'], ['create', 'creating'], ['create', 'creation'], ['confident', 'confidence'], ['build', 'builds']])
+    for (const [a, b] of [['professional', 'professionalism'], ['create', 'creates'], ['create', 'creating'], ['create', 'creation'], ['confident', 'confidence'], ['build', 'builds'], ['formed', 'form'], ['forms', 'form'], ['forming', 'form'], ['reviewed', 'review'], ['drawn', 'drawn']])
       assert.ok(sameForm(a, b) && sameForm(b, a), `${a} / ${b}`);
-    for (const [a, b] of [['data', 'database'], ['cell', 'excellent'], ['state', 'statement'], ['plan', 'plant']])
+    for (const [a, b] of [['data', 'database'], ['cell', 'excellent'], ['state', 'statement'], ['plan', 'plant'], ['form', 'formal'], ['form', 'format'], ['bed', 'bead'], ['rate', 'ration'], ['star', 'start'], ['cell', 'celery'], ['use', 'user']])
       assert.ok(!sameForm(a, b), `${a} / ${b}`);
   });
 
@@ -270,6 +270,11 @@ describe('word forms count as the same word', () => {
     assert.ok(answerInQuestion('What does it mean to creates a first impression?', 'Create'));
     assert.equal(answerInQuestion('What is stored in a database?', 'Data'), null);
     assert.equal(answerInQuestion('Why is this part excellent?', 'Cell'), null);
+    assert.ok(answerInQuestion('What is formed first?', 'Form'));
+    assert.ok(answerInQuestion('What is reviewed during the third step?', 'Reviewing'));
+    assert.equal(answerInQuestion('What is formed first?', 'Format'), null);
+    // known limit: one of two answer words echoed is under rule g's 80% (lesson 15, "Form hypothesis")
+    assert.equal(answerInQuestion('What is formed as the second step in the process of research?', 'Form hypothesis'), null);
   });
 
   it('rule b counts a form of a word the right option repeats', () => {
@@ -292,11 +297,17 @@ describe('rule l: questions that ask by place in a list', () => {
       'Which is first-listed in the slide?',
       'What is the aim of item 3?',
       'Which aim comes first in the list?',
+      'What is a second way the collected data helps researchers during a study?',
+      'Name a third way data can be gathered.',
+      'Another fourth reason data collection matters?',
+      'What is the third method of sampling?',
+      'Which is the 2nd type of survey?',
+      'What is the first way to collect data?',
     ]) assert.ok(asksByPosition(q), q);
   });
 
   it('leaves questions that merely use an ordinal', () => {
-    for (const q of ['What makes a good first impression?', 'What is first aid?', 'What is the first step of the scientific method?', 'Which purpose builds trust?', ''])
+    for (const q of ['What makes a good first impression?', 'What is first aid?', 'What is the first step of the scientific method?', 'What is the first step in the process of research?', 'What is the second step of the method?', 'Which purpose builds trust?', 'What is a first draft?', 'What is the best way to collect data?', 'What is a way to collect data?', 'Which of the two methods is cheaper?', 'What does the second law of motion state?', ''])
       assert.ok(!asksByPosition(q), q);
   });
 

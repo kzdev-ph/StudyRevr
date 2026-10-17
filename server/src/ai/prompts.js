@@ -335,8 +335,12 @@ Flag only real problems; an item with none gets empty lists. Flags:
   - "not_in_lesson": as for the card.
 - "options" (one wrong option or false statement, by its number "o"):
   - "two_correct": it ALSO answers this question correctly according to the lesson: it says the same as the right answer in other words, or the lesson says it fits this question too (a student who picks it is not wrong). For a term card: that term's meaning also fits the definition (a broader term, or a kind of the asked term).
+    Judge by meaning, not by words: swapping a verb or a describing word for a synonym ("improves" for "makes", "take longer" for "slow") does not make an option different. Ask: would a student who knows the lesson be wrong to pick this? If not, flag it. Examples (made-up topics):
+    - Question: "Which tool records temperature automatically over time?" Right: "Thermograph". Option "Data logger", which the lesson also says records readings automatically over time: two_correct. Option "Barometer" (measures pressure): fine.
+    - Question: "How does compost help a garden?" Right: "It makes soil richer for plants". Option "It improves the soil so plants grow better": two_correct, the same benefit reworded.
+    - Question: "What is a drawback of cycling to work?" Right: "Trips can be slow and tiring in hot weather". Option "Rides take longer and cost more effort when it is hot": two_correct, the same drawback reworded. Option "Bikes need a place to be parked": fine, a different drawback.
   - "reversed": it is the right answer turned around, negated or given the opposite meaning, even with no negative word ("Creates anxiety" for "Builds confidence"), so it is ruled out at a glance and as a Yes/No statement it is plainly false.
-  - "off_topic": the lesson does not cover it at all, so it is ruled out at a glance.
+  - "off_topic": the lesson does not cover it at all, so it is ruled out at a glance. An option whose text appears in the lesson (even word for word) is NEVER "off_topic": it is another item of the lesson that does not answer this question, and that is a good wrong option.
   - "giveaway": a silly caricature or extreme that nobody would pick ("all details", "everything", "always", "as long as possible", "loudly and formally").
 A good wrong option is another idea, item or term FROM THE LESSON that does not answer this question (another item of the same list, another key term): never flag it as "off_topic" or "two_correct" only because it is in the lesson or about the same subject. A wrong option that only rewords the right answer is "two_correct", not "off_topic".
 Give a short "why" (at most 15 words) with every flag.${

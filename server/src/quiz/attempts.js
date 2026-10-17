@@ -1,4 +1,5 @@
 import { HttpError } from '../middleware/errors.js';
+import { hasBlank } from './build.js';
 
 // The database side of a quiz: an attempt (quiz_attempts) and one quiz_answers row per question. The questions are
 // written when the quiz starts and each answer is saved the moment it is given, so a quiz left part-way is still
@@ -34,7 +35,9 @@ export const attemptQuestions = (db, attemptId) =>
 export const publicQuestion = (q) => ({ position: q.position, type: q.type, kind: q.kind, question: q.question, statement: q.statement, choices: q.choices });
 
 // Saves a new attempt and its questions (from buildQuiz / reshuffle) in one transaction. -> attempt id
-export function startAttempt(db, { participantId, lessonId, questions, now, retakeOf = null }) {
+export function startAttempt(db, { participantId, lessonId, questions: all, now, retakeOf = null }) {
+  // a question with a blank choice or statement (an older attempt's, say) is never started
+  const questions = all.filter((q) => !hasBlank(q));
   return db.transaction(() => {
     const attemptId = Number(
       db

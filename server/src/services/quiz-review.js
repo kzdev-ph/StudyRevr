@@ -4,7 +4,7 @@ import { quizReviewPrompt, regenerateCardsPrompt } from '../ai/prompts.js';
 import { comparable } from '../pipeline/evidence.js';
 import { contentWords } from '../quiz/leaks.js';
 import { termKey } from '../pipeline/terms.js';
-import { quizCandidates } from '../quiz/build.js';
+import { hasText, quizCandidates } from '../quiz/build.js';
 import { usableFamilies } from '../quiz/related.js';
 import { ensureDistractors, loadDistractors, remakeFlagged } from '../quiz/distractors.js';
 import { listGroups, siblingItems } from '../quiz/list-items.js';
@@ -130,7 +130,7 @@ function itemFor(p) {
   const term = p.card.kind === 'term';
   const mc = new Set(p.mcCode);
   const tf = new Set(p.falseClean);
-  const options = p.reviewable.map((text) => ({ text, use: mc.has(text) && tf.has(text) ? 'both' : mc.has(text) ? 'mc' : 'yes_no' }));
+  const options = p.reviewable.filter(hasText).map((text) => ({ text, use: mc.has(text) && tf.has(text) ? 'both' : mc.has(text) ? 'mc' : 'yes_no' }));
   return {
     kind: p.card.kind,
     question: term ? p.shown : p.card.front,
@@ -185,6 +185,13 @@ async function reviewBatch({ db, ai, lessonId, batch, terms, round, madeBy, rawT
   // 12) an item it left out has nothing flagged.
   if (!batch.some((_, i) => byN.has(i + 1))) throw new Error('the reviewer’s reply listed none of the cards');
 
+  // "off_topic" means the lesson doesn't cover the option at all: an option that is in the lesson's own text is never
+  // off topic, whatever the reviewer says (lesson 22: a sentence copied from the lesson was flagged)
+  const lessonKey = comparable(rawText);
+  const inLesson = (text) => {
+    const key = comparable(text);
+    return key.length > 0 && lessonKey.includes(key);
+  };
   const results = [];
   for (const [i, x] of batch.entries()) {
     const it = byN.get(i + 1) ?? { card: [], set: [], true_statement: [], options: [] };
@@ -192,7 +199,7 @@ async function reviewBatch({ db, ai, lessonId, batch, terms, round, madeBy, rawT
     for (const raw of it.options) {
       const o = z.object({ o: z.coerce.number().int() }).safeParse(raw);
       const text = o.success ? x.item.options[o.data.o - 1]?.text : null;
-      const flags = text ? cleanFlags([raw], OPTION_FLAGS) : [];
+      const flags = text ? cleanFlags([raw], OPTION_FLAGS).filter((f) => !(f.flag === 'off_topic' && inLesson(text))) : [];
       if (flags.length) options[text] = [...(options[text] ?? []), ...flags.filter((f) => !(options[text] ?? []).some((g) => g.flag === f.flag))];
     }
     results.push({ ...x, flags: { card: cleanFlags(it.card, CARD_FLAGS), set: cleanFlags(it.set, SET_FLAGS), trueStatement: cleanFlags(it.true_statement, TRUE_FLAGS), options } });
