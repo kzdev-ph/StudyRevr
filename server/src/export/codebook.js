@@ -147,7 +147,10 @@ setting_events.csv - settings a participant changed, one row per change
   Motion only changes how much the screens animate. It never changes time_ms: answer time leaves animation out with
   every choice. Theme only changes the colours; it changes nothing else, and no theme changes time_ms. A device that
   never chose a theme shows AMA without a row being written, so a participant with no theme row has been on AMA
-  (unless they set Match my device, which is a row with value system).
+  (unless they set Match my device, which is a row with value system). Before the AMA themes existed, Match my device was
+  the default and was not saved; a device that had it then switches to AMA after the update and stays on AMA until the
+  participant picks another theme (or Match my device again), and no row is written for that switch. The researcher
+  notes the day the study copy was updated to this version.
 
 ai_calls.csv - one row per live AI request for Explain simpler (kind simplify) or Filipino/Taglish (kind translate):
   the rewrite was not already saved for everyone, or the student uses their own key. Rewrites saved ahead of time by

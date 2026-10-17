@@ -154,7 +154,9 @@ describe('setting changes (setting_events)', () => {
     assert.equal((await send({ setting: 'theme', value: 'sepia' })).status, 400);
     assert.equal((await send({ setting: 'theme', value: 'less' })).status, 400); // a Motion value on Theme
     assert.equal((await send({ setting: 'motion', value: 'ama' })).status, 400); // a Theme value on Motion
-    assert.equal((await send({ setting: 'theme' })).status, 400);
+    const bad = await send({ setting: 'theme' });
+    assert.equal(bad.status, 400);
+    assert.match(JSON.stringify(bad.body ?? bad.json ?? bad), /motion.*theme.*ama-dark/s); // names both settings and the theme values
     assert.equal((await send({ setting: 'volume', value: 'less' })).status, 400);
     assert.equal((await send({ setting: 'motion', value: 'less' }, null)).status, 401);
     assert.equal(t.db.prepare('SELECT COUNT(*) n FROM setting_events').get().n, 0);

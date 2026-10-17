@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { applyTheme, getThemeChoice, setThemeChoice, THEME_CHOICES } from '../src/lib/theme.js';
 
 // lib/theme.js reads window.localStorage and touches document.documentElement / document.head only when called.
@@ -112,5 +113,45 @@ describe('status-bar colour', () => {
       applyTheme(choice);
       assert.equal(override(head).length, 0, choice);
     }
+  });
+});
+
+describe('index.html first-paint script', () => {
+  // The inline script in <head> applies the saved theme and motion before the app loads; it repeats lib/theme.js's rules
+  // by hand, so this keeps the two in step.
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+
+  const run = ({ theme, motion, blocked = false }) => {
+    const attrs = {};
+    const tags = [];
+    const doc = {
+      documentElement: { setAttribute: (k, v) => (attrs[k] = v) },
+      head: { insertBefore: (tag) => tags.unshift(tag), firstChild: null },
+      createElement: () => ({ setAttribute() {} }),
+    };
+    const ls = { getItem: (k) => { if (blocked) throw new Error('blocked'); return k === 'studyrevr-theme' ? theme ?? null : motion ?? null; } };
+    new Function('document', 'localStorage', script)(doc, ls);
+    return { attrs, tags };
+  };
+
+  it('is AMA with no saved choice, or blocked storage', () => {
+    assert.equal(run({}).attrs['data-theme'], 'ama');
+    assert.equal(run({ blocked: true }).attrs['data-theme'], 'ama');
+    assert.equal(run({ theme: 'sepia' }).attrs['data-theme'], 'ama');
+  });
+  it('applies each saved choice; system sets none, as theme.js does', () => {
+    for (const t of ['light', 'dark', 'ama', 'ama-dark']) assert.equal(run({ theme: t }).attrs['data-theme'], t);
+    assert.equal(run({ theme: 'system' }).attrs['data-theme'], undefined);
+  });
+  it('applies a saved Less / Full motion and nothing for Match my device', () => {
+    assert.equal(run({ motion: 'less' }).attrs['data-motion'], 'less');
+    assert.equal(run({ motion: 'full' }).attrs['data-motion'], 'full');
+    assert.equal(run({ motion: 'x' }).attrs['data-motion'], undefined);
+  });
+  it('adds the status-bar colour only for the AMA themes', () => {
+    assert.equal(run({}).tags.length, 1);
+    assert.equal(run({ theme: 'dark' }).tags.length, 0);
+    assert.equal(run({ theme: 'system' }).tags.length, 0);
   });
 });

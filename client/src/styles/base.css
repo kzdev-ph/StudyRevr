@@ -533,11 +533,13 @@ p .link-btn {
     .quiz-sheet__bubble--now,
     .quiz-score__ring,
     .endcard__action,
-    .check__answer-label,
-    .score-line,
-    .check-row
+    .check__answer-label
   ) {
   --accent: var(--hi);
+}
+/* AMA Dark: the admin checkboxes take the link red (5.0:1 on the paper), not lavender or gold */
+:root[data-theme='ama-dark'] .check-row input {
+  accent-color: var(--link);
 }
 
 /* AMA Dark: the deep red button gets a lighter red edge so it still reads against the paper (3:1) */

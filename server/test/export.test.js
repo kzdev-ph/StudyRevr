@@ -128,6 +128,7 @@ describe('research export', () => {
     const readme = await zip.file('README.txt').async('string');
     assert.ok(/setting_events.csv/.test(readme) && /never changes time_ms/.test(readme));
     assert.ok(/ama-dark/.test(readme) && /theme/.test(readme));
+    assert.ok(/had it then switches to AMA/.test(readme));
   });
 
   it('leaves P00 out unless asked', async () => {
