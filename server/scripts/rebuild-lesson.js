@@ -12,19 +12,9 @@ import { loadConfig } from '../src/config.js';
 import { openDb, runMigrations } from '../src/db/index.js';
 import { getJobStatus, queueJob } from '../src/pipeline/jobs.js';
 import { runPipeline } from '../src/pipeline/run.js';
-import { pidFile, runningServerPid } from '../src/server-pid.js';
 import { checkRebuild, confirmed, RebuildRefused, resetLesson } from '../src/services/rebuild-lesson.js';
+import { serverBlock } from '../src/services/server-check.js';
 import { resolveAiConfig } from '../src/services/settings.js';
-
-// A StudyRevr server answering on the configured port (a server started from another folder has no pid file here).
-async function serverAnswers(port) {
-  try {
-    const res = await fetch(`http://127.0.0.1:${port}/api/health`, { signal: AbortSignal.timeout(1000) });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
 
 async function main(args, { input = process.stdin, output = process.stdout } = {}) {
   const given = args.find((a) => !a.startsWith('--'));
@@ -38,10 +28,9 @@ async function main(args, { input = process.stdin, output = process.stdout } = {
     console.error('DB_PATH is :memory:, so there is no database file to rebuild a lesson in.');
     return 1;
   }
-  const pid = runningServerPid(config.dbPath);
-  if (pid || (await serverAnswers(config.port))) {
-    console.error(`The StudyRevr server is running${pid ? ` (process ${pid})` : ` on port ${config.port}`}. Stop it first (Ctrl+C in its window), then run this again.`);
-    if (pid) console.error(`If no server is running (it was closed without stopping, or the number belongs to another program), delete ${pidFile(config.dbPath)} and run this again.`);
+  const blocked = await serverBlock(config);
+  if (blocked) {
+    console.error(blocked);
     return 1;
   }
 

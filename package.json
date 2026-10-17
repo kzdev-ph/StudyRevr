@@ -16,7 +16,10 @@
     "study": "npm run build -w client && npm run start -w server",
     "quiz:check": "npm run quiz:check -w server --",
     "participant:delete": "npm run participant:delete -w server --",
-    "restore": "npm run restore -w server --"
+    "restore": "npm run restore -w server --",
+    "lesson:rebuild": "npm run lesson:rebuild -w server --",
+    "lesson:export": "npm run lesson:export -w server --",
+    "lesson:import": "npm run lesson:import -w server --"
   },
   "devDependencies": {
     "concurrently": "^9.0.0"

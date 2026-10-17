@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { STAGES, adminLessonNote, ownLessonNote, processingLine, rowActions, thinkingNote, uploadsLeftText } from '../src/lib/uploads.js';
+import { STAGES, adminLessonNote, ownLessonNote, processingLine, rowActions, thinkingNote, madeByNote, uploadsLeftText } from '../src/lib/uploads.js';
 
 describe('uploadsLeftText (under the student upload button)', () => {
   it('says nothing while uploads are off', () => {
@@ -85,5 +85,13 @@ describe('thinkingNote (admin: how a lesson was prepared)', () => {
     assert.equal(thinkingNote({ thinking_level: 'mixed' }), 'Prepared with thinking: Mixed');
     assert.equal(thinkingNote({ thinking_level: null }), null);
     assert.equal(thinkingNote({}), null);
+  });
+});
+
+describe('madeByNote (admin: who wrote the lesson)', () => {
+  it('says so only for an imported lesson, and nothing for the pipeline’s or for a student', () => {
+    assert.equal(madeByNote({ made_by: 'claude-haiku' }), 'Written by Claude (Haiku), imported');
+    assert.equal(madeByNote({ made_by: 'gemini' }), null);
+    assert.equal(madeByNote({}), null);
   });
 });

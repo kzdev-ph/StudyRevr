@@ -49,6 +49,12 @@ export function thinkingNote(lesson) {
   return name ? `Prepared with thinking: ${name}` : null;
 }
 
+// Admin's note on who wrote a lesson's content: only an imported one ('claude-haiku', npm run lesson:import) says so;
+// the pipeline's lessons (the default) say nothing. Never sent to a student.
+export function madeByNote(lesson) {
+  return lesson.made_by === 'claude-haiku' ? 'Written by Claude (Haiku), imported' : null;
+}
+
 // Admin's note on a student's upload: whose it is and who can see it. Null for the teacher's own lessons.
 export function adminLessonNote(lesson) {
   if (lesson.origin !== 'student') return null;

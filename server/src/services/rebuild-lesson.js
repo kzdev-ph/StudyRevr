@@ -42,7 +42,7 @@ export function resetLesson(db, id) {
       db.prepare(`DELETE FROM ${table} WHERE lesson_id = ?`).run(id);
     }
     db.prepare(
-      "UPDATE lessons SET status = 'processing', error = NULL, error_kind = NULL, thinking_level = NULL, processed_thinking = NULL, term_families = NULL WHERE id = ?",
+      "UPDATE lessons SET status = 'processing', error = NULL, error_kind = NULL, thinking_level = NULL, processed_thinking = NULL, term_families = NULL, made_by = 'gemini' WHERE id = ?",
     ).run(id);
   })();
 }
