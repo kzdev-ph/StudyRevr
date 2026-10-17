@@ -7,7 +7,7 @@ import { openDb, runMigrations } from '../src/db/index.js';
 import { failInterruptedJobs, getJobStatus, queueJob } from '../src/pipeline/jobs.js';
 import { createPipelineRunner } from '../src/pipeline/runner.js';
 import { resolveAiConfig } from '../src/services/settings.js';
-import { keepAllCandidates, quoteFromPrompt, studyFetch, TEST_PIN } from './helpers.js';
+import { cleanReview, keepAllCandidates, quoteFromPrompt, studyFetch, TEST_PIN } from './helpers.js';
 
 const fetch = studyFetch; // as participant P00, with the admin PIN (see helpers.js)
 
@@ -40,6 +40,8 @@ function fakeAi({ fail } = {}) {
         value = keepAllCandidates(user);
       } else if (label.startsWith('the key points') || label.startsWith('the merged')) {
         value = { key_points: [`Point ${n}a.`, `Point ${n}b.`] };
+      } else if (label.startsWith('the quiz review')) {
+        value = cleanReview(user);
       } else if (label.startsWith('the quiz answer options')) {
         const numbers = [...user.matchAll(/^\[(\d+)\] Question:/gm)].map((m) => Number(m[1]));
         value = { items: numbers.map((n) => ({ n, wrong: ['Plants make more starch.', 'Cells store some water.', 'Light warms the leaves.'] })) };
@@ -83,7 +85,7 @@ describe('pipeline', () => {
     assert.equal(status.lesson.status, 'ready');
     assert.equal(status.lesson.error, null);
     assert.deepEqual({ stage: status.job.stage, status: status.job.status, error: status.job.error }, { stage: 'done', status: 'done', error: null });
-    assert.deepEqual(ai.calls.map((c) => c.label), ['the review sections', 'the key points', 'the key terms', 'the flashcards', 'the quiz answer options']);
+    assert.deepEqual(ai.calls.map((c) => c.label), ['the review sections', 'the key points', 'the key terms', 'the flashcards', 'the flashcards for list items without a card', 'the quiz answer options', 'the quiz review']);
 
     const [section] = rows('sections', id);
     assert.equal(section.position, 1);
@@ -232,7 +234,7 @@ describe('pipeline', () => {
     assert.equal(getJobStatus(db, id).lesson.status, 'processing');
     const healthy = fakeAi();
     await run(healthy, id);
-    assert.deepEqual(healthy.calls.map((c) => c.label), ['the key points', 'the key terms', 'the flashcards', 'the quiz answer options'], 'sections are not regenerated');
+    assert.deepEqual(healthy.calls.map((c) => c.label), ['the key points', 'the key terms', 'the flashcards', 'the flashcards for list items without a card', 'the quiz answer options', 'the quiz review'], 'sections are not regenerated');
     status = getJobStatus(db, id);
     assert.equal(status.lesson.status, 'ready');
     assert.equal(status.lesson.error, null);

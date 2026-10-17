@@ -12,14 +12,16 @@ export const comparable = (s) => words(s).join('');
 
 // -> { ok: true, evidence } with the quote tidied and cut to MAX_EVIDENCE_WORDS words (a prefix of a verbatim quote is
 // still verbatim), or { ok: false, reason }. `sourceKey` is comparable(lesson text), computed once by the caller.
-export function checkEvidence({ term, evidence, sourceKey }) {
+// `minExplaining`: words the quote must have besides the term's (a concept card's list item, "Builds confidence.",
+// needs only 2).
+export function checkEvidence({ term, evidence, sourceKey, minExplaining = MIN_EXPLAINING_WORDS }) {
   const quote = String(evidence ?? '')
     .replace(/^[\s"'“”‘’]+|[\s"'“”‘’]+$/g, '')
     .replace(/\s+/g, ' ');
   if (!quote) return { ok: false, reason: 'no evidence quote' };
   const termWords = new Set(words(term));
   const explaining = words(quote).filter((w) => !termWords.has(w));
-  if (explaining.length < MIN_EXPLAINING_WORDS) return { ok: false, reason: 'evidence is only the term or a title' };
+  if (explaining.length < minExplaining) return { ok: false, reason: 'evidence is only the term or a title' };
   if (!sourceKey.includes(comparable(quote))) return { ok: false, reason: 'evidence not found in the lesson text' };
   return { ok: true, evidence: quote.split(' ').slice(0, MAX_EVIDENCE_WORDS).join(' ') };
 }

@@ -4,6 +4,7 @@ import LeakyCards from './LeakyCards.jsx';
 import { prettyTitle } from '../lib/format.js';
 import { flashcardsNotice } from '../lib/flashcardsNotice.js';
 import { quizOptionsNotice } from '../lib/quizOptions.js';
+import { quizReviewNotice } from '../lib/quizReview.js';
 import { sectionVersionsNotice } from '../lib/sectionVersions.js';
 import { paths } from '../lib/router.js';
 import { adminLessonNote, ownLessonNote, processingLine, rowActions } from '../lib/uploads.js';
@@ -61,12 +62,13 @@ function LessonStep({ lesson, notice, busyText, onMake }) {
 }
 
 // One lesson on the ruled list. With `onDelete` (admin), Delete asks first, in place, so a slip of the thumb can't
-// remove a lesson. `onMakeQuizOptions` (admin) enables the quiz-answers retry, `onPrepareVersions` (admin) the
+// remove a lesson. `onMakeQuizOptions` (admin) enables the quiz-answers retry, `onReviewQuiz` (admin) the AI quiz review
+// line with "Review again", `onPrepareVersions` (admin) the
 // "Prepare simpler and Taglish" step, `onCardsChanged` (admin) the list of cards that give their answer away,
 // `onShare` (admin) "Share with everyone" for a student's private upload.
 // A student's own upload (`lesson.mine`) shows who can see it and where its preparation is; `onDeleteOwn` (only while
 // the server says `can_delete`: before it is shared or studied) and `onRetry` (a failed upload) are theirs.
-export default function LessonRow({ lesson, admin = false, onDelete, onDeleteOwn, onRetry, onShare, onMakeFlashcards, onMakeQuizOptions, onPrepareVersions, onCardsChanged }) {
+export default function LessonRow({ lesson, admin = false, onDelete, onDeleteOwn, onRetry, onShare, onMakeFlashcards, onMakeQuizOptions, onReviewQuiz, onPrepareVersions, onCardsChanged }) {
   const [confirming, setConfirming] = useState(null); // 'delete' | 'share'
   const [working, setWorking] = useState(false);
   const [retrying, setRetrying] = useState(false);
@@ -187,6 +189,7 @@ export default function LessonRow({ lesson, admin = false, onDelete, onDeleteOwn
       {onMakeFlashcards && <LessonStep lesson={lesson} notice={flashcardsNotice(lesson)} busyText="Making the flashcards…" onMake={onMakeFlashcards} />}
       {onCardsChanged && <LeakyCards lesson={lesson} onChanged={onCardsChanged} />}
       {onMakeQuizOptions && <LessonStep lesson={lesson} notice={quizOptionsNotice(lesson)} busyText="Making the quiz answers…" onMake={onMakeQuizOptions} />}
+      {onReviewQuiz && <LessonStep lesson={lesson} notice={quizReviewNotice(lesson)} busyText="Checking the quiz questions…" onMake={onReviewQuiz} />}
       {onPrepareVersions && (
         <LessonStep lesson={lesson} notice={sectionVersionsNotice(lesson)} busyText="Preparing simpler and Taglish versions…" onMake={onPrepareVersions} />
       )}

@@ -45,7 +45,9 @@ export function labelledText(parts, kind) {
 
 // `parts` + `kind` (from the chunker, when the lesson records its slide / page numbers) make the model name its
 // sources: the numbers of the blocks each section was written from. Without them the text goes in unlabelled.
-export function sectionsPrompt({ text, parts, kind = 'slide', index, total, summaryLength, targetSections = 3 }) {
+// `minSections` / `maxSections` (from the lesson's own structure, see sectionRange in generate.js) bound how many
+// sections the text gets; without them the model is asked for about `targetSections`.
+export function sectionsPrompt({ text, parts, kind = 'slide', index, total, summaryLength, targetSections = 3, minSections = null, maxSections = null }) {
   const word = (UNIT_LABEL[kind] ?? UNIT_LABEL.slide).toLowerCase();
   const sourcesRule = parts
     ? `
@@ -57,7 +59,15 @@ export function sectionsPrompt({ text, parts, kind = 'slide', index, total, summ
   const system = `${LESSON_RULES}
 
 Task: turn the lesson text into a study review made of bite-sized sections.
-- One section per main idea or topic: about ${targetSections} section${targetSections === 1 ? '' : 's'} for the text you get (a few more or fewer is fine, depending on how many distinct ideas it has).
+- Follow the lesson's own structure: one section per heading, or per group of neighbouring ${parts ? `${word}s` : 'blocks'} on the same topic, in the lesson's order. A heading that introduces a list (such as "Purpose", "Importance", "Key elements", "Types") is a topic of its own: give it its own section, or share one only with the block right next to it on the same topic. Never fold the whole lesson into one section.
+- ${
+    minSections && maxSections
+      ? minSections === maxSections
+        ? `Write ${minSections} section${minSections === 1 ? '' : 's'} for the text you get.`
+        : `Write between ${minSections} and ${maxSections} sections for the text you get, as many as it has distinct topics.`
+      : `About ${targetSections} section${targetSections === 1 ? '' : 's'} for the text you get (a few more or fewer is fine, depending on how many distinct ideas it has).`
+  }
+- When the lesson lists items (purposes, elements, types, steps, reasons), the section about that list names every item and what the lesson says about it; leave none out.
 - Skip filler with no study value (cover slide, "Thank you", "Any questions?", page numbers).
 - "title": short and specific, at most 8 words.
 - "content": ${LENGTH_GUIDE[summaryLength] ?? LENGTH_GUIDE.detailed}. Plain text in short paragraphs; use lines that start with "- " for lists. No markdown headings, no bold or asterisks. Explain it clearly in your own words but stay faithful to the lesson.
@@ -130,7 +140,7 @@ Do NOT include:
 - everyday words, slide or section titles, and anything the lesson does not explain well enough to define. If the lesson only names or titles a term and never says what it means, leave that term out: never define a term from your own knowledge.
 For each term:
 - "term": 1 to 4 words, written as the lesson writes it.
-- "definition": 1 or 2 plain sentences that say what the term IS (its meaning, what it does or how it works), using only what the lesson says. Never just list examples, and never use the term itself or a form of it in the definition (a student is shown the definition and must name the term).
+- "definition": 1 or 2 plain sentences that say what the term IS (its meaning, what it does or how it works), using only what the lesson says. Never just list examples, and never use the term itself or a form of it in the definition (a student is shown the definition and must name the term). Build it from the lesson's own words: add no describing words the lesson does not use (if the lesson says "presented in written form", do not write "created and presented in written form").
 - "evidence": one sentence or phrase copied EXACTLY, word for word, from the lesson text (at most 25 words) that defines or explains the term. Copy it character for character: do not paraphrase, do not shorten with "...", do not join pieces from different places, and never use a title or heading as evidence. If you cannot find such a quote in the lesson, leave the term out.
 Give about ${targetTerms} terms (at most ${maxTerms}), most important first. Do not stop at the few most basic concepts, but never pad the list with examples or list items just to reach that number: fewer is better than weak ones. Reply {"terms":[]} if the text defines no real concepts.
 
@@ -173,14 +183,17 @@ Reply with this JSON shape:
 // Concept flashcards (question -> answer) for one chunk of the lesson. `review` is the part of our study review
 // written from this text, as a guide to what matters; the answers and evidence must still come from the lesson text.
 // `keyTerms` already have their own term -> definition cards, so the model is told not to repeat them.
-export function flashcardsPrompt({ text, review, keyTerms = [], index, total, targetCards }) {
+// `items` (the coverage follow-up, see flashcards.js): list items of the lesson that no card asks about yet; the reply
+// is then one card per item and nothing else.
+export function flashcardsPrompt({ text, review, keyTerms = [], index, total, targetCards, items = null }) {
   const system = `${LESSON_RULES}
 
 Task: write flashcards that help a student remember the important ideas of this lesson. A flashcard is a question on the front and a short answer on the back that the student must recall from memory.
 - Each card tests ONE idea the lesson explains: a concept, a purpose, a cause and effect, a process step, a characteristic, a rule, or a comparison. Ask "why", "how", "what" and "what is the difference" questions. Never a yes/no question and never an either/or question ("Is it A or B?", "...ba...?", "...o hindi?").
-- "question": one clear question, at most 20 words, that makes sense without seeing the lesson. The question must not give the answer away: it must not contain the answer or its key words, and must not use a word that already means the answer (do not ask "Why is language called dynamic?" when the answer is "because it changes").
+- "question": one clear question, at most 20 words, that makes sense without seeing the lesson. Name the topic in full, the way the lesson does ("a self-introduction", "the key elements of a self-introduction"), never only "it", "this", "the topic" or "your presentation". The question must not give the answer away: it must not contain the answer or its key words, and must not use a word that already means the answer (do not ask "Why is language called dynamic?" when the answer is "because it changes").
 - The answer must say something the question does not: never just repeat the question's words as a statement.
-- "answer": short enough to recall from memory: at most 25 words, one sentence or a short phrase. Say only what the lesson says.
+- "answer": short enough to recall from memory: at most 25 words, one sentence or a short phrase. Say only what the lesson says, in the lesson's own words: add no describing words it does not use.
+- When the lesson lists items under a heading (purposes, importance, key elements, types, steps, reasons), every item gets a card of its own. Ask about that one item through what the lesson says about it ("Which key element of a self-introduction means being honest and natural?" -> "Authentic tone"), naming the list in the question so it has one right answer.
 - "evidence": one sentence or phrase copied EXACTLY, word for word, from the lesson text (at most 25 words) that supports the answer. Copy it character for character: do not paraphrase, do not shorten with "...", do not join pieces from different places, and never use a title or heading as evidence. If you cannot find such a quote, leave the card out.
 - No trivia: never ask about slide titles, slide or page numbers, the author, the teacher, the school, or the date of the presentation, unless the lesson itself teaches them as content.
 - Never ask two cards about the same fact.${
@@ -194,7 +207,11 @@ Task: write flashcards that help a student remember the important ideas of this 
 - <review> is a study review written from this lesson text. Use it as a guide to what matters, but take every answer and every evidence quote from <lesson_text>.`
       : ''
   }
-Give about ${targetCards} cards (fewer if the text has fewer ideas worth a card; never pad the list with trivia), in the order the ideas appear in the lesson. Reply {"cards":[]} if the text has nothing worth a card.
+${
+    items?.length
+      ? `These list items of the lesson have no card yet. Write exactly one card for each of them, in this order, and no other cards:\n${items.map((item, i) => `${i + 1}. ${item}`).join('\n')}`
+      : `Give about ${targetCards} cards (fewer if the text has fewer ideas worth a card; never pad the list with trivia), in the order the ideas appear in the lesson. Reply {"cards":[]} if the text has nothing worth a card.`
+  }
 
 Reply with this JSON shape:
 {"cards":[{"question":"...","answer":"...","evidence":"..."}]}`;
@@ -219,6 +236,7 @@ Rules:
 
 Task: for each card, write 3 wrong answers to its question. A student who has not studied must not be able to pick the right answer from how the options look.
 - Each wrong answer must directly answer THIS question and be the same kind of thing it asks for (a time or condition for "Kailan…/When…", a cause for "Bakit…/Why…", a list of the same category for "Anong uri…/What kinds…"), clearly wrong according to the lesson but believable: a related item of the same kind swapped in (another period, another field, another influence, another group, a cause given as the effect).
+- Believable means a student who has NOT read the lesson could pick it: a sensible, ordinary answer that sounds as reasonable as the right one. Never a caricature or an extreme ("loudly and formally", "strictly and lengthily", "as long as possible"), and never something the lesson itself recommends or says is true (not even partly: if the lesson says to share relevant details, "share details that interest the audience" is too close to right). If the lesson lists several right items, a wrong answer is never another item from that same list.
 - Never use another card's correct answer, copied or reworded, as a wrong answer: it plainly answers that other question, so a student matches it away.
 - Stay on the subject of the question: each wrong answer is about the same thing the question asks about, built from the lesson's own ideas. Never switch to an unrelated topic (food, buildings, prices, jobs, population) and never copy the whole question into a wrong answer: either one is ruled out at a glance.
 - Same tone and polarity as the correct answer. If the correct answer is a positive statement, every wrong answer is a positive statement too: no negations ("not", "never", "no", "hindi", "wala", "walang"), no opposites, no version that hides, prevents, limits, removes or makes harder what the correct answer says. An option that sounds negative or absurd is ruled out at a glance.
@@ -275,4 +293,87 @@ ${term ? '{"definition":"..."}' : '{"question":"...","answer":"...","evidence":"
     system,
     user: `<card>\n${old}\nFrom the lesson: "${card.evidence ?? ''}"\nWhat gives it away: ${problems.join('; ') || 'the wording'}\n</card>\n\n${lessonText(text)}`,
   };
+}
+
+// The AI exam reviewer (services/quiz-review.js): a strict second look at every quiz form a card can be asked in,
+// against the lesson. `items`: [{ n, kind 'term'|'concept', question, answer, true_statement, evidence, options:
+// [{ o, text, use 'mc'|'yes_no'|'both' }] }]; for a term card the question is its definition and the answer the term.
+// `terms` (the first batch only): the lesson's key terms, to group into families.
+export function quizReviewPrompt({ items, terms = [], text }) {
+  const system = `You are a strict exam reviewer checking quiz items a teacher's app made from a lesson, before students see them.
+
+Rules:
+1. Judge ONLY by the lesson text you are given: what it says is true, what it does not say is not in the lesson. Do not use outside knowledge.
+2. A line "${NOTES_LABEL}" inside a slide block starts the teacher's spoken explanation of that slide: it is lesson content.
+3. Reply with ONE JSON object and nothing else: no markdown, no code fences, no commentary.
+
+Each item is one flashcard and the ways the quiz can ask it: a multiple-choice question (the right answer among wrong options marked "mc") and a Yes/No question ("Is this the right answer?") that shows either the right answer (the true statement) or one false statement (marked "yes_no"). For a term card the question is a definition and the answer is the term it defines. Options marked "both" are used both ways.
+
+Flag only real problems; an item with none gets empty lists. Flags:
+- "card" (the flashcard itself):
+  - "card_reveals": the question already gives its answer away (it contains the answer, or words that mean it).
+  - "not_in_lesson": the right answer says something the lesson does not say, or adds describing words the lesson does not use that change the meaning.
+  - "vague": the question does not name its topic ("your presentation", "it", "this") or has more than one right answer according to the lesson.
+- "set" (the multiple-choice question as a whole):
+  - "giveaway": someone who has not read the lesson can pick the right answer from how the options look (the only sensible, the only positive, the only detailed or the only long one).
+- "true_statement" (the right answer shown alone under "Is this the right answer?"):
+  - "giveaway": plainly right to anyone who has not read the lesson (common sense alone says yes).
+  - "not_in_lesson": as for the card.
+- "options" (one wrong option or false statement, by its number "o"):
+  - "two_correct": it ALSO answers this question correctly according to the lesson: it says the same as the right answer in other words, or the lesson says it fits this question too (a student who picks it is not wrong). For a term card: that term's meaning also fits the definition (a broader term, or a kind of the asked term).
+  - "reversed": it is the right answer turned around or negated, so it is ruled out at a glance.
+  - "off_topic": the lesson does not cover it at all, so it is ruled out at a glance.
+  - "giveaway": a silly caricature or extreme ("loudly and formally") that nobody would pick.
+A good wrong option is another idea, item or term FROM THE LESSON that does not answer this question (another item of the same list, another key term): never flag it as "off_topic" or "two_correct" only because it is in the lesson or about the same subject. A wrong option that only rewords the right answer is "two_correct", not "off_topic".
+Give a short "why" (at most 15 words) with every flag.${
+    terms.length
+      ? `
+
+Also group the lesson's key terms into "families": put terms in one family only when the definition of EACH would also fit EVERY other one in it: synonyms, or a broader and a narrower term whose names don't show it. Two different kinds of one thing are NOT a family ("Written Self-Introduction" and "Oral Self-Introduction" mean clearly different things), and neither are terms that are only about the same subject. Most lessons have no families: then reply "families":[]. Use the terms exactly as written. Key terms: ${terms.map((t) => `"${t}"`).join(', ')}.`
+      : ''
+  }
+
+Reply with this JSON shape (one entry per item, by its number "n"):
+{"items":[{"n":1,"card":[{"flag":"vague","why":"..."}],"set":[],"true_statement":[],"options":[{"o":2,"flag":"two_correct","why":"..."}]}]${terms.length ? ',"families":[["term","term"]]' : ''}}`;
+  const list = items
+    .map((it) => {
+      const lines = [
+        `[${it.n}] ${it.kind === 'term' ? 'Term card' : 'Concept card'}`,
+        `    Question: ${it.question}`,
+        `    Right answer: ${it.answer}`,
+        `    True statement: ${it.true_statement}`,
+        `    From the lesson: "${it.evidence ?? ''}"`,
+        ...it.options.map((o) => `    o${o.o} (${o.use}): ${o.text}`),
+      ];
+      return lines.join('\n');
+    })
+    .join('\n');
+  return { system, user: `<items>\n${list}\n</items>\n\n${lessonText(text)}` };
+}
+
+// Several flagged flashcards written again in one call (the AI review's one fix round; services/quiz-review.js).
+// `cards`: [{ n, kind, front, back, evidence, problems: [why] }]; `text`: the lesson (or the blocks around the
+// cards' quotes); `others`: answers of the lesson's other cards, which a new question must not contain.
+export function regenerateCardsPrompt({ cards, text, others = [] }) {
+  const system = `${LESSON_RULES}
+
+Task: an exam reviewer flagged these flashcards. Write each one again so the problem is gone.
+- A concept card gets a new "question", "answer" and "evidence". The question: one clear question, at most 20 words, about the same idea, naming its topic in full the way the lesson does (never "it", "this" or "your presentation"); it must not contain the answer or its key words, nor be a yes/no or either/or question. The answer: at most 25 words, only what the lesson says, in the lesson's own words. The evidence: one sentence or phrase copied EXACTLY, word for word, from <lesson_text> (at most 25 words) that supports the answer.
+- A term card keeps its term and gets a new "definition": 1 or 2 plain sentences built from the lesson's own words, never using the term or a form of its words.${
+    others.length ? `\n- A new question must not contain any of these answers from other cards: ${others.map((o) => `"${o}"`).join('; ')}.` : ''
+  }
+
+Reply with this JSON shape, one item per card by its number "n" (concept: question, answer, evidence; term: definition):
+{"cards":[{"n":1,"question":"...","answer":"...","evidence":"..."},{"n":2,"definition":"..."}]}`;
+  const list = cards
+    .map((c) =>
+      [
+        `[${c.n}] ${c.kind === 'term' ? `Term card: ${c.front}` : 'Concept card'}`,
+        c.kind === 'term' ? `    Old definition: ${c.back}` : `    Old question: ${c.front}\n    Old answer: ${c.back}`,
+        `    From the lesson: "${c.evidence ?? ''}"`,
+        `    The reviewer's problem: ${c.problems.join('; ') || 'unclear'}`,
+      ].join('\n'),
+    )
+    .join('\n');
+  return { system, user: `<cards>\n${list}\n</cards>\n\n${lessonText(text)}` };
 }

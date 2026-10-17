@@ -7,7 +7,8 @@ import { requireParticipant } from '../middleware/participant.js';
 import { getJobStatus } from '../pipeline/jobs.js';
 import { answerQuestion, attemptQuestions, findOpenAttempt, finishAttempt, getAttempt, lessonQuizStats, publicQuestion, questionsOf, startAttempt } from '../quiz/attempts.js';
 import { buildQuiz, QUIZ_LENGTH, reshuffle, usableCount } from '../quiz/build.js';
-import { ensureDistractors, loadDistractors } from '../quiz/distractors.js';
+import { ensureDistractors } from '../quiz/distractors.js';
+import { quizBuildOptions } from '../quiz/options.js';
 
 const id = z.coerce.number().int().positive();
 const startBody = z.object({ retake_of: id.nullable().optional() });
@@ -24,11 +25,9 @@ const parseId = (value, what) => {
 
 const lessonCards = (db, lessonId) =>
   db.prepare('SELECT id, kind, front, back, evidence FROM flashcards WHERE lesson_id = ? ORDER BY position, id').all(lessonId);
-const keyTermNames = (db, lessonId) => db.prepare('SELECT term FROM key_terms WHERE lesson_id = ? ORDER BY id').all(lessonId).map((t) => t.term);
-const lessonText = (db, lessonId) => db.prepare('SELECT raw_text FROM lessons WHERE id = ?').get(lessonId)?.raw_text ?? '';
-// What the quiz builder needs besides the cards: saved wrong answers, other key terms and the lesson text (for the
-// leak checks that skip questions giving their answer away; see quiz/leaks.js).
-const buildOptions = (db, lessonId) => ({ distractors: loadDistractors(db, lessonId), extraTerms: keyTermNames(db, lessonId), lessonText: lessonText(db, lessonId) });
+// What the quiz builder needs besides the cards: saved wrong answers, other key terms, the lesson text (for the leak
+// checks that skip questions giving their answer away; see quiz/leaks.js), the AI review's flags and term families.
+const buildOptions = quizBuildOptions;
 
 // Mock quiz: questions built from the lesson's flashcards, graded and logged one answer at a time. Mounted at /api.
 // Attempts are per participant (X-Participant): each sees and answers only their own.

@@ -125,3 +125,9 @@ export function liveRoutes(app) {
   walk(app.router.stack, '');
   return { routes, untagged };
 }
+
+// A quiz-review mock (services/quiz-review.js) that flags nothing: one clean entry per item in the prompt.
+export const cleanReview = (user) => ({
+  items: [...user.matchAll(/^\[(\d+)\] (?:Term|Concept) card/gm)].map((m) => ({ n: Number(m[1]), card: [], set: [], true_statement: [], options: [] })),
+  families: [],
+});

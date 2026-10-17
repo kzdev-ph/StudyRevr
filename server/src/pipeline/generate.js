@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { HttpError } from '../middleware/errors.js';
-import { chunkBlocks } from '../ai/chunk.js';
+import { chunkBlocks, isHeadingLike } from '../ai/chunk.js';
 import { mapLimit } from '../ai/pool.js';
 import { keyPointsPrompt, keyTermsMergePrompt, keyTermsPrompt, sectionsPrompt } from '../ai/prompts.js';
 import { checkEvidence, comparable } from './evidence.js';
@@ -118,14 +118,32 @@ async function runCalls(items, concurrency, onProgress, call, extraCalls = 0) {
 // Tokens are estimated as chars / 3 and English words average about 6 characters, so words ~ tokens / 2.
 export const targetSectionCount = (tokens) => Math.max(1, Math.round(tokens / 2 / WORDS_PER_SECTION));
 
+const MIN_WORDS_PER_SECTION = 80; // the structure never asks for sections shorter than about this much lesson text
+const MIN_TOPIC_WORDS = 60; // a topic shorter than this shares a section with its neighbour
+
+// How many sections a chunk gets, from the lesson's own structure: its topics are its slides / pages, or (a Word
+// lesson, where every paragraph is a block) its heading-like lines. At least half the topics, so a short deck of
+// separate topics is not folded into one section, but never sections of under ~80 words of lesson text; at most one
+// per topic. The size-based target (one per ~280 words) stays the floor for long text with few headings.
+// -> { min, max }
+export function sectionRange(chunk) {
+  const words = chunk.tokens / 2;
+  const topics = chunk.numbers?.length || chunk.text.split(/\n{2,}/).filter((b) => isHeadingLike(b.trim())).length || 1;
+  const bySize = targetSectionCount(chunk.tokens);
+  const min = Math.max(bySize, Math.min(Math.ceil(topics / 2), Math.ceil(words / MIN_WORDS_PER_SECTION)));
+  const max = Math.max(min, Math.min(topics, Math.ceil(words / MIN_TOPIC_WORDS)));
+  return { min, max };
+}
+
 // -> [{ title, content, check_questions: [{ question, answer }], sources }] in lesson order. `sources` is the sorted
 // list of slide / page numbers the section was written from, or null when they aren't known: the lesson has no
 // numbers (chunks come without `numbers`), or the model named none that survive the check against the lesson's real
 // count (`sourceTotal`) and the blocks it was shown. onDrop({ title, dropped }) reports refused numbers.
 export async function generateSections({ ai, chunks, sourceKind, sourceTotal, summaryLength = 'detailed', concurrency = 1, onProgress = () => {}, onDrop = () => {} }) {
   const results = await runCalls(chunks, concurrency, onProgress, async (chunk) => {
-    const targetSections = targetSectionCount(chunk.tokens);
-    const { system, user } = sectionsPrompt({ text: chunk.text, parts: chunk.parts, kind: sourceKind, index: chunk.index, total: chunks.length, summaryLength, targetSections });
+    const { min, max } = sectionRange(chunk);
+    const targetSections = max;
+    const { system, user } = sectionsPrompt({ text: chunk.text, parts: chunk.parts, kind: sourceKind, index: chunk.index, total: chunks.length, summaryLength, minSections: min, maxSections: max });
     const out = await ai.generateJSON({
       system,
       user,

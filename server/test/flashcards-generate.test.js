@@ -4,8 +4,9 @@ import { chunkLesson } from '../src/ai/chunk.js';
 import { flashcardsPrompt } from '../src/ai/prompts.js';
 import { comparable } from '../src/pipeline/evidence.js';
 import {
-  dedupeCards, generateConceptCards, generateFlashcards, interleave, isDuplicate, shortDefinition, targetCardCount, termCards,
+  dedupeCards, generateConceptCards, generateFlashcards, interleave, isDuplicate, listItems, shortDefinition, targetCardCount, termCards, uncoveredItems,
 } from '../src/pipeline/flashcards.js';
+import { SELF_INTRO_TERMS, SELF_INTRO_TEXT } from './fixtures/self-intro.js';
 
 const LESSON = [
   'Research Hypothesis\nA hypothesis is a testable prediction about the relationship between two or more variables.\nNotes:\nThe teacher says a good hypothesis can be proven wrong by data.',
@@ -251,6 +252,118 @@ describe('the whole set', () => {
     await generateFlashcards({ ai, chunks, lessonText: LESSON, sections, wordCount: 300, maxCards: 30 });
     assert.match(ai.calls[0].user, /<review>\nHypotheses\nA hypothesis predicts how variables relate\.\n<\/review>/);
     assert.doesNotMatch(ai.calls[0].user, /Elsewhere/);
+  });
+});
+
+describe('every list item and key term gets a card (the self-introduction lesson)', () => {
+  it('counts the bullet items on the slides, not the notes, each once', () => {
+    const items = listItems(SELF_INTRO_TEXT);
+    assert.equal(items.length, 14, items.join(' | '));
+    assert.ok(items.includes('Share your background, skills, and interests.'));
+    assert.ok(items.includes('Authentic Tone'));
+    assert.ok(!items.some((i) => /Speak or write simply/.test(i)), 'an en-dash explanation line is not an item');
+    assert.deepEqual(listItems('Title\n- one\nNotes:\n- spoken aside'), ['one']);
+  });
+
+  it('the target makes room for every key term and list item', () => {
+    assert.equal(targetCardCount(276, 30, { terms: 4, items: 14 }), 18, 'the old target was 6');
+    assert.equal(targetCardCount(276, 12, { terms: 4, items: 14 }), 12, 'the setting still caps it');
+  });
+
+  it('an item counts as covered when a card quotes it or holds most of its words', () => {
+    const cards = [
+      { kind: 'concept', front: 'Which key element of a self-introduction means being honest and natural?', back: 'Authentic tone', evidence: 'Authentic Tone – Be honest and natural.' },
+      { kind: 'concept', front: 'What does a self-introduction help people do?', back: 'Remember you.', evidence: 'Helps people remember you.' },
+    ];
+    const left = uncoveredItems(['Authentic Tone', 'Helps people remember you.', 'Builds confidence.'], cards);
+    assert.deepEqual(left, ['Builds confidence.']);
+  });
+
+  it('asks ONE more call for the items no card covers, and puts those cards beside their list', async () => {
+    const chunks = chunkLesson(SELF_INTRO_TEXT);
+    const ai = fakeAi((label) =>
+      label.includes('list items')
+        ? {
+            cards: [
+              concept('What does giving a self-introduction build in the speaker?', 'Confidence.', 'Builds confidence.'),
+              concept('Which purpose of a self-introduction is about the first impression you make?', 'Creating a positive first impression.', 'Create a positive first impression.'),
+            ],
+          }
+        : {
+            cards: [
+              concept('What should you share instead of your entire life story?', 'Information that is appropriate for the situation.', 'you only share information that is appropriate for the situation'),
+              concept('Which key element of a self-introduction means being honest and natural?', 'Authentic tone', 'Authentic Tone'),
+            ],
+          },
+    );
+    const cards = await generateFlashcards({ ai, chunks, lessonText: SELF_INTRO_TEXT, keyTerms: SELF_INTRO_TERMS, wordCount: 276, maxCards: 30 });
+    assert.deepEqual(ai.calls.map((c) => c.label), ['the flashcards', 'the flashcards for list items without a card']);
+    const asked = ai.calls[1].system;
+    assert.match(asked, /Builds confidence\./);
+    assert.doesNotMatch(asked, /\d+\. Authentic Tone/, 'a covered item is not asked again');
+    assert.equal(cards.filter((c) => c.kind === 'term').length, 4, 'every key term has a card, Multimodal included');
+    const concepts = cards.filter((c) => c.kind === 'concept').map((c) => c.front);
+    assert.deepEqual(concepts, [
+      'What should you share instead of your entire life story?',
+      'Which purpose of a self-introduction is about the first impression you make?',
+      'What does giving a self-introduction build in the speaker?',
+      'Which key element of a self-introduction means being honest and natural?',
+    ]);
+  });
+
+  it('keeps a card for every list item when the target is full (the lesson 9 run: two key elements were cut)', async () => {
+    // 3 key terms + 14 items = a target of 17; the first call covers 12 items and adds two cards outside the lists, the
+    // coverage call the last two key elements. The final trim used to keep the first 17 in lesson order, cutting those two.
+    const items = listItems(SELF_INTRO_TEXT);
+    const first = items.filter((i) => !/Authentic|Unique/.test(i));
+    const ai = fakeAi((label) =>
+      label.includes('list items')
+        ? {
+            cards: [
+              concept('Which key element of an effective self-introduction means being honest and natural?', 'Authentic Tone', 'Authentic Tone'),
+              concept('Which key element of an effective self-introduction explains what makes you different?', 'Unique Value', 'Unique Value'),
+            ],
+          }
+        : {
+            cards: [
+              concept('What should you avoid telling during a self-introduction?', 'Your entire life story.', "It doesn't mean telling your entire life story."),
+              concept('What kind of information should you share in a self-introduction?', 'Information that is appropriate for the situation.', 'you only share information that is appropriate for the situation'),
+              ...first.map((item, n) => concept(`Which listed point of a self-introduction is number ${n + 1} on its slide?`, item, item)),
+            ],
+          },
+    );
+    const keyTerms = SELF_INTRO_TERMS.slice(0, 3);
+    const cards = await generateFlashcards({ ai, chunks: chunkLesson(SELF_INTRO_TEXT), lessonText: SELF_INTRO_TEXT, keyTerms, wordCount: 278, maxCards: 30 });
+    assert.deepEqual(uncoveredItems(items, cards), []);
+    assert.ok(cards.some((c) => c.back === 'Your entire life story.'), 'the cards outside the lists stay');
+    assert.equal(cards.filter((c) => c.kind === 'term').length, 3);
+    assert.equal(cards.length, 19);
+    const at = (c) => SELF_INTRO_TEXT.indexOf(c.evidence.replace(/^It doesn't mean /, ''));
+    const concepts = cards.filter((c) => c.kind === 'concept');
+    assert.deepEqual(concepts.map(at), [...concepts.map(at)].sort((a, b) => a - b), 'still in lesson order');
+  });
+
+  it('under the card limit, a card that is the only one for a list item wins over the others', async () => {
+    const lesson = 'Topic\nPlants need light to make their food.\nNotes:\nRoots take in water from the soil.\n\nNeeds\n- Light from the bright sun\n- Water from the wet soil\n- Air around the green leaves';
+    const ai = fakeAi(() => ({
+      cards: [
+        concept('What do plants need light for?', 'To make their food.', 'Plants need light to make their food.'),
+        concept('What do roots take in?', 'Water from the soil.', 'Roots take in water from the soil.'),
+        concept('Which need of a plant comes from the sun?', 'Light.', 'Light from the bright sun'),
+        concept('Which need of a plant is around the leaves?', 'Air.', 'Air around the green leaves'),
+      ],
+    }));
+    const cards = await generateFlashcards({ ai, chunks: chunkLesson(lesson), lessonText: lesson, wordCount: 30, maxCards: 3 });
+    assert.equal(cards.length, 3);
+    assert.deepEqual(uncoveredItems(listItems(lesson), cards), []);
+    assert.ok(!cards.some((c) => c.front === 'What do plants need light for?'), 'the card outside the list gives way');
+  });
+
+  it('makes no coverage call when every item has a card', async () => {
+    const lesson = 'Types\n- Alpha kind of thing\n- Beta kind of thing';
+    const ai = fakeAi(() => ({ cards: [concept('Which type is the first?', 'Alpha.', 'Alpha kind of thing'), concept('Which type is the second?', 'Beta.', 'Beta kind of thing')] }));
+    await generateFlashcards({ ai, chunks: chunkLesson(lesson), lessonText: lesson, wordCount: 10, maxCards: 30 });
+    assert.equal(ai.calls.length, 1);
   });
 });
 

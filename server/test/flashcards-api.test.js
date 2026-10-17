@@ -5,7 +5,7 @@ import { createApp } from '../src/app.js';
 import { openDb, runMigrations } from '../src/db/index.js';
 import { getJobStatus } from '../src/pipeline/jobs.js';
 import { createPipelineRunner } from '../src/pipeline/runner.js';
-import { studyFetch, TEST_PIN } from './helpers.js';
+import { cleanReview, studyFetch, TEST_PIN } from './helpers.js';
 
 const fetch = studyFetch; // as participant P00, with the admin PIN (see helpers.js)
 
@@ -247,7 +247,13 @@ describe('flashcards API', () => {
     const grounded = () => ({ cards: [{ question: 'What does the researcher change on purpose?', answer: 'The independent variable.', evidence: 'The independent variable is the factor the researcher changes on purpose.' }] });
 
     it('makes the cards and then their quiz answer options, keeping the lesson ready the whole time', async () => {
-      await start((label, user) => (label === 'the quiz answer options' ? { items: [...user.matchAll(/^\[(\d+)\] Question:/gm)].map((m) => ({ n: Number(m[1]), wrong: ['x', 'y', 'z'] })) } : grounded()));
+      await start((label, user) =>
+        label === 'the quiz answer options'
+          ? { items: [...user.matchAll(/^\[(\d+)\] Question:/gm)].map((m) => ({ n: Number(m[1]), wrong: ['x', 'y', 'z'] })) }
+          : label === 'the quiz review'
+            ? cleanReview(user)
+            : grounded(),
+      );
       const id = addLesson('Inquiry');
       db.prepare('INSERT INTO key_terms (lesson_id, term, definition, evidence) VALUES (?, ?, ?, ?)').run(id, 'Random sampling', 'Everyone has an equal chance to be chosen.', 'Random sampling gives every member of the population an equal chance to be chosen.');
       const res = await send('POST', `/api/lessons/${id}/flashcards/generate`);
@@ -256,7 +262,7 @@ describe('flashcards API', () => {
       assert.deepEqual([res.body.job.stage, res.body.job.status], ['flashcards', 'queued']);
 
       await runner.idle();
-      assert.deepEqual(ai.calls.map((c) => c.label), ['the flashcards', 'the quiz answer options']);
+      assert.deepEqual(ai.calls.map((c) => c.label), ['the flashcards', 'the quiz answer options', 'the quiz review']);
       assert.equal(getJobStatus(db, id).lesson.status, 'ready');
       const cards = db.prepare('SELECT kind, front, evidence FROM flashcards WHERE lesson_id = ? ORDER BY position').all(id);
       assert.deepEqual(cards.map((c) => [c.kind, c.front]), [['term', 'Random sampling'], ['concept', 'What does the researcher change on purpose?']]);

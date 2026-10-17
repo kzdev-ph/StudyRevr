@@ -5,16 +5,22 @@ import { openDb, runMigrations } from '../src/db/index.js';
 import { getJobStatus, queueJob, STAGES } from '../src/pipeline/jobs.js';
 import { createPipelineRunner } from '../src/pipeline/runner.js';
 import { loadDistractors } from '../src/quiz/distractors.js';
-import { addCodes, seedLesson, startStudyApp, TEST_PIN } from './helpers.js';
+import { addCodes, cleanReview, seedLesson, startStudyApp, TEST_PIN } from './helpers.js';
 
 const quiet = { error() {}, warn() {}, log() {}, info() {} };
 
-// A fake AI for the wrong-answers call only. Set `fail` to make every call throw; `calls` counts them.
+// A fake AI for the wrong-answers call. Set `fail` to make every call throw; `calls` counts them. The quiz review that
+// follows the stage (services/quiz-review.js) flags nothing and is counted apart (`reviews`).
 const fakeAi = () => {
   const ai = {
     fail: null,
     calls: 0,
-    async generateJSON({ user, schema }) {
+    reviews: 0,
+    async generateJSON({ user, schema, label }) {
+      if (label?.startsWith('the quiz review')) {
+        ai.reviews += 1;
+        return schema.parse(cleanReview(user));
+      }
       ai.calls += 1;
       if (ai.fail) throw ai.fail;
       const numbers = [...user.matchAll(/^\[(\d+)\] Question:/gm)].map((m) => Number(m[1]));
@@ -52,8 +58,8 @@ describe('quiz answer options as a processing step', () => {
     t.db.close();
   });
 
-  it('comes last, after the flashcards', () => {
-    assert.deepEqual(STAGES.slice(-2), ['flashcards', 'quiz_options']);
+  it('comes after the flashcards, followed only by the quiz review', () => {
+    assert.deepEqual(STAGES.slice(-3), ['flashcards', 'quiz_options', 'quiz_review']);
   });
 
   it('makes and saves the wrong answers; a lesson still processing becomes ready with a finished job', async () => {
@@ -85,6 +91,7 @@ describe('quiz answer options as a processing step', () => {
     const seen = [];
     const original = ai.generateJSON;
     ai.generateJSON = async (args) => {
+      if (args.label?.startsWith('the quiz review')) return original(args);
       seen.push(getJobStatus(t.db, lessonId).job);
       return original(args);
     };
@@ -183,7 +190,7 @@ describe('quiz answer options as a processing step', () => {
     for (let i = 5; i <= 20; i++) insert.run(lessonId, `Extra Q${i}: what about the topic?`, `Topic answer ${i} about rivers and lakes.`, i); // 20 cards: batches of 15 and 5
     const original = ai.generateJSON;
     let n = 0;
-    ai.generateJSON = (args) => (++n === 2 ? Promise.reject(rateLimit()) : original(args));
+    ai.generateJSON = (args) => (args.label?.startsWith('the quiz review') ? original(args) : ++n === 2 ? Promise.reject(rateLimit()) : original(args));
 
     await runStage();
     assert.equal(getJobStatus(t.db, lessonId).job.status, 'failed');
@@ -218,6 +225,7 @@ describe('quiz answer options as a processing step', () => {
     let release;
     const original = ai.generateJSON;
     ai.generateJSON = async (args) => {
+      if (args.label?.startsWith('the quiz review')) return original(args);
       await new Promise((resolve) => { release = resolve; });
       return original(args);
     };

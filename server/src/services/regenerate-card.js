@@ -23,7 +23,7 @@ const LESSON_SHARE = 0.5; // share of a new definition's content words that must
 const wordCount = (s) => (String(s).match(/\S+/g) ?? []).length;
 
 // The lesson block that holds the evidence quote with one block on each side, or the start of the lesson.
-function contextFor(rawText, evidence) {
+export function contextFor(rawText, evidence) {
   const blocks = String(rawText ?? '').split(/\n\s*\n/);
   const key = comparable(evidence ?? '');
   const at = key ? blocks.findIndex((b) => comparable(b).includes(key)) : -1;
@@ -45,6 +45,41 @@ export function regenerateBlock(db, lessonId) {
   return null;
 }
 
+// A card written again (`reply`: { definition } for a term card, { question, answer, evidence } for a concept card),
+// checked like generation: length, a concept card's quote in the lesson, a term card's definition mostly in the
+// lesson's words, no repeat of another card, no leak. -> the new card; throws 422 card_not_better otherwise.
+// Shared with the AI review's fix round (services/quiz-review.js).
+export function checkNewCard({ card, reply, rawText, others }) {
+  const term = card.kind === 'term';
+  let next;
+  if (term) {
+    const back = shortDefinition(reply.definition.trim());
+    if (wordCount(back) > MAX_ANSWER_WORDS) throw refuse('The new definition was too long to recall.');
+    next = { ...card, back };
+  } else {
+    if (wordCount(reply.answer) > MAX_ANSWER_WORDS) throw refuse('The new answer was too long to recall.');
+    if (wordCount(reply.question) > MAX_QUESTION_WORDS) throw refuse('The new question was too long.');
+    const check = checkEvidence({ term: reply.question, evidence: reply.evidence, sourceKey: comparable(rawText) });
+    if (!check.ok) throw refuse(`The new card's quote from the lesson didn't check out (${check.reason}).`);
+    next = { ...card, front: reply.question.trim(), back: reply.answer.trim(), evidence: check.evidence };
+  }
+  if (term) {
+    // a definition has no quote of its own: most of its words must come from the lesson
+    const own = wordStems(next.back);
+    const inLesson = lessonWords(rawText);
+    const held = own.filter((forms) => forms.some((s) => inLesson.holds(s))).length;
+    if (!own.length || held / own.length < LESSON_SHARE) throw refuse('The new definition uses words that aren’t in the lesson.');
+  }
+  // only what is new is compared: a term card keeps its term and quote, so only its definition
+  const sameBack = (o) => isDuplicate({ front: next.back, back: '' }, { front: o.back, back: '' });
+  const twin = others.find((o) => sameBack(o) || (!term && isDuplicate(next, o)));
+  if (twin) throw refuse(`The new card repeats another card ("${twin.front}").`);
+  const leaks = cardLeaks(next, others).filter((p) => LEAK_RULES.includes(p.rule));
+  if (leaks.length) throw refuse(`The new card still gives its answer away (${leaks.map((p) => `${p.rule}: ${p.detail}`).join('; ')}).`);
+
+  return next;
+}
+
 // -> the updated card { id, kind, front, back, evidence, rules } (rules: what still breaks a leak rule, none)
 export async function regenerateCard({ db, ai, cardId, log = console }) {
   const card = db.prepare('SELECT id, lesson_id, kind, front, back, evidence FROM flashcards WHERE id = ?').get(cardId);
@@ -59,31 +94,7 @@ export async function regenerateCard({ db, ai, cardId, log = console }) {
   const { system, user } = regenerateCardPrompt({ card, problems, text: contextFor(lesson.raw_text, card.evidence), others: term ? [] : others.map((o) => o.back) });
   const reply = await ai.generateJSON({ system, user, schema: term ? termReply : conceptReply, maxTokens: 1000, label: 'the new flashcard' });
 
-  let next;
-  if (term) {
-    const back = shortDefinition(reply.definition.trim());
-    if (wordCount(back) > MAX_ANSWER_WORDS) throw refuse('The new definition was too long to recall.');
-    next = { ...card, back };
-  } else {
-    if (wordCount(reply.answer) > MAX_ANSWER_WORDS) throw refuse('The new answer was too long to recall.');
-    if (wordCount(reply.question) > MAX_QUESTION_WORDS) throw refuse('The new question was too long.');
-    const check = checkEvidence({ term: reply.question, evidence: reply.evidence, sourceKey: comparable(lesson.raw_text) });
-    if (!check.ok) throw refuse(`The new card's quote from the lesson didn't check out (${check.reason}).`);
-    next = { ...card, front: reply.question.trim(), back: reply.answer.trim(), evidence: check.evidence };
-  }
-  if (term) {
-    // a definition has no quote of its own: most of its words must come from the lesson
-    const own = wordStems(next.back);
-    const inLesson = lessonWords(lesson.raw_text);
-    const held = own.filter((forms) => forms.some((s) => inLesson.holds(s))).length;
-    if (!own.length || held / own.length < LESSON_SHARE) throw refuse('The new definition uses words that aren’t in the lesson.');
-  }
-  // only what is new is compared: a term card keeps its term and quote, so only its definition
-  const sameBack = (o) => isDuplicate({ front: next.back, back: '' }, { front: o.back, back: '' });
-  const twin = others.find((o) => sameBack(o) || (!term && isDuplicate(next, o)));
-  if (twin) throw refuse(`The new card repeats another card ("${twin.front}").`);
-  const leaks = cardLeaks(next, others).filter((p) => LEAK_RULES.includes(p.rule));
-  if (leaks.length) throw refuse(`The new card still gives its answer away (${leaks.map((p) => `${p.rule}: ${p.detail}`).join('; ')}).`);
+  const next = checkNewCard({ card, reply, rawText: lesson.raw_text, others });
 
   // checked again where it is saved: the AI call can take a minute, and meanwhile a participant may have started, a
   // job may have been queued, or the card may have been written again from another tab

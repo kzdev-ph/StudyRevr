@@ -7,7 +7,7 @@ import { createApp } from '../src/app.js';
 import { openDb, runMigrations } from '../src/db/index.js';
 import { extractText } from '../src/services/extract.js';
 import { extractPdf, reflowPdfPages } from '../src/services/pdf.js';
-import { drawingMlLines } from '../src/services/pptx.js';
+import { drawingMlLines, textLines } from '../src/services/pptx.js';
 import { countWords } from '../src/services/text.js';
 import { studyFetch, TEST_PIN } from './helpers.js';
 
@@ -172,6 +172,47 @@ describe('pptx: soft line breaks', () => {
       '<a:p/><a:p><a:r><a:t>Next paragraph</a:t></a:r></a:p>',
     ].join('');
     assert.deepEqual(drawingMlLines(xml), ['Heading', 'Explanation.', 'Example: A teacher & students.', 'Next paragraph']);
+  });
+
+  it('splits glued sentences and _x000B_ soft returns, but not abbreviations', () => {
+    assert.deepEqual(textLines('Build relationships and trust.Share your background, skills, and interests.'), [
+      'Build relationships and trust.',
+      'Share your background, skills, and interests.',
+    ]);
+    assert.deepEqual(textLines('First line_x000B_Second line'), ['First line', 'Second line']);
+    assert.deepEqual(textLines('Use tools, e.g.The library at St.Mary school.'), ['Use tools, e.g.The library at St.Mary school.']);
+    assert.deepEqual(textLines('KEY ELEMENTS OF AN EFFECTIVE\nSELF-INTRODUCTION'), ['KEY ELEMENTS OF AN EFFECTIVE', 'SELF-INTRODUCTION']);
+  });
+
+  // The self-introduction lesson came out with "- Build relationships and trust.Share your background…": two runs in
+  // one bullet paragraph with no break between them.
+  it('keeps every bullet of a slide on its own line, whatever joins them in the XML', async () => {
+    const pptx = new PptxGenJS();
+    pptx.addSlide().addText(
+      ['Introduce yourself clearly.', 'Build relationships and trust.', 'Encourage meaningful communication.', 'Last one.'].map((text) => ({
+        text,
+        options: { bullet: true, breakLine: true },
+      })),
+      { x: 0.5, y: 1, w: 9, h: 3 },
+    );
+    const zip = await JSZip.loadAsync(await pptx.write({ outputType: 'nodebuffer' }));
+    let xml = await zip.file('ppt/slides/slide1.xml').async('string');
+    // bullet 2 + "Share…" as a second run with no break; bullet 3 + "Starts…" after an <a:br>; bullet 4 with a _x000B_
+    xml = xml.replace('trust.</a:t></a:r>', 'trust.</a:t></a:r><a:r><a:t>Share your background.</a:t></a:r>');
+    xml = xml.replace('communication.</a:t></a:r>', 'communication.</a:t></a:r><a:br/><a:r><a:t>Starts conversations.</a:t></a:r>');
+    xml = xml.replace('Last one.', 'Last one._x000B_Shows professionalism.');
+    assert.ok(xml.includes('Share your background'));
+    zip.file('ppt/slides/slide1.xml', xml);
+    const { text } = await extractText(await zip.generateAsync({ type: 'nodebuffer' }), '.pptx');
+    assert.deepEqual(text.split('\n'), [
+      '- Introduce yourself clearly.',
+      '- Build relationships and trust.',
+      '- Share your background.',
+      '- Encourage meaningful communication.',
+      'Starts conversations.',
+      '- Last one.',
+      '- Shows professionalism.',
+    ]);
   });
 });
 
