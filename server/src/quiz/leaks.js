@@ -18,6 +18,7 @@ import { singular } from '../pipeline/terms.js';
 //   i  a yes/no or either/or question
 //   j  the front holds another card's answer
 //   k  front and back are nearly the same, or the back only restates the front
+//   l  the question asks by a place in the list ("the aim listed first"), not by what the item is (concept cards)
 //
 // These are word checks: they catch wording and tone, not a question whose meaning already says the answer
 // ("Why is language called dynamic?" -> "because it changes"). The prompts ask for that; the checks can't see it.
@@ -112,7 +113,31 @@ export const sameWord = (a, b) => a === b || (Math.min(a.length, b.length) >= 4 
 // Two words (lists of possible stems, from wordStems) are one when any of their stems are (sameWord), or for
 // `exact`, equal.
 const matches = (a, b) => a.some((x) => b.some((y) => sameWord(x, y)));
-const exact = (a, b) => a.some((x) => b.includes(x));
+// `exact` is the strict match, used where "data" must not match "database": the same stem, or a form of the same word
+// ("professional" / "professionalism", "create" / "creates" / "creation", "confident" / "confidence"). A word's forms
+// are itself and what is left after one common ending (FORM_SUFFIXES), without a final "e", provided at least 5
+// letters are left, so a short stem ("state" in "statement") never links two words.
+const FORM_SUFFIXES = [
+  's', 'es', 'd', 'ed', 'ing', 'ings', 'ion', 'ions', 'ation', 'ations', 'ive', 'ively', 'ly', 'al', 'ally', 'ism', 'isms', 'ist', 'ists', 'ity', 'ness',
+  'ment', 'ments', 'er', 'ers', 'or', 'ors', 'ic', 'ical', 'ize', 'ized', 'izes', 'izing', 'ent', 'ents', 'ence', 'ences', 'ant', 'ance', 'able', 'ible', 'ful',
+];
+const FORM_MIN_LETTERS = 5;
+const formCache = new Map();
+function wordForms(word) {
+  let forms = formCache.get(word);
+  if (!forms) {
+    const base = (w) => w.replace(/e$/, '');
+    forms = new Set([base(word)]);
+    for (const suffix of FORM_SUFFIXES) {
+      const rest = base(word.slice(0, word.length - suffix.length));
+      if (word.endsWith(suffix) && rest.length >= FORM_MIN_LETTERS) forms.add(rest);
+    }
+    formCache.set(word, forms);
+  }
+  return forms;
+}
+export const sameForm = (x, y) => x === y || [...wordForms(x)].some((f) => wordForms(y).has(f));
+const exact = (a, b) => a.some((x) => b.some((y) => sameForm(x, y)));
 const shared = (list, other, same = matches) => list.filter((w) => other.some((o) => same(w, o)));
 const names = (list) => list.map((forms) => forms[0]);
 const coverage = (part, whole) => (part.length ? shared(part, whole).length / part.length : 0);
@@ -209,6 +234,20 @@ export function answerInQuestion(question, answer) {
   if (answerWords.length === 1 && shared(answerWords, questionWords, exact).length) return `the question holds the answer word "${answerWords[0][0]}"`;
   return null;
 }
+
+// Rule l: a question that asks by a place in a list ("Which aim is listed first?", "the second purpose") instead of by
+// what the item is. Only the unmistakable shapes: "first impression", "first aid" or "the first step of the method"
+// ask about content and are not matched.
+const PLACE = 'first|second|third|fourth|fifth|sixth|last|final';
+const LIST_NOUNS = 'item|bullet|entry|aim|purpose|goal|objective|component|characteristic|feature|benefit|reason|key element';
+const POSITION_PATTERNS = [
+  new RegExp(`\\b(?:listed|mentioned|named|presented|shown|given)\\s+(?:${PLACE})\\b`, 'i'),
+  new RegExp(`\\b(?:${PLACE})[- ](?:listed|mentioned|named)\\b`, 'i'),
+  new RegExp(`\\b(?:the|which|what)\\s+(?:${PLACE})\\s+(?:${LIST_NOUNS})s?\\b`, 'i'),
+  new RegExp(`\\b(?:${PLACE})\\s+(?:one\\s+)?(?:in|on)\\s+the\\s+(?:list|slide)\\b`, 'i'),
+  /\b(?:item|bullet|entry)\s+(?:no\.?\s*|number\s*|#)?\d+\b/i,
+];
+export const asksByPosition = (question) => POSITION_PATTERNS.some((p) => p.test(String(question ?? '')));
 
 // Rule d / h: the term (or half of a multi-word term) appears in the text. -> the words found, or null. Generous, for
 // blanking (rule d: blanking a word too many costs nothing). `strict` (rule h, the flashcard itself): only the term's
@@ -345,7 +384,7 @@ export function questionLeaks(q, { lessonWords = null } = {}) {
 }
 
 // The rules that make a flashcard give its answer away during flashcard study (h is only reported: see above).
-export const CARD_LEAK_RULES = ['g', 'i', 'j', 'k'];
+export const CARD_LEAK_RULES = ['g', 'i', 'j', 'k', 'l'];
 
 // Rules g-k for one flashcard. `others`: the lesson's other cards, for rule j. -> [{ rule, detail }]
 export function cardLeaks(card, others = []) {
@@ -363,6 +402,7 @@ export function cardLeaks(card, others = []) {
     const yesNoBa = ws.includes('ba') && !ws.some((w) => WH_WORDS.has(w));
     if (/^(?:is|are|does|do|did|can|could|was|were|will|would|should|has|have|had)$/.test(ws[0] ?? '') || /\b(?:o hindi|or not)\b/.test(joined) || yesNoBa)
       problems.push({ rule: 'i', detail: 'a yes/no or either/or question' });
+    if (asksByPosition(card.front)) problems.push({ rule: 'l', detail: 'asks by place in the list' });
   }
   const front = wordStems(card.front);
   for (const other of others) {

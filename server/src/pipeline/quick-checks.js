@@ -5,8 +5,8 @@
 // once (one call for the whole lesson) and dropped if it still fails: a section may end with no quick check.
 import { z } from 'zod';
 import { quickChecksPrompt } from '../ai/prompts.js';
-import { wordStems } from '../quiz/leaks.js';
-import { checkEvidence, comparable } from './evidence.js';
+import { asksByPosition, wordStems } from '../quiz/leaks.js';
+import { checkEvidence, comparable, MAX_CHECK_EVIDENCE_WORDS } from './evidence.js';
 
 export const MAX_CHECKS = 2;
 export const RETRY_LABEL = 'the quick checks (second try)';
@@ -25,13 +25,14 @@ export function checkQuickCheck(check, sourceKey) {
   const question = String(check?.question ?? '').trim();
   const answer = String(check?.answer ?? '').trim();
   if (!question || !answer) return { ok: false, reason: 'no question or answer' };
+  if (asksByPosition(question)) return { ok: false, reason: 'it asks by place in the list, not by what the item is' };
   // in the lesson first, then the reason rules, then that the quote says more than the question
-  const found = checkEvidence({ term: question, evidence: check.evidence, sourceKey, minExplaining: 0 });
+  const found = checkEvidence({ term: question, evidence: check.evidence, sourceKey, minExplaining: 0, maxWords: MAX_CHECK_EVIDENCE_WORDS });
   if (!found.ok) return { ok: false, reason: found.reason };
   const quote = found.evidence;
   if (ASKS_REASON.test(question) && !REASON.test(quote)) return { ok: false, reason: 'it asks why, and the lesson’s quote gives no reason' };
   if (REASON.test(answer) && !REASON.test(quote)) return { ok: false, reason: 'the answer gives a reason the lesson’s quote doesn’t state' };
-  const ev = checkEvidence({ term: question, evidence: check.evidence, sourceKey, minExplaining: 2 });
+  const ev = checkEvidence({ term: question, evidence: check.evidence, sourceKey, minExplaining: 2, maxWords: MAX_CHECK_EVIDENCE_WORDS });
   if (!ev.ok) return { ok: false, reason: ev.reason };
   const asked = flat(question);
   const own = wordStems(answer).filter((forms) => !forms.some((s) => asked.has(s)));

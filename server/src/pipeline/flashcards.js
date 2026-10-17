@@ -166,8 +166,8 @@ function reviewFor(chunk, sections, single) {
   return estimateTokens(text) <= Math.max(600, chunk.tokens / 2) ? text : mine.map((s) => `- ${s.title}`).join('\n');
 }
 
-// The first of rules g, i, k a concept card breaks, or undefined.
-const givesAnswerAway = (card) => cardLeaks({ kind: 'concept', ...card }).find((p) => ['g', 'i', 'k'].includes(p.rule));
+// The first of rules g, i, k (gives its answer away) and l (asks by place in the list) a concept card breaks, or undefined.
+const givesAnswerAway = (card) => cardLeaks({ kind: 'concept', ...card }).find((p) => ['g', 'i', 'k', 'l'].includes(p.rule));
 
 const partLabel = (i, n) => `the flashcards${n > 1 ? ` (part ${i + 1} of ${n})` : ''}`;
 
@@ -215,7 +215,7 @@ function checkConceptCards(replyCards, sourceKey, onDrop) {
     const leak = givesAnswerAway({ front: c.question, back: c.answer });
     if (wordList(c.answer).length > MAX_ANSWER_WORDS) reject('answer too long to recall');
     else if (wordList(c.question).length > MAX_QUESTION_WORDS) reject('question too long');
-    else if (leak) reject(`gives its answer away (${leak.rule}: ${leak.detail})`);
+    else if (leak) reject(leak.rule === 'l' ? `${leak.detail} (l)` : `gives its answer away (${leak.rule}: ${leak.detail})`);
     else {
       const check = checkEvidence({ term: c.question, evidence: c.evidence, sourceKey, minExplaining: 2 });
       if (check.ok) cards.push({ kind: 'concept', front: c.question, back: c.answer, evidence: check.evidence });

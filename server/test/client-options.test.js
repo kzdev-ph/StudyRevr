@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { THINKING_HEADROOM_TOKENS, THINKING_TIMEOUT_MS } from '../src/ai/client.js';
 import { chatModelIds, isChatModel } from '../src/ai/models.js';
 import { CFG, completion, failure, makeClient, schema, scriptedFetch } from './helpers.js';
 
@@ -146,5 +147,71 @@ describe('chat model filter: Gemini', () => {
   it('uses supportedGenerationMethods when Google lists them', () => {
     assert.equal(isChatModel({ id: 'models/gemini-x', supportedGenerationMethods: ['generateContent', 'countTokens'] }), true);
     assert.equal(isChatModel({ id: 'models/gemini-y', supportedGenerationMethods: ['embedContent'] }), false);
+  });
+});
+
+describe('createAiClient: thinking for lesson processing', () => {
+  const THINKS = { ...CFG, reasoningEffort: true, timeoutMs: 25_000 };
+  const ok = () => completion('{"answer":"ok","n":1}');
+
+  it('sends nothing about thinking by default', async () => {
+    const f = scriptedFetch(ok());
+    const client = makeClient(f, THINKS);
+    await client.generateJSON({ system: 's', user: 'u', schema, maxTokens: 2000 });
+    assert.equal('reasoning_effort' in f.calls[0].body, false);
+    assert.equal(f.calls[0].body.max_tokens, 2000);
+    assert.deepEqual({ calls: client.stats.thinkingCalls, tokens: client.stats.thinkingTokens }, { calls: 0, tokens: 0 });
+  });
+
+  it('reasoning "high" sends reasoning_effort after the extra body, with room for the thinking', async () => {
+    const f = scriptedFetch(ok());
+    const client = makeClient(f, { ...THINKS, extraBody: { reasoning_effort: 'minimal' } });
+    await client.generateJSON({ system: 's', user: 'u', schema, maxTokens: 2000, reasoning: 'high' });
+    assert.equal(f.calls[0].body.reasoning_effort, 'high', 'a model’s own option does not win for a thinking call');
+    assert.equal(f.calls[0].body.max_tokens, 2000 + THINKING_HEADROOM_TOKENS);
+    assert.equal(client.stats.thinkingCalls, 1);
+  });
+
+  it('caps the output budget, and a cut-off reply retried with a doubled budget stays capped', async () => {
+    const f = scriptedFetch(completion('', { finish: 'length' }), ok());
+    await makeClient(f, THINKS).generateJSON({ system: 's', user: 'u', schema, maxTokens: 30_000, reasoning: 'high' });
+    assert.ok(f.calls.every((c) => c.body.max_tokens <= 32_000), JSON.stringify(f.calls.map((c) => c.body.max_tokens)));
+    assert.equal(f.calls[0].body.max_tokens, 32_000);
+  });
+
+  it('counts the thinking tokens the provider reports only in total_tokens', async () => {
+    const reply = () => new Response(JSON.stringify({ choices: [{ message: { content: '{"answer":"ok","n":1}' }, finish_reason: 'stop' }], usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 1120 } }), { status: 200 });
+    const client = makeClient(scriptedFetch(reply), THINKS);
+    await client.generateJSON({ system: 's', user: 'u', schema, reasoning: 'high' });
+    assert.equal(client.stats.thinkingTokens, 1000);
+  });
+
+  it('is ignored by a provider that does not take reasoning_effort', async () => {
+    const f = scriptedFetch(ok());
+    const client = makeClient(f, CFG);
+    await client.generateJSON({ system: 's', user: 'u', schema, maxTokens: 2000, reasoning: 'high' });
+    assert.equal('reasoning_effort' in f.calls[0].body, false);
+    assert.equal(f.calls[0].body.max_tokens, 2000);
+    assert.equal(client.stats.thinkingCalls, 0);
+  });
+
+  it('waits longer for a thinking call than for a plain one', async () => {
+    const timeout = () => {
+      throw new DOMException('timed out', 'TimeoutError');
+    };
+    const message = async (extra) => {
+      const client = makeClient(scriptedFetch(timeout), THINKS);
+      return client.generateJSON({ system: 's', user: 'u', schema, ...extra }).catch((err) => err.message);
+    };
+    assert.match(await message({}), /within 25 seconds/);
+    assert.match(await message({ reasoning: 'high' }), new RegExp(`within ${THINKING_TIMEOUT_MS / 1000} seconds`));
+  });
+
+  it('marks the attempt log of a thinking call', async () => {
+    const events = [];
+    const client = makeClient(scriptedFetch(ok(), ok()), THINKS, { onAttempt: (e) => events.push(e) });
+    await client.generateJSON({ system: 's', user: 'u', schema, reasoning: 'high', label: 'a' });
+    await client.generateJSON({ system: 's', user: 'u', schema, label: 'b' });
+    assert.deepEqual(events.filter((e) => e.type === 'ok').map((e) => [e.label, e.think]), [['a', 'high'], ['b', undefined]]);
   });
 });

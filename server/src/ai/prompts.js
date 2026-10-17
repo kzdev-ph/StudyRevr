@@ -16,6 +16,10 @@ Rules:
 // what the lesson means ("workplace readiness" for "professionalism").
 export const KEEP_MEANING = `- Keep the lesson's meaning. Never connect things the lesson only lists with a cause, effect or purpose it does not state: write "because", "so that", "to …", "leads to" or "helps … by" only when the lesson itself says it. Listed items stay separate items: if the lesson lists "Share your background, skills, and interests." and "Encourage meaningful communication.", never write "share your background to encourage meaningful communication". Plain synonyms that keep the meaning are fine, but never reword into a new idea ("workplace readiness" adds work to "professionalism"; "fostering confidence" is not "trust").`;
 
+// A question must not ask by place in a list: the accuracy check found "the aim listed first" (it has no single answer
+// without counting, and the lesson's order is not something to study). leaks.js `asksByPosition` checks the same in code.
+export const NO_POSITION = `Never ask by position in a list ("the aim listed first", "the first purpose", "the second element"): ask by what the item is or does, so the question has one right answer without counting.`;
+
 // The key-points call reads our own generated review, not the teacher's slides, so only the general rules apply.
 const REVIEW_RULES = `You help students study from a lesson written by their teacher.
 
@@ -76,7 +80,7 @@ Task: turn the lesson text into a study review made of bite-sized sections.
 - Skip filler with no study value (cover slide, "Thank you", "Any questions?", page numbers).
 - "title": short and specific, at most 8 words.
 - "content": ${LENGTH_GUIDE[summaryLength] ?? LENGTH_GUIDE.detailed}. Plain text in short paragraphs; use lines that start with "- " for lists. No markdown headings, no bold or asterisks. Explain it clearly in your own words but stay faithful to the lesson.
-- "check_questions": 1 or 2 quick questions whose answer this section's lesson text states itself (what it is, what it includes, what it does, how the lesson describes it). Ask "why" or "how does X cause Y" only when the lesson states that reason or way in its own words; never ask for a reason, cause or effect the lesson does not give. Each has a short "answer" (1 or 2 sentences, in the lesson's words) and an "evidence": one sentence or phrase copied EXACTLY, word for word, from the lesson text (at most 25 words) that states the answer. If you cannot find such a quote, leave the question out.
+- "check_questions": 1 or 2 quick questions whose answer this section's lesson text states itself (what it is, what it includes, what it does, how the lesson describes it). Ask "why" or "how does X cause Y" only when the lesson states that reason or way in its own words; never ask for a reason, cause or effect the lesson does not give. Each has a short "answer" (1 or 2 sentences, in the lesson's words) and an "evidence": one sentence or phrase copied EXACTLY, word for word, from the lesson text (at most 40 words, ending where a sentence or clause ends, never in the middle of a phrase) that states the answer. If you cannot find such a quote, leave the question out. ${NO_POSITION}
 ${KEEP_MEANING}${sourcesRule}
 
 Reply with this JSON shape:
@@ -148,7 +152,7 @@ Do NOT include:
 For each term:
 - "term": 1 to 4 words, written as the lesson writes it.
 - "definition": 1 or 2 plain sentences that say what the term IS (its meaning, what it does or how it works), using only what the lesson says. Never just list examples, and never use the term itself or a form of it in the definition (a student is shown the definition and must name the term). Build it from the lesson's own words: add no describing words the lesson does not use (if the lesson says "presented in written form", do not write "created and presented in written form").
-- "evidence": one sentence or phrase copied EXACTLY, word for word, from the lesson text (at most 25 words) that defines or explains the term. Copy it character for character: do not paraphrase, do not shorten with "...", do not join pieces from different places, and never use a title or heading as evidence. If you cannot find such a quote in the lesson, leave the term out.
+- "evidence": one sentence or phrase copied EXACTLY, word for word, from the lesson text (at most 25 words, ending where a sentence or clause ends, never in the middle of a phrase) that defines or explains the term. Copy it character for character: do not paraphrase, do not shorten with "...", do not join pieces from different places, and never use a title or heading as evidence. If you cannot find such a quote in the lesson, leave the term out.
 Give about ${targetTerms} terms (at most ${maxTerms}), most important first. Do not stop at the few most basic concepts, but never pad the list with examples or list items just to reach that number: fewer is better than weak ones. Reply {"terms":[]} if the text defines no real concepts.
 
 Reply with this JSON shape:
@@ -202,7 +206,7 @@ Task: write flashcards that help a student remember the important ideas of this 
 - "answer": short enough to recall from memory: at most 25 words, one sentence or a short phrase. Say only what the lesson says, in the lesson's own words: add no describing words it does not use.
 ${KEEP_MEANING}
 - When the lesson lists items under a heading (purposes, importance, key elements, types, steps, reasons), every item gets a card of its own. Ask about that one item through what the lesson says about it ("Which key element of a self-introduction means being honest and natural?" -> "Authentic tone"), naming the list in the question so it has one right answer. When the lesson says nothing more about an item than the item itself, describe it in plain words with the same meaning, never with the item's own words ("Which purpose of a self-introduction is about making others see you well from the start?" -> "Create a positive first impression"). Never ask by position in the list ("the first purpose", "the second element").
-- "evidence": one sentence or phrase copied EXACTLY, word for word, from the lesson text (at most 25 words) that supports the answer. Copy it character for character: do not paraphrase, do not shorten with "...", do not join pieces from different places, and never use a title or heading as evidence. If you cannot find such a quote, leave the card out.
+- "evidence": one sentence or phrase copied EXACTLY, word for word, from the lesson text (at most 25 words, ending where a sentence or clause ends, never in the middle of a phrase) that supports the answer. Copy it character for character: do not paraphrase, do not shorten with "...", do not join pieces from different places, and never use a title or heading as evidence. If you cannot find such a quote, leave the card out.
 - No trivia: never ask about slide titles, slide or page numbers, the author, the teacher, the school, or the date of the presentation, unless the lesson itself teaches them as content.
 - Never ask two cards about the same fact.${
     keyTerms.length
@@ -248,6 +252,7 @@ Task: for each card, write 3 wrong answers to its question. A student who has no
 - Never use another card's correct answer, copied or reworded, as a wrong answer: it plainly answers that other question, so a student matches it away.
 - Stay on the subject of the question: each wrong answer is about the same thing the question asks about, built from the lesson's own ideas. Never switch to an unrelated topic (food, buildings, prices, jobs, population) and never copy the whole question into a wrong answer: either one is ruled out at a glance.
 - Same tone and polarity as the correct answer. If the correct answer is a positive statement, every wrong answer is a positive statement too: no negations ("not", "never", "no", "hindi", "wala", "walang"), no opposites, no version that hides, prevents, limits, removes or makes harder what the correct answer says. An option that sounds negative or absurd is ruled out at a glance.
+- Never the opposite or mirror image of the correct answer in meaning, even with no negative word: if the correct answer is "Builds confidence", "Creates anxiety" or "Weakens confidence" is wrong (it is the right answer turned around, so it is ruled out at a glance and as a Yes/No statement it is plainly false). A wrong answer is a different idea from the lesson, not the right answer reversed. ${NO_POSITION}
 - Make each wrong answer similar in length and style to the correct answer: same kind of phrase, same grammar, about the same number of words (each card says how many). If the correct answer is a full sentence, so is each wrong answer; if it is a short phrase or a list, so is each wrong answer.
 - If the correct answer starts with or repeats words from the question (such as "Ginagamit ito" or "Because"), let the wrong answers do the same, so the right one is not the only option that echoes the question. Do not start all 3 wrong answers with the same words unless the correct answer starts that way too.
 - Never a correct or partly correct answer, never a reworded copy of the correct answer, and the 3 must differ from each other in substance, not just one word.
@@ -287,9 +292,9 @@ Task: a flashcard from this lesson gives its own answer away, so a student can a
 ${
   term
     ? `- It is a term card: the student sees the definition and must name the term "${card.front}". Write a new "definition": 1 or 2 plain sentences that say what the term is, using only what the lesson says. Never use the term itself or a form of any of its words in the definition.`
-    : `- "question": one clear question, at most 20 words, about the same idea. It must not contain the answer or its key words, must not use a word that already means the answer, and must not be a yes/no or either/or question.
+    : `- "question": one clear question, at most 20 words, about the same idea. It must not contain the answer or its key words, must not use a word that already means the answer, and must not be a yes/no or either/or question. ${NO_POSITION}
 - "answer": at most 25 words, saying something the question does not; never just the question's words as a statement. Only what the lesson says, in its own words.
-- "evidence": one sentence or phrase copied EXACTLY, word for word, from <lesson_text> (at most 25 words) that supports the answer.${
+- "evidence": one sentence or phrase copied EXACTLY, word for word, from <lesson_text> (at most 25 words, ending where a sentence or clause ends, never in the middle of a phrase) that supports the answer.${
         others.length ? `\n- The question must not contain any of these answers from other cards: ${others.map((o) => `"${o}"`).join('; ')}.` : ''
       }`
 }
@@ -322,7 +327,7 @@ Flag only real problems; an item with none gets empty lists. Flags:
 - "card" (the flashcard itself):
   - "card_reveals": the question already gives its answer away (it contains the answer, or words that mean it).
   - "not_in_lesson": the right answer (or what the question takes for granted) says something the lesson does not say: describing words the lesson does not use that change the meaning, a cause, effect or purpose connecting things the lesson only lists, or a rewording with a new meaning ("workplace readiness" for "professionalism").
-  - "vague": the question does not name its topic ("your presentation", "it", "this") or has more than one right answer according to the lesson.
+  - "vague": the question does not name its topic ("your presentation", "it", "this") or has more than one right answer according to the lesson, or asks by place in a list ("the aim listed first") instead of by what the item is.
 - "set" (the multiple-choice question as a whole):
   - "giveaway": someone who has not read the lesson can pick the right answer from how the options look (the only sensible, the only positive, the only detailed or the only long one), or the right answer rules the others out by itself (it says "relevant" or "brief" and they say "all details" or "everything"). The right answer repeating ONE word of the question is allowed: never flag a set for that alone.
 - "true_statement" (the right answer shown alone under "Is this the right answer?"):
@@ -330,7 +335,7 @@ Flag only real problems; an item with none gets empty lists. Flags:
   - "not_in_lesson": as for the card.
 - "options" (one wrong option or false statement, by its number "o"):
   - "two_correct": it ALSO answers this question correctly according to the lesson: it says the same as the right answer in other words, or the lesson says it fits this question too (a student who picks it is not wrong). For a term card: that term's meaning also fits the definition (a broader term, or a kind of the asked term).
-  - "reversed": it is the right answer turned around or negated, so it is ruled out at a glance.
+  - "reversed": it is the right answer turned around, negated or given the opposite meaning, even with no negative word ("Creates anxiety" for "Builds confidence"), so it is ruled out at a glance and as a Yes/No statement it is plainly false.
   - "off_topic": the lesson does not cover it at all, so it is ruled out at a glance.
   - "giveaway": a silly caricature or extreme that nobody would pick ("all details", "everything", "always", "as long as possible", "loudly and formally").
 A good wrong option is another idea, item or term FROM THE LESSON that does not answer this question (another item of the same list, another key term): never flag it as "off_topic" or "two_correct" only because it is in the lesson or about the same subject. A wrong option that only rewords the right answer is "two_correct", not "off_topic".
@@ -342,7 +347,7 @@ Also group the lesson's key terms into "families": put terms in one family only 
       : ''
   }
 
-Reply with this JSON shape (one entry per item, by its number "n"):
+Reply with this JSON shape: exactly one entry for EVERY item, by its number "n", also when nothing is wrong with it (then its lists are empty). Do not leave an item out.
 {"items":[{"n":1,"card":[{"flag":"vague","why":"..."}],"set":[],"true_statement":[],"options":[{"o":2,"flag":"two_correct","why":"..."}]}]${terms.length ? ',"families":[["term","term"]]' : ''}}`;
   const list = items
     .map((it) => {
@@ -367,7 +372,7 @@ export function regenerateCardsPrompt({ cards, text, others = [] }) {
   const system = `${LESSON_RULES}
 
 Task: an exam reviewer flagged these flashcards. Write each one again so the problem is gone.
-- A concept card gets a new "question", "answer" and "evidence". The question: one clear question, at most 20 words, about the same idea, naming its topic in full the way the lesson does (never "it", "this" or "your presentation"); it must not contain the answer or its key words, nor be a yes/no or either/or question. The answer: at most 25 words, only what the lesson says, in the lesson's own words. The evidence: one sentence or phrase copied EXACTLY, word for word, from <lesson_text> (at most 25 words) that supports the answer.
+- A concept card gets a new "question", "answer" and "evidence". The question: one clear question, at most 20 words, about the same idea, naming its topic in full the way the lesson does (never "it", "this" or "your presentation"); it must not contain the answer or its key words, nor be a yes/no or either/or question. ${NO_POSITION} The answer: at most 25 words, only what the lesson says, in the lesson's own words. The evidence: one sentence or phrase copied EXACTLY, word for word, from <lesson_text> (at most 25 words, ending where a sentence or clause ends, never in the middle of a phrase) that supports the answer.
 - A term card keeps its term and gets a new "definition": 1 or 2 plain sentences built from the lesson's own words, never using the term or a form of its words.
 - Change the wording so the problem is really gone: a card that comes back with the same words is not used.
 ${KEEP_MEANING}${
@@ -397,9 +402,10 @@ export function quickChecksPrompt({ checks, text }) {
   const system = `${LESSON_RULES}
 
 Task: each item is a quick-check question under one section of a study review, with what was wrong with it. Write a new question and answer for each, about the same section, so the problem is gone.
-- Ask only what the lesson text itself states: what something is, what it includes, what it does, how the lesson describes it. Ask "why" or "how does X cause Y" only when the lesson states that reason in its own words.
+- Ask only what the lesson text itself states: what something is, what it includes, what it does, how the lesson describes it. Ask "why" or "how does X cause Y" only when the lesson states that reason in its own words. ${NO_POSITION}
 - "answer": 1 or 2 short sentences in the lesson's own words, saying only what the "evidence" quote says.
-- "evidence": one sentence or phrase copied EXACTLY, word for word, from <lesson_text> (at most 25 words) that states the answer. Neighbouring list lines may be quoted together, in order.
+- "evidence": one sentence or phrase copied EXACTLY, word for word, from <lesson_text> (at most 40 words, ending where a sentence or clause ends, never in the middle of a phrase) that states the answer. Neighbouring list lines may be quoted together, in order.
+- ${NO_POSITION}
 ${KEEP_MEANING}
 - Change the wording so the problem is really gone: a question that comes back with the same words is not used. If the lesson gives nothing to ask about this section without the problem, reply with an empty "question" for that item.
 
@@ -433,7 +439,7 @@ Rules:
 Flag only real problems, by the check's number "q"; a section with none gets an empty list. Flags:
 - "not_in_lesson": the answer (or what the question takes for granted) says something the lesson does not state: a reason, cause, effect or purpose connecting things the lesson only lists ("because it shows professionalism"), describing words the lesson does not use, or a rewording with a new meaning ("workplace readiness" for "professionalism").
 - "not_answered": the section's own text does not answer the question, so a student who read the section can't.
-- "vague": the question has no single answer according to the lesson, or doesn't name its topic ("it", "this").
+- "vague": the question has no single answer according to the lesson, or doesn't name its topic ("it", "this"), or asks by place in a list ("the aim listed first") instead of by what the item is.
 Give a short "why" (at most 15 words) with every flag.
 
 Reply with this JSON shape, one entry for EVERY section by its number "n" (a section with nothing to flag gets "checks":[]):

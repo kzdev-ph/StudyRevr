@@ -66,11 +66,11 @@ describe('quick checks are grounded in the lesson', () => {
     };
 
     it('keeps what holds up, asks for the failing ones again in one call, and drops what still fails', async () => {
-      const sections = [section('What is it', [S1]), section('Importance', [S3]), section('Purpose', [S2, { ...S2, question: 'What is the third purpose?', evidence: 'not in the lesson at all' }])];
+      const sections = [section('What is it', [S1]), section('Importance', [S3]), section('Purpose', [S2, { ...S2, question: 'Which purpose builds relationships?', evidence: 'not in the lesson at all' }])];
       const ai = fakeAi({
         checks: [
           { n: 1, question: 'What is one way a self-introduction is important?', answer: 'It starts conversations effectively.', evidence: 'Starts conversations effectively.' },
-          { n: 2, question: 'What is the third purpose?', answer: 'To build relationships and trust.', evidence: 'invented again' },
+          { n: 2, question: 'Which purpose builds relationships?', answer: 'To build relationships and trust.', evidence: 'invented again' },
         ],
       });
       const dropped = [];
@@ -237,5 +237,27 @@ describe('the quick check review', () => {
     const result = await reviewChecks({ db, ai, lessonId, log: quiet });
     assert.equal(result.error, 'provider down');
     assert.equal(checksToReview(db, lessonId).length, 3);
+  });
+});
+
+describe('quick checks: long quotes and position questions', () => {
+  const lesson = 'Introduction\n\nA self-introduction matters in school and at work and in many other places that people meet, and it helps others know who you are because it shows them your name, your role and your goals. It also keeps conversations going.';
+  const key = comparable(lesson);
+
+  it('a reason that comes late in the quote (past word 25) is kept, because the quote runs to the end of its sentence', () => {
+    const check = {
+      question: 'Why does a self-introduction matter?',
+      answer: 'It helps others know who you are because it shows them your name, your role and your goals.',
+      evidence: 'A self-introduction matters in school and at work and in many other places that people meet, and it helps others know who you are because it shows them your name, your role and your goals.',
+    };
+    const out = checkQuickCheck(check, key);
+    assert.ok(out.ok, out.reason);
+    assert.match(out.check.evidence, /your goals\.$/, 'ends at the end of the sentence, not mid-phrase');
+  });
+
+  it('a question that asks by place in the list is refused before anything else', () => {
+    const out = checkQuickCheck({ question: 'Which aim is listed first?', answer: 'Builds confidence.', evidence: 'It also keeps conversations going.' }, key);
+    assert.deepEqual(out, { ok: false, reason: 'it asks by place in the list, not by what the item is' });
+    assert.ok(checkQuickCheck({ question: 'What does a self-introduction keep going?', answer: 'Conversations.', evidence: 'It also keeps conversations going.' }, key).ok);
   });
 });

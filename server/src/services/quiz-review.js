@@ -180,11 +180,14 @@ async function reviewBatch({ db, ai, lessonId, batch, terms, round, madeBy, rawT
   const { system, user } = quizReviewPrompt({ items, terms, text: contextForBatch(rawText, batch.map((x) => x.card.evidence)) });
   const reply = await ai.generateJSON({ system, user, schema: replySchema, responseSchema: responseSchema(terms.length > 0), maxTokens: 4000, label });
   const byN = new Map(reply.items.map((it) => [it.n, it]));
+  // A reply that answers none of the batch's numbers (empty, or numbered some other way) is no review at all: the batch
+  // fails and its cards stay pending. Otherwise the reviewer lists what it found, and (as for the quick checks, lesson
+  // 12) an item it left out has nothing flagged.
+  if (!batch.some((_, i) => byN.has(i + 1))) throw new Error('the reviewer’s reply listed none of the cards');
 
   const results = [];
   for (const [i, x] of batch.entries()) {
-    const it = byN.get(i + 1);
-    if (!it) continue; // left out of the reply: reviewed again next time
+    const it = byN.get(i + 1) ?? { card: [], set: [], true_statement: [], options: [] };
     const options = {};
     for (const raw of it.options) {
       const o = z.object({ o: z.coerce.number().int() }).safeParse(raw);

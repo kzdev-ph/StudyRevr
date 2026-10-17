@@ -5,8 +5,10 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   flashcardsPrompt,
+  distractorsPrompt,
   KEEP_MEANING,
   keyPointsPrompt,
+  NO_POSITION,
   quickCheckReviewPrompt,
   quickChecksPrompt,
   quizReviewPrompt,
@@ -94,5 +96,42 @@ describe('the exam reviewer', () => {
 
   it('keeps its flag names (the saved reviews and their hashes read them)', () => {
     for (const flag of ['card_reveals', 'not_in_lesson', 'vague', 'giveaway', 'two_correct', 'reversed', 'off_topic']) assert.match(system, new RegExp(`"${flag}"`));
+  });
+});
+
+describe('leftover fixes from the lesson 12 check', () => {
+  const cards = [{ id: 1, kind: 'concept', front: 'Q?', back: 'A.', evidence: 'e', wordCount: 1, language: 'en' }];
+
+  it('no prompt that writes a question lets it ask by place in a list', () => {
+    assert.match(NO_POSITION, /Never ask by position in a list/);
+    const prompts = {
+      sections: sectionsPrompt({ text: 'x', summaryLength: 'short' }).system,
+      checks: quickChecksPrompt({ checks: [{ n: 1, title: 'T', question: 'Q?', answer: 'A.', why: 'w' }], text: 'x' }).system,
+      regenerate: regenerateCardPrompt({ card, problems: [], text: 'x' }).system,
+      regenerateMany: regenerateCardsPrompt({ cards: [{ n: 1, ...card, problems: [] }], text: 'x' }).system,
+      distractors: distractorsPrompt({ cards }).system,
+    };
+    for (const [name, system] of Object.entries(prompts)) assert.ok(system.includes(NO_POSITION), name);
+  });
+
+  it('both reviewers flag a question that asks by place in a list as vague', () => {
+    assert.match(quizReviewPrompt({ items: [], text: 'x' }).system, /place in a list/);
+    assert.match(quickCheckReviewPrompt({ sections: [], text: 'x' }).system, /place in a list/);
+  });
+
+  it('wrong answers and the reviewer both rule out the opposite of the right answer', () => {
+    assert.match(distractorsPrompt({ cards }).system, /Never the opposite or mirror image of the correct answer[^]*"Builds confidence", "Creates anxiety"/);
+    assert.match(quizReviewPrompt({ items: [], text: 'x' }).system, /given the opposite meaning, even with no negative word/);
+  });
+
+  it('quotes end where a sentence or clause ends: 25 words for cards, 40 for quick checks', () => {
+    assert.match(sectionsPrompt({ text: 'x', summaryLength: 'short' }).system, /at most 40 words, ending where a sentence or clause ends, never in the middle of a phrase/);
+    assert.match(quickChecksPrompt({ checks: [], text: 'x' }).system, /at most 40 words/);
+    assert.match(regenerateCardPrompt({ card, problems: [], text: 'x' }).system, /at most 25 words, ending where a sentence or clause ends/);
+    assert.match(flashcardsPrompt({ text: 'x', review: [], targetCards: 5, index: 1, total: 1 }).system, /at most 25 words, ending where a sentence or clause ends/);
+  });
+
+  it('the card reviewer must answer for every item', () => {
+    assert.match(quizReviewPrompt({ items: [], text: 'x' }).system, /exactly one entry for EVERY item[^]*Do not leave an item out/);
   });
 });

@@ -7,7 +7,7 @@ import { prepareVersions, missingVersions } from '../services/prepare-versions.j
 import { checksToReview, reviewChecks } from '../services/check-review.js';
 import { itemsToReview, reviewQuiz } from '../services/quiz-review.js';
 import { logLessonEvent } from '../services/student-upload.js';
-import { getSetting } from '../services/settings.js';
+import { getSetting, lessonThinking } from '../services/settings.js';
 import { generateFlashcards } from './flashcards.js';
 import { generateKeyPoints, generateKeyTerms, generateSections } from './generate.js';
 import { groundQuickChecks } from './quick-checks.js';
@@ -38,15 +38,31 @@ const count = (db, table, lessonId) => db.prepare(`SELECT COUNT(*) AS c FROM ${t
 // `madeBy` ({ provider, model }, the admin Default) is recorded with the section versions the "Prepare" step makes and
 // with each quiz review.
 // A job queued at an on-demand stage (ON_DEMAND_STAGES) runs only that stage.
-export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUNK_TOKENS, concurrency = 1, keyTermsMax = 12, madeBy = null, log = console, clock = () => new Date(), onStage = () => {} }) {
+export async function runPipeline({ db, ai: plainAi, lessonId, chunkTokens = DEFAULT_CHUNK_TOKENS, concurrency = 1, keyTermsMax = 12, madeBy = null, thinkingSupported = true, log = console, clock = () => new Date(), onStage = () => {} }) {
   const lesson = db
-    .prepare('SELECT id, title, raw_text, word_count, status, source_kind, source_numbers, source_total, origin, owner_participant_id FROM lessons WHERE id = ?')
+    .prepare('SELECT id, title, raw_text, word_count, status, source_kind, source_numbers, source_total, origin, owner_participant_id, processed_thinking FROM lessons WHERE id = ?')
     .get(lessonId);
   if (!lesson) return;
   const job = db.prepare('SELECT id, stage FROM jobs WHERE lesson_id = ? ORDER BY id DESC LIMIT 1').get(lessonId);
   if (!job) return;
   const jobId = job.id;
   const wasReady = lesson.status === 'ready';
+
+  // "Think harder when preparing lessons": with 'high', every AI call of the stages below asks for thinking. Prepare
+  // (section_versions) keeps the plain client, and live taps never come through here. A provider that takes no
+  // reasoning_effort (`thinkingSupported` false) runs as 'off'.
+  const thinking = thinkingSupported ? lessonThinking(db) : 'off';
+  const ai = thinking === 'high' ? { ...plainAi, generateJSON: (request) => plainAi.generateJSON({ ...request, reasoning: 'high' }) } : plainAi;
+  // What the lesson was prepared with (lessons.processed_thinking), written when a run starts its first stage. A lesson
+  // that was ready before the setting existed (NULL) was made without thinking; a different level now makes it 'mixed'.
+  let recorded = false;
+  const recordThinking = () => {
+    if (recorded || ON_DEMAND_STAGES.includes(job.stage)) return;
+    recorded = true;
+    const before = lesson.processed_thinking ?? (wasReady ? 'off' : null);
+    const after = before === null || before === thinking ? thinking : 'mixed';
+    db.prepare('UPDATE lessons SET processed_thinking = ? WHERE id = ?').run(after, lessonId);
+  };
 
   // A deleted lesson cascades away its job row; stop quietly instead of writing to nothing.
   const updateJob = (fields) => {
@@ -178,7 +194,7 @@ export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUN
     section_versions: {
       saved: () => missingVersions(db, lessonId).length === 0,
       async run() {
-        const { failed, error } = await prepareVersions({ db, ai, lessonId, config: madeBy, concurrency, log, onProgress: progress });
+        const { failed, error } = await prepareVersions({ db, ai: plainAi, lessonId, config: madeBy, concurrency, log, onProgress: progress });
         // versions that worked are saved, so a retry only makes the rest
         if (failed) throw new HttpError(502, `${failed} simpler / Taglish version${failed === 1 ? '' : 's'} couldn’t be made: ${error} Run Prepare again to make the rest.`);
       },
@@ -195,6 +211,7 @@ export async function runPipeline({ db, ai, lessonId, chunkTokens = DEFAULT_CHUN
     for (stage of onDemand ? [job.stage] : STAGES.slice(Math.max(0, STAGES.indexOf(job.stage)))) {
       if (stages[stage].saved()) continue;
       begin(stage);
+      recordThinking();
       onStage({ stage, event: 'start' });
       await stages[stage].run(chunks);
       onStage({ stage, event: 'end' });

@@ -517,8 +517,8 @@ describe('live rewrites through the fallback chain', () => {
     await simplify('P01');
     const csv = exportCsv(t.db, 'ai_calls', { now: new Date(), config: {}, includeP00: false });
     const [header, row] = csv.split('\r\n');
-    assert.match(header, /ai_source,ai_provider,ai_model,ai_fallback_steps,ai_fallback_reasons/);
-    assert.match(row, /^P01,.*,simplify,ok,gemma,google,gemma-4-26b-a4b-it,1,default:provider_error,/);
+    assert.match(header, /ai_source,ai_provider,ai_model,ai_thinking,ai_fallback_steps,ai_fallback_reasons/);
+    assert.match(row, /^P01,.*,simplify,ok,gemma,google,gemma-4-26b-a4b-it,off,1,default:provider_error,/);
   });
 
   describe('/api/my-ai', () => {

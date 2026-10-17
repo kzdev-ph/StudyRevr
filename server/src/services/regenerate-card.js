@@ -17,7 +17,7 @@ import { hasRecords, participantRecords } from './lesson-records.js';
 
 const conceptReply = z.object({ question: z.string().min(1), answer: z.string().min(1), evidence: z.string().catch('') });
 const termReply = z.object({ definition: z.string().min(1) });
-const LEAK_RULES = ['g', 'h', 'i', 'j', 'k'];
+const LEAK_RULES = ['g', 'h', 'i', 'j', 'k', 'l'];
 const CONTEXT_CHARS = 12000;
 const LESSON_SHARE = 0.5; // share of a new definition's content words that must be lesson words
 const wordCount = (s) => (String(s).match(/\S+/g) ?? []).length;
@@ -75,7 +75,7 @@ export function checkNewCard({ card, reply, rawText, others }) {
   const twin = others.find((o) => sameBack(o) || (!term && isDuplicate(next, o)));
   if (twin) throw refuse(`The new card repeats another card ("${twin.front}").`);
   const leaks = cardLeaks(next, others).filter((p) => LEAK_RULES.includes(p.rule));
-  if (leaks.length) throw refuse(`The new card still gives its answer away (${leaks.map((p) => `${p.rule}: ${p.detail}`).join('; ')}).`);
+  if (leaks.length) throw refuse(`The new card still ${leaks.every((p) => p.rule === 'l') ? 'asks by place in a list' : 'gives its answer away'} (${leaks.map((p) => `${p.rule}: ${p.detail}`).join('; ')}).`);
 
   return next;
 }
