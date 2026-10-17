@@ -180,7 +180,7 @@ function lessons(db, { includeP00 }) {
     )
     .all();
   return toCsv(
-    ['lesson_id', 'title', 'origin', 'shared', 'shared_at', 'owner', 'status', 'word_count', 'source_kind', 'processed_thinking', 'created_at'],
+    ['lesson_id', 'title', 'origin', 'shared', 'shared_at', 'owner', 'status', 'word_count', 'source_kind', 'thinking_level', 'created_at'],
     rows.map((l) => ({ ...l, title: l.export_title, lesson_id: l.id, shared: l.origin === 'admin' ? null : l.shared_at !== null })),
   );
 }

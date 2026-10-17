@@ -78,10 +78,12 @@ describe('flashcardsNotice (admin\'s "Make cards", now in the lesson list)', () 
 
 describe('thinkingNote (admin: how a lesson was prepared)', () => {
   it('names the level, and says nothing for a lesson made before the setting existed or for a student', () => {
-    assert.equal(thinkingNote({ processed_thinking: 'high' }), 'Prepared with thinking: High');
-    assert.equal(thinkingNote({ processed_thinking: 'off' }), 'Prepared with thinking: Off');
-    assert.equal(thinkingNote({ processed_thinking: 'mixed' }), 'Prepared with thinking: Mixed');
-    assert.equal(thinkingNote({ processed_thinking: null }), null);
+    assert.equal(thinkingNote({ thinking_level: 'high' }), 'Prepared with thinking: High');
+    assert.equal(thinkingNote({ thinking_level: 'minimal' }), 'Prepared with thinking: Minimal');
+    assert.equal(thinkingNote({ thinking_level: 'low' }), 'Prepared with thinking: Low');
+    assert.equal(thinkingNote({ thinking_level: 'medium' }), 'Prepared with thinking: Medium');
+    assert.equal(thinkingNote({ thinking_level: 'mixed' }), 'Prepared with thinking: Mixed');
+    assert.equal(thinkingNote({ thinking_level: null }), null);
     assert.equal(thinkingNote({}), null);
   });
 });

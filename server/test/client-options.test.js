@@ -172,6 +172,17 @@ describe('createAiClient: thinking for lesson processing', () => {
     assert.equal(client.stats.thinkingCalls, 1);
   });
 
+  it('reasoning "low" and "medium" send their own level; "minimal" sends nothing', async () => {
+    for (const level of ['low', 'medium']) {
+      const f = scriptedFetch(ok());
+      await makeClient(f, THINKS).generateJSON({ system: 's', user: 'u', schema, maxTokens: 2000, reasoning: level });
+      assert.deepEqual([f.calls[0].body.reasoning_effort, f.calls[0].body.max_tokens], [level, 2000 + THINKING_HEADROOM_TOKENS]);
+    }
+    const f = scriptedFetch(ok());
+    await makeClient(f, THINKS).generateJSON({ system: 's', user: 'u', schema, maxTokens: 2000, reasoning: 'minimal' });
+    assert.deepEqual(['reasoning_effort' in f.calls[0].body, f.calls[0].body.max_tokens], [false, 2000]);
+  });
+
   it('caps the output budget, and a cut-off reply retried with a doubled budget stays capped', async () => {
     const f = scriptedFetch(completion('', { finish: 'length' }), ok());
     await makeClient(f, THINKS).generateJSON({ system: 's', user: 'u', schema, maxTokens: 30_000, reasoning: 'high' });

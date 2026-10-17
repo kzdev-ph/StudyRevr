@@ -1,7 +1,7 @@
 // Runs the lesson pipeline (extract -> sections -> key points -> key terms -> flashcards) on one file against your real AI provider
 // and prints what it generated, so you can judge quality. Uses a throw-away in-memory database.
 //
-//   npm run pipeline -- <file> [--summary=short|detailed] [--chunk-tokens=N] [--concurrency=N] [--thinking=off|high]
+//   npm run pipeline -- <file> [--summary=short|detailed] [--chunk-tokens=N] [--concurrency=N] [--thinking=minimal|low|medium|high]
 //
 // <file> is a path, or a (partial, case-insensitive) name of a file in test-lessons/. With no file it lists them.
 // The provider comes from .env: AI_PROVIDER (default google) plus its key (GOOGLE_API_KEY, NVIDIA_API_KEY,
@@ -22,7 +22,7 @@ import { resolveAiConfig } from '../src/services/settings.js';
 
 const LESSONS_DIR = path.join(ROOT_DIR, 'test-lessons');
 const SUPPORTED = new Set(['.docx', '.pptx', '.pdf']);
-const USAGE = 'Usage: npm run pipeline -- <file> [--summary=short|detailed] [--chunk-tokens=N] [--concurrency=N] [--thinking=off|high]';
+const USAGE = 'Usage: npm run pipeline -- <file> [--summary=short|detailed] [--chunk-tokens=N] [--concurrency=N] [--thinking=minimal|low|medium|high]';
 
 const args = process.argv.slice(2);
 const flag = (name) => args.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
@@ -65,7 +65,7 @@ const concurrency = Number(flag('concurrency')) || provider.concurrency;
 if (flag('summary')) db.prepare("UPDATE settings SET value = ? WHERE key = 'summary_length'").run(flag('summary') === 'short' ? 'short' : 'detailed');
 
 // "Think harder when preparing lessons": the admin setting's default unless --thinking says otherwise
-if (flag('thinking')) db.prepare("INSERT INTO settings (key, value) VALUES ('lesson_thinking', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(flag('thinking') === 'off' ? 'off' : 'high');
+if (flag('thinking')) db.prepare("INSERT INTO settings (key, value) VALUES ('lesson_thinking', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(['low', 'medium', 'high'].includes(flag('thinking')) ? flag('thinking') : 'minimal');
 
 const buffer = fs.readFileSync(file);
 assertSignature(buffer, ext);
@@ -161,7 +161,7 @@ const { calls, promptTokens, completionTokens, jsonRetries, httpRetries, truncat
 const byReason = (counts) => Object.entries(counts).map(([reason, n]) => `${n} ${reason}`).join(', ') || 'none';
 const avg = callTimes.length ? (callTimes.reduce((a, b) => a + b, 0) / callTimes.length / 1000).toFixed(1) : '0.0';
 console.log(`\nDone in ${seconds}s: ${calls} AI call(s) (avg ${avg}s each), ${promptTokens} prompt + ${completionTokens} completion tokens.`);
-console.log(`Thinking: ${db.prepare("SELECT processed_thinking AS t FROM lessons WHERE id = ?").get(lessonId).t}; ${thinkingCalls} call(s) asked for it, ${thinkingTokens} thinking tokens used.`);
+console.log(`Thinking: ${db.prepare("SELECT thinking_level AS t FROM lessons WHERE id = ?").get(lessonId).t}; ${thinkingCalls} call(s) asked for it, ${thinkingTokens} thinking tokens used.`);
 console.log(`HTTP attempts: ${attempts}; failed: ${byReason(failedAttempts)}; retried: ${byReason(retries)} (${httpRetries} in all).`);
 console.log(`Retries: ${jsonRetries} invalid-JSON, ${httpRetries} timeout/rate-limit/server/network, ${truncated} cut-off replies.`);
 console.log(`Waited ${(throttledMs / 1000).toFixed(1)}s in all for the client-side request limit.`);
