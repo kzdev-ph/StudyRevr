@@ -60,10 +60,23 @@ describe('prompts keep the lesson’s meaning', () => {
     assert.ok(!/Ask "why", "how", "what"/.test(system));
   });
 
-  it('a bare list item is described in plain words with the same meaning, never by its own words or its place in the list', () => {
+  it('a bare list item is split (verb in the question, the rest in the answer), never described by synonyms or its place in the list', () => {
     const { system } = flashcardsPrompt({ text: 'x', targetCards: 5 });
-    assert.match(system, /When the lesson says nothing more about an item than the item itself, describe it in plain words with the same meaning, never with the item's own words/);
+    assert.match(system, /When the lesson says nothing more about an item than its name, never describe it with synonyms/);
+    assert.match(system, /Split the item instead: keep its verb or frame in the question and put the rest in the answer \("What does the collected data help researchers test\?" -> "Hypotheses"\)/);
+    assert.ok(!/describe it in plain words with the same meaning/.test(system));
     assert.match(system, /Never ask by position in the list \("the first purpose", "the second element"\)/);
+  });
+
+  it('a "Name — description" line asks the description, the whole lesson is covered, and four made-up examples show it (Gemini audit)', () => {
+    const { system } = flashcardsPrompt({ text: 'x', targetCards: 5, keyTerms: ['Term'] });
+    assert.match(system, /When a lesson line is "Name — what it means"[^]*answer with the description[^]*never the reverse/);
+    assert.match(system, /Cover the whole lesson: every slide that teaches something gets at least one card/);
+    assert.match(system, /Never ask two cards about the same fact\.\n\nExamples of good and bad cards \(made-up topics, not this lesson\):/);
+    assert.equal((system.match(/^- (?:Lesson|Bad)/gm) ?? []).length, 4);
+    assert.match(ASK_BY_MEANING, /plus a word of the answer or a synonym of it/);
+    // the examples are for writing cards, not for the single-card rewrites
+    assert.ok(!regenerateCardPrompt({ card: { kind: 'concept', front: 'Q?', back: 'A.', evidence: 'e' }, text: 'x' }).system.includes('Examples of good and bad cards'));
   });
 });
 

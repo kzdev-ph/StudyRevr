@@ -25,9 +25,19 @@ export const NO_POSITION = `Never ask by position in a list ("the aim listed fir
 // objective"). quiz/list-items.js `isObjectiveBlock` finds those blocks in code and the AI review flags what slips past.
 export const NO_OBJECTIVES = `Never make a question, card, key point or term from learning objectives, "at the end of this lesson / students will be able to" lines, an outline or an agenda: they say what the lesson will cover, not what it teaches. Use only the content the lesson explains.`;
 
-// A question that ends in "regarding X" / "related to X" repeats a word of its answer to point at it ("What does the
-// data help researchers do regarding decisions?" -> "Make informed decisions"). Ask by what the item means instead.
-export const ASK_BY_MEANING = `Tell items of a list apart by what the lesson says each one means or does, in plain words ("Which key element of a self-introduction means being honest and natural?"), never by tacking on "regarding / related to / concerning / in terms of" plus a word of the answer ("…do regarding decisions?" for "Make informed decisions"): that only points at the answer.`;
+// A question that ends in "regarding X" / "related to X" repeats a word of its answer, or a synonym of it, to point at
+// it ("What does the data help researchers do regarding choices?" -> "Make informed decisions": lesson 31's audit).
+// Ask by what the item means instead.
+export const ASK_BY_MEANING = `Tell items of a list apart by what the lesson says each one means or does, never by tacking on "regarding / related to / concerning / in terms of" plus a word of the answer or a synonym of it ("…do regarding choices?" for "Make informed decisions"): that only points at the answer.`;
+
+// Made-up topics, so the lessons we grade stay unseen (variant c of the 2026-10-18 Gemini audit).
+const CARD_EXAMPLES = `
+
+Examples of good and bad cards (made-up topics, not this lesson):
+- Lesson line "- Reduce waste" under "Benefits of composting". Bad: "Which benefit of composting is regarding less trash?" (a synonym points at the answer). Good: "What does composting help households reduce?" -> "Waste".
+- Lesson line "Durable — lasts a long time under heavy use". Bad: "Which quality means lasting a long time under heavy use?" -> "Durable". Good: "What does a durable material do?" -> "Lasts a long time under heavy use".
+- Lesson: "Wind vanes show wind direction. Anemometers measure wind speed." Good: "What does an anemometer measure?" -> "Wind speed".
+- Bad: "What does the greenhouse effect provide for the planet's warmth?" -> "Warmth for the planet" (the answer only repeats the question).`;
 
 // The key-points call reads our own generated review, not the teacher's slides, so only the general rules apply.
 const REVIEW_RULES = `You help students study from a lesson written by their teacher.
@@ -217,11 +227,13 @@ Task: write flashcards that help a student remember the important ideas of this 
 - The answer must say something the question does not: never just repeat the question's words as a statement.
 - "answer": short enough to recall from memory: at most 25 words, one sentence or a short phrase. Say only what the lesson says, in the lesson's own words: add no describing words it does not use.
 ${KEEP_MEANING}
-- When the lesson lists items under a heading (purposes, importance, key elements, types, steps, reasons), every item gets a card of its own. Ask about that one item through what the lesson says about it ("Which key element of a self-introduction means being honest and natural?" -> "Authentic tone"), naming the list in the question so it has one right answer. When the lesson says nothing more about an item than the item itself, describe it in plain words with the same meaning, never with the item's own words ("Which purpose of a self-introduction is about making others see you well from the start?" -> "Create a positive first impression"). Never ask by position in the list ("the first purpose", "the second element"). ${ASK_BY_MEANING}
+- When the lesson lists items under a heading (purposes, importance, key elements, types, steps, reasons), every item gets a card of its own. Ask about that one item through what the lesson says about it ("Which key element of a self-introduction means being honest and natural?" -> "Authentic tone"), naming the list in the question so it has one right answer. When the lesson says nothing more about an item than its name, never describe it with synonyms ("regarding suppositions" for "Test hypotheses", "prompting purposeful interaction" for "Encourage meaningful communication"): that is a vocabulary match, not recall. Split the item instead: keep its verb or frame in the question and put the rest in the answer ("What does the collected data help researchers test?" -> "Hypotheses"). Never ask by position in the list ("the first purpose", "the second element"). ${ASK_BY_MEANING}
+- When a lesson line is "Name — what it means" (such as "Reliable — produces consistent results"), ask what the named item does or means and answer with the description ("What does reliable data produce?" -> "Consistent results"), never the reverse ("Which quality means producing consistent results?" -> "Reliable"): a one-word answer only gets synonyms as wrong answers.
+- Cover the whole lesson: every slide that teaches something gets at least one card, also the lists near the end (methods, considerations, principles).
 - ${NO_OBJECTIVES}
 - "evidence": one sentence or phrase copied EXACTLY, word for word, from the lesson text (at most 25 words, ending where a sentence or clause ends, never in the middle of a phrase) that supports the answer. Copy it character for character: do not paraphrase, do not shorten with "...", do not join pieces from different places, and never use a title or heading as evidence. If you cannot find such a quote, leave the card out.
 - No trivia: never ask about slide titles, slide or page numbers, the author, the teacher, the school, or the date of the presentation, unless the lesson itself teaches them as content.
-- Never ask two cards about the same fact.${
+- Never ask two cards about the same fact.${CARD_EXAMPLES}${
     keyTerms.length
       ? `
 - These key terms already have their own "term -> definition" cards: ${keyTerms.join('; ')}. Do not make a card that only asks what one of them means. You may ask how they work, why they matter, or how they differ.`
