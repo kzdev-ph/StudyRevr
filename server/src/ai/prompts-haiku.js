@@ -47,7 +47,7 @@ const QUOTE_RULE = `
 // #751 #753 #754 #756: "What does a survey method's response rate ask?" — a lesson line written as a question
 // ("Response rate — How likely are participants to respond?") was turned into "what does X ask".
 const NO_ASK = `
-- Every question is a clear, complete question a student can answer without guessing what is meant. Never "What does X ask?", "What does X ask researchers to check?" or any question where a thing, not a person, does the asking. When the lesson writes an item as a question ("Response time — How fast does the service reply?"), ask what that item is about or looks at, naming where it belongs: "When choosing a delivery service, what does response time look at?" -> "How fast the service replies".`;
+- Every question is a clear, complete question a student can answer without guessing what is meant. Never "What does X ask?", "What does X ask researchers to check?" or any question where a thing, not a person, does the asking. When the lesson writes an item as a question ("Response time — How fast does the service reply?"), give the question in your words and ask which item it is, naming where it belongs: "When choosing a delivery service, which consideration is about how fast the service replies?" -> "Response time". Never "what does response time look at?" (a thing does the looking), and never "which consideration is about response time?" answered with its description.`;
 
 const sections = (s) => {
   let t = after(
@@ -153,7 +153,8 @@ const quizReview = (s) => {
 Be consistent across cards. Check every option of every item on its own, and when an option (or a false statement) is right for one card, flag it on EVERY card in this batch where it is also right. In particular a broader term, or a definition of one, that covers the asked term is "two_correct" on each card it covers: if a lesson says studies of one kind are "fieldwork", the option "Fieldwork" (and "Work done outside the lab.") is two_correct on every card about a study of that kind, never on only some of them. Two different kinds of one thing are not two_correct for each other.
 For every option marked "yes_no" or "both", ask: would a student who knows the lesson answer "Yes, this is the answer"? Then it is "two_correct".
 An option a student who has not read the lesson would never pick (it is plainly outside the subject, such as "Train tickets" for what clay soil holds) is "giveaway".
-A question where a thing does the asking ("What does X ask?", "What does X ask researchers to check?") is "vague".`,
+A question where a thing does the asking ("What does X ask?", "What does X ask researchers to check?") is "vague".
+When you flag a term option two_correct on a term card, also flag that term's definition where it appears as a yes_no statement on the same card, and the other way round: they are the same overlap in two forms.`,
   );
   return t;
 };

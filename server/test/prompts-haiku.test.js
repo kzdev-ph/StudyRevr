@@ -71,6 +71,8 @@ describe('the Haiku prompt set', () => {
     assert.match(sys('quiz_review'), /flag it on EVERY card in this batch where it is also right/);
     assert.match(sys('quiz_review'), /would a student who knows the lesson answer "Yes, this is the answer"\?/);
     assert.match(sys('quick_check_review'), /a thing does the asking/);
+    assert.match(sys('flashcards'), /which consideration is about how fast the service replies\?" -> "Response time"/);
+    assert.match(sys('quiz_review'), /also flag that term's definition where it appears as a yes_no statement on the same card/);
     const wrong = haikuRequest(PROMPTS.wrong_answers[0], LESSON);
     assert.match(wrong.system, /Never a synonym, a narrower or broader name, or a rewording/);
     assert.match(wrong.system, /never the same wrong answer, or the same set, for two cards/);
