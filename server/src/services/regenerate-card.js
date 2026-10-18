@@ -5,6 +5,7 @@ import { getJobStatus } from '../pipeline/jobs.js';
 import { checkEvidence, comparable } from '../pipeline/evidence.js';
 import { isDuplicate, MAX_ANSWER_WORDS, MAX_QUESTION_WORDS, shortDefinition } from '../pipeline/flashcards.js';
 import { cardLeaks, lessonWords, wordStems } from '../quiz/leaks.js';
+import { listLines } from '../quiz/list-items.js';
 import { markMixedIfClaude } from './lesson-author.js';
 import { hasRecords, participantRecords } from './lesson-records.js';
 
@@ -30,6 +31,12 @@ export function contextFor(rawText, evidence) {
   const at = key ? blocks.findIndex((b) => comparable(b).includes(key)) : -1;
   const text = at < 0 ? rawText : blocks.slice(Math.max(0, at - 1), at + 2).join('\n\n');
   return String(text ?? '').slice(0, CONTEXT_CHARS);
+}
+
+// Whether `quote` is one whole line of one of the lesson's lists (quiz/list-items.js), marker and punctuation aside.
+export function isListLine(rawText, quote) {
+  const key = comparable(String(quote ?? '').replace(/^[\s"'“”‘’]+|[\s"'“”‘’]+$/g, '').replace(/^(?:-|\d+[.)])\s+/, ''));
+  return Boolean(key) && listLines(rawText).some((line) => comparable(line) === key);
 }
 
 const refuse = (message) => new HttpError(422, `${message} Try Regenerate again, or leave the card as it is.`, { code: 'card_not_better' });
@@ -60,7 +67,10 @@ export function checkNewCard({ card, reply, rawText, others }) {
   } else {
     if (wordCount(reply.answer) > MAX_ANSWER_WORDS) throw refuse('The new answer was too long to recall.');
     if (wordCount(reply.question) > MAX_QUESTION_WORDS) throw refuse('The new question was too long.');
-    const check = checkEvidence({ term: reply.question, evidence: reply.evidence, sourceKey: comparable(rawText) });
+    // like generation, 2 words besides the question's; a quote that is a whole list line ("Test hypotheses" for "What
+    // does the collected data help researchers test?") needs only 1, as a split list item leaves one word to quote
+    const minExplaining = isListLine(rawText, reply.evidence) ? 1 : 2;
+    const check = checkEvidence({ term: reply.question, evidence: reply.evidence, sourceKey: comparable(rawText), minExplaining });
     if (!check.ok) throw refuse(`The new card's quote from the lesson didn't check out (${check.reason}).`);
     next = { ...card, front: reply.question.trim(), back: reply.answer.trim(), evidence: check.evidence };
   }

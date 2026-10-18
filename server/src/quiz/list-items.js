@@ -81,9 +81,21 @@ export function lineItem(line) {
 }
 
 // [[item, ...]]: the bullet, numbered and "Name — what it means" lines (lineItem) of each block (a slide or page)
-// before its Notes:, for blocks with at least 3 of them. A line ending in ":" ("Reduces the risk of:", "- Helps gather information about:") introduces a
-// sub-list: it ends the list before it and a new list starts after it. Objective blocks are skipped.
+// before its Notes:, for blocks with at least 3 of them. A line ending in ":" ("Reduces the risk of:", "- Helps gather
+// information about:") introduces a sub-list: it ends the list before it and a new list starts after it. Objective
+// blocks are skipped.
 export function listGroups(lessonText) {
+  return listEntries(lessonText).map((g) => g.map((e) => e.item));
+}
+
+// The whole lines of those lists, without their "- " or "1." marker ("Test hypotheses", "Reliable — produces
+// consistent results"): a quote that is one of them is a list line (services/regenerate-card.js).
+export function listLines(lessonText) {
+  return listEntries(lessonText).flatMap((g) => g.map((e) => e.line));
+}
+
+// [[{ item, line }]] for listGroups and listLines.
+function listEntries(lessonText) {
   const groups = [];
   for (const block of String(lessonText ?? '').split(/\n{2,}/)) {
     if (isObjectiveBlock(block)) continue;
@@ -101,7 +113,7 @@ export function listGroups(lessonText) {
       }
       const text = lineItem(trimmed);
       if (!text || text.split(/\s+/).length > MAX_ITEM_WORDS) continue;
-      if (!items.some((i) => itemKey(i) === itemKey(text))) items.push(text);
+      if (!items.some((i) => itemKey(i.item) === itemKey(text))) items.push({ item: text, line: LIST_ITEM.exec(trimmed)?.[1]?.trim() ?? trimmed });
     }
     flush();
   }
