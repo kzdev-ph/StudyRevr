@@ -31,6 +31,32 @@ describe('objective blocks', () => {
     assert.ok(!isObjectiveBlock(''));
   });
 
+  it('read "At / By the end of" as a heading only when it is about the lesson or says what students will do', () => {
+    const list = '\n- Define a sample.\n- Name a method.';
+    for (const heading of [
+      'At the end of this lesson',
+      'By the end of today’s class:',
+      'By the end of the session',
+      'At the end of the lesson, students will:',
+      'By the end of the week, you will:',
+      'At the end of week 1 you will',
+      'By the end of the course, learners will',
+    ]) assert.ok(isObjectiveBlock(heading + list), heading);
+    for (const heading of [
+      'At the end of the study period',
+      'At the end of the experiment',
+      'By the end of the survey',
+      'At the end of the interview:',
+      'By the end of data collection',
+    ]) {
+      assert.ok(!isObjectiveBlock(heading + list), `${heading} is content`);
+      assert.equal(withoutObjectives(heading + list), heading + list);
+    }
+    // content under it is still found in the lesson, listed and asked about
+    assert.deepEqual(listGroups('At the end of the study period\n- Collect the forms.\n- Count the answers.\n- Report the totals.'), [['Collect the forms.', 'Count the answers.', 'Report the totals.']]);
+    assert.equal(listItems('At the end of the study period\n- Collect the forms.\n- Count the answers.\n- Report the totals.').length, 3);
+  });
+
   it('are left out of the lesson text, the list groups and the list items', () => {
     assert.equal(withoutObjectives(LESSON), BODY);
     assert.deepEqual(listGroups(LESSON), [['Random sampling picks members by chance.', 'Stratified sampling splits the group first.', 'Quota sampling fills fixed numbers.']]);

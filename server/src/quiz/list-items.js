@@ -20,9 +20,11 @@ const itemKey = (s) =>
 // Learning objectives, outline and agenda slides say what the lesson will cover, not what it teaches: nothing is asked
 // from them. A block is one when a short heading line says so ("Learning Objectives:", "At the end of this lesson",
 // "Outline", "Agenda"; the heading may come after the text, as in a pptx that sets the objectives before their title),
-// or when two or more of its lines are "Students will be able to…" / "By the end of this lesson…".
-const OBJECTIVE_HEADING = /^(?:(?:intended\s+)?learning\s+(?:objectives?|outcomes?|targets?)|(?:lesson|session|class|course|module)\s+(?:objectives?|outcomes?|outline|agenda|overview)|objectives?|outline|agenda|(?:at|by)\s+the\s+end\s+of\b.*|what\s+we\s+will\s+(?:learn|cover)|today'?s\s+(?:objectives?|agenda|outline))$/i;
-const OBJECTIVE_LINE = /^(?:[-\d.)\s]*)(?:(?:students|learners|you)\s+(?:will|should|shall)\s+be\s+able\s+to\b|(?:at|by)\s+the\s+end\s+of\s+(?:this|the|today'?s)\s+(?:lesson|session|class|module|discussion))/i;
+// or when two or more of its lines are "Students will be able to…" / "By the end of this lesson…". "At / By the end of"
+// alone is not enough: it must be the end of the lesson (session, class, module, course, unit, chapter, discussion) or
+// the line must say objectives / students will / be able to, so "At the end of the study period" stays content.
+const OBJECTIVE_HEADING = /^(?:(?:intended\s+)?learning\s+(?:objectives?|outcomes?|targets?)|(?:lesson|session|class|course|module)\s+(?:objectives?|outcomes?|outline|agenda|overview)|objectives?|outline|agenda|(?:at|by)\s+the\s+end\s+of\s+(?:this|the|today['’]?s)\s+(?:lesson|session|class|module|course|unit|chapter|discussion)\b.*|(?:at|by)\s+the\s+end\s+of\b.*\b(?:objectives?|(?:students|learners|you)\s+will|be\s+able\s+to|should\s+be\s+able)\b.*|what\s+we\s+will\s+(?:learn|cover)|today['’]?s\s+(?:objectives?|agenda|outline))$/i;
+const OBJECTIVE_LINE = /^(?:[-\d.)\s]*)(?:(?:students|learners|you)\s+(?:will|should|shall)\s+be\s+able\s+to\b|(?:at|by)\s+the\s+end\s+of\s+(?:this|the|today['’]?s)\s+(?:lesson|session|class|module|discussion))/i;
 const MAX_HEADING_WORDS = 8;
 
 export function isObjectiveBlock(block) {
