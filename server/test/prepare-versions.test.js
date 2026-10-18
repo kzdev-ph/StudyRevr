@@ -32,6 +32,7 @@ describe('admin: prepare simpler and Taglish versions', () => {
     fail = () => false;
     db = openDb(':memory:');
     runMigrations(db);
+    db.prepare("INSERT INTO settings (key, value) VALUES ('show_taglish', 'true')").run(); // students see Filipino/Taglish
     addCodes(db, 'P01');
     ({ lessonId } = seedLesson(db));
     runner = createPipelineRunner({ db, ai, log: quiet, tuning: () => ({ concurrency: 2, madeBy: { provider: 'google', model: 'gemini-3.5-flash-lite' } }) });
@@ -131,9 +132,9 @@ describe('admin settings: new cards per day and the student-key switch', () => {
   };
 
   it('reads the defaults, saves both, and the scheduler uses the new limit', async () => {
-    assert.deepEqual((await send('GET')).body, { flashcard_new_per_day: 20, allow_student_keys: false, student_keys_saved: 0, allow_student_uploads: false, student_uploads_per_day: 2, lesson_thinking: 'low' });
+    assert.deepEqual((await send('GET')).body, { flashcard_new_per_day: 20, allow_student_keys: false, student_keys_saved: 0, allow_student_uploads: false, student_uploads_per_day: 2, lesson_thinking: 'low', show_taglish: false });
     const saved = await send('PUT', { flashcard_new_per_day: 12, allow_student_keys: true });
-    assert.deepEqual(saved.body, { flashcard_new_per_day: 12, allow_student_keys: true, student_keys_saved: 0, allow_student_uploads: false, student_uploads_per_day: 2, lesson_thinking: 'low' });
+    assert.deepEqual(saved.body, { flashcard_new_per_day: 12, allow_student_keys: true, student_keys_saved: 0, allow_student_uploads: false, student_uploads_per_day: 2, lesson_thinking: 'low', show_taglish: false });
     assert.equal(loadSchedulerConfig(db).newPerDay, 12);
   });
 

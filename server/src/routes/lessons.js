@@ -14,7 +14,7 @@ import { missingVersions, versionCounts } from '../services/prepare-versions.js'
 import { checkSummary } from '../services/check-review.js';
 import { reviewSummary } from '../services/quiz-review.js';
 import { parseFilipino, parseSimple } from '../services/section-versions.js';
-import { getBoolSetting, uploadsPerDay } from '../services/settings.js';
+import { getBoolSetting, taglishShown, uploadsPerDay } from '../services/settings.js';
 import { assertCanUpload, assertQueueRoom, assertUploadsOn, createUploadGuard, logLessonEvent, uploadStatus, uploadsUsedToday } from '../services/student-upload.js';
 
 const SHORT_TEXT_WORDS = 150;
@@ -266,14 +266,16 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin, { ac
     const lesson = { ...shape({ ...rest, raw_text: rawText }, viewer) };
     const byLesson = (sql) => db.prepare(sql).all(lesson.id);
     const sections = byLesson('SELECT id, position, title, content, simple_version, filipino_version, check_questions, sources FROM sections WHERE lesson_id = ? ORDER BY position');
+    const taglish = taglishShown(db);
     res.json({
       // where raw_text's blocks came from: numbers[k] is the slide / page / paragraph number of the k-th block.
       // null for a lesson made before section sources were recorded.
-      lesson: { ...lesson, source: source_numbers ? { kind: source_kind, total: source_total, numbers: JSON.parse(source_numbers) } : null },
+      // show_taglish: admin's "Show Filipino/Taglish to students"; while it is off a student gets no Filipino/Taglish version
+      lesson: { ...lesson, show_taglish: taglish, source: source_numbers ? { kind: source_kind, total: source_total, numbers: JSON.parse(source_numbers) } : null },
       sections: sections.map((s) => ({
         ...s,
         simple_version: parseSimple(s.simple_version),
-        filipino_version: parseFilipino(s.filipino_version),
+        filipino_version: taglish || viewer.admin ? parseFilipino(s.filipino_version) : null,
         check_questions: JSON.parse(s.check_questions),
         sources: s.sources ? JSON.parse(s.sources) : null,
       })),

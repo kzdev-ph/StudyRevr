@@ -181,6 +181,7 @@ describe('live rewrites through the fallback chain', () => {
     const { openDb, runMigrations } = await import('../src/db/index.js');
     db = openDb(':memory:');
     runMigrations(db);
+    db.prepare("INSERT INTO settings (key, value) VALUES ('show_taglish', 'true')").run(); // students see Filipino/Taglish
     const { createApp } = await import('../src/app.js');
     const app = createApp(db, config, { ai, runner: { enqueue() {} }, clock: () => new Date('2026-10-05T04:00:00.000Z') });
     const server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });

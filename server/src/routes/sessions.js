@@ -5,6 +5,8 @@ import { logSettingEvent, settingEventBody } from '../events/settings.js';
 import { loadSchedulerConfig } from '../flashcards/config.js';
 import { HttpError } from '../middleware/errors.js';
 import { requireParticipant } from '../middleware/participant.js';
+import { taglishShown } from '../services/settings.js';
+import { taglishOff } from './sections.js';
 import { ACTIVITIES, END_REASONS, startSession, updateSession } from '../sessions/store.js';
 
 const id = z.coerce.number().int().positive();
@@ -58,6 +60,8 @@ export function sessionsRouter({ db, access, clock = () => new Date() }) {
     if (!body.success) throw new HttpError(400, 'Send type (stats_view, review_flashcards_tap, section_simplify or section_translate); section events also need lesson_id and section_index.');
     const e = body.data;
     if (e.lesson_id) access.visibleLesson(viewer, e.lesson_id);
+    // no Filipino/Taglish tap while admin has it turned off for students
+    if (e.type === 'section_translate' && !viewer.admin && !taglishShown(db)) throw taglishOff();
     const eventId = logEvent(db, {
       participantId,
       type: e.type,
