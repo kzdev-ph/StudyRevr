@@ -1,7 +1,7 @@
 import { comparable } from '../pipeline/evidence.js';
 import { termKey } from '../pipeline/terms.js';
 import { answerInQuestion, cardLeaks, falseStatementProblems, lessonWords as lessonWordsOf, maskTerm, optionSetProblems, sharesWord, termInText, wrongOptionProblems } from './leaks.js';
-import { listGroups, onlyInObjectives, sameItem, sameShape, siblingItems, withoutObjectives } from './list-items.js';
+import { listGroups, listMates, onlyInObjectives, sameItem, sameShape, siblingItems, withoutObjectives } from './list-items.js';
 import { familyIndex, relatedTerms } from './related.js';
 import { describe, optionFlags, reviewFor } from './review-flags.js';
 
@@ -191,10 +191,12 @@ export function quizCandidates(cards, { distractors = new Map(), extraTerms = []
     if (fromObjectives(card)) problems.push(OBJECTIVE_PROBLEM);
 
     // a list item's wrong options are the other items of its list (list-items.js), not saved AI ones; those items are
-    // other cards' answers too, which is accepted here as for term cards (they don't answer this question)
+    // other cards' answers too, which is accepted here as for term cards (they don't answer this question). So is
+    // any other item of its list (listMates, whatever its shape) in saved AI ones, as when they were made.
     const siblings = siblingItems(groups, card.back);
     const saved = siblings ? usableWrong(siblings, card.back, Infinity) : usableWrong(distractors.get(card.id), card.back);
-    const otherAnswers = conceptCards.filter((c) => c.id !== card.id && !(siblings && siblings.some((s) => sameItem(s, c.back)))).map((c) => c.back);
+    const mates = listMates(groups, card.back);
+    const otherAnswers = conceptCards.filter((c) => c.id !== card.id && !mates.some((s) => sameItem(s, c.back))).map((c) => c.back);
     const savedClean = saved.filter((w) => !wrongOptionProblems(w, card.back, { lessonWords, otherAnswers, reworded: !siblings }).length);
     const reviewedClean = savedClean.filter(passesReview);
     // with more than 3 siblings: the first 3 that make a set where the right answer doesn't stand out

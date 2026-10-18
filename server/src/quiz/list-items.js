@@ -6,6 +6,11 @@ import { NOTES_LABEL } from '../ai/chunk.js';
 // Pure: the quiz builder (build.js), the wrong-answers stage (distractors.js) and the AI review use it.
 
 const LIST_ITEM = /^(?:-|\d+[.)])\s+(.+)$/; // "- item" or "1. item"; an en dash sub-line ("– explain…") is not an item
+// "Name — what it means", bulleted or not ("Reliable — produces consistent results", "- Response rate — Will enough
+// people answer?"): the item is the name. A spaced em or en dash; the name is short and, on an unbulleted line,
+// starts with a capital, so a sentence with a dash in it is not read as one.
+const NAME_DASH = /^(.+?)\s+[—–]\s+\S/;
+const MAX_NAME_WORDS = 5;
 const MAX_ITEM_WORDS = 20;
 const MIN_ITEMS = 3; // two bullets are not a list to choose from
 
@@ -65,8 +70,18 @@ export function sameShape(answer, item) {
   return nameShaped(answer) === nameShaped(item) && Math.max(a, b) <= 2 * Math.min(a, b) + 3;
 }
 
-// [[item, ...]]: the bullet and numbered lines of each block (a slide or page) before its Notes:, for blocks with at
-// least 3 of them. A line ending in ":" ("Reduces the risk of:", "- Helps gather information about:") introduces a
+// The list item a line holds, or null: a "Name — what it means" line gives its name (bulleted or not), a bullet or
+// numbered line its text.
+export function lineItem(line) {
+  const trimmed = String(line ?? '').trim();
+  const bulleted = LIST_ITEM.exec(trimmed)?.[1]?.trim();
+  const name = NAME_DASH.exec(bulleted ?? trimmed)?.[1]?.trim();
+  if (name && wordsOf(name).length <= MAX_NAME_WORDS && (bulleted || /^[\p{Lu}\d]/u.test(name))) return name;
+  return bulleted || null;
+}
+
+// [[item, ...]]: the bullet, numbered and "Name — what it means" lines (lineItem) of each block (a slide or page)
+// before its Notes:, for blocks with at least 3 of them. A line ending in ":" ("Reduces the risk of:", "- Helps gather information about:") introduces a
 // sub-list: it ends the list before it and a new list starts after it. Objective blocks are skipped.
 export function listGroups(lessonText) {
   const groups = [];
@@ -84,7 +99,7 @@ export function listGroups(lessonText) {
         flush();
         continue;
       }
-      const text = LIST_ITEM.exec(trimmed)?.[1]?.trim();
+      const text = lineItem(trimmed);
       if (!text || text.split(/\s+/).length > MAX_ITEM_WORDS) continue;
       if (!items.some((i) => itemKey(i) === itemKey(text))) items.push(text);
     }
@@ -110,3 +125,13 @@ export function siblingItems(groups, answer) {
 }
 
 export const sameItem = (a, b) => itemKey(a) === itemKey(b);
+
+// Every other item of the list `answer` is an item of, whatever its shape, or [] (not a list item). Rule f's "another
+// card's answer" is waived for them, in the quiz builder and when wrong answers are made (distractors.js): another
+// item of the same list doesn't answer this question, and the wrong-answers prompt asks for the other names of the
+// same kind the lesson lists.
+export function listMates(groups, answer) {
+  const key = itemKey(answer);
+  const group = key ? groups.find((g) => g.some((i) => itemKey(i) === key)) : null;
+  return group ? group.filter((i) => itemKey(i) !== key) : [];
+}

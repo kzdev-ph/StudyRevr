@@ -3,7 +3,7 @@ import { mapLimit } from '../ai/pool.js';
 import { distractorsPrompt } from '../ai/prompts.js';
 import { contextForBatch } from '../pipeline/evidence.js';
 import { hasText, quizCandidates, usableWrong } from './build.js';
-import { listGroups, siblingItems } from './list-items.js';
+import { listGroups, listMates, sameItem, siblingItems } from './list-items.js';
 import { answerInQuestion, cardLeaks, language, lessonWords as lessonWordsOf, optionSetProblems, wrongOptionProblems } from './leaks.js';
 
 // Wrong answer options for a lesson's concept cards: made by the AI as the last step of lesson processing (the
@@ -121,12 +121,16 @@ async function makeBatch({ ai, cards, keyTerms, answers, lessonWords, rawText = 
     };
   });
   const text = contextForBatch(rawText, cards.map((c) => c.evidence));
+  const groups = listGroups(rawText);
   const { system, user } = distractorsPrompt({ cards: numbered, keyTerms, text, wholeLesson: text === String(rawText ?? '') });
   const label = callLabel ?? (earlier ? 'the quiz answer options (second try)' : 'the quiz answer options');
   const reply = await ai.generateJSON({ system, user, schema: replySchema, responseSchema, maxTokens: 4000, label });
   const byN = new Map(reply.items.map((item) => [item.n, item.wrong]));
   return cards.map((card, i) => {
-    const { clean, rejected } = checkWrong([...(byN.get(i + 1) ?? []), ...(earlier?.get(card.id)?.clean ?? [])], card.back, lessonWords, answers.filter((a) => a.id !== card.id).map((a) => a.back));
+    // rule f's "another card's answer" is waived for another item of the card's own list, as in the quiz builder
+    const mates = listMates(groups, card.back);
+    const others = answers.filter((a) => a.id !== card.id && !mates.some((m) => sameItem(m, a.back))).map((a) => a.back);
+    const { clean, rejected } = checkWrong([...(byN.get(i + 1) ?? []), ...(earlier?.get(card.id)?.clean ?? [])], card.back, lessonWords, others);
     return { card, clean, rejected, ...pickWrongSet(card.front, card.back, clean, lessonWords) };
   });
 }
