@@ -94,4 +94,8 @@ describe('madeByNote (admin: who wrote the lesson)', () => {
     assert.equal(madeByNote({ made_by: 'gemini' }), null);
     assert.equal(madeByNote({}), null);
   });
+
+  it('says a Claude-written lesson the Default AI changed is mixed', () => {
+    assert.equal(madeByNote({ made_by: 'mixed' }), 'Written by Claude (Haiku), then changed by the Default AI');
+  });
 });

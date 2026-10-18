@@ -97,7 +97,7 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin, { ac
     if (viewer.admin) {
       out.owner_code = ownerCode ?? null;
       out.thinking_level = thinkingLevel ?? null; // what the AI was asked when it prepared the lesson (admin only)
-      out.made_by = madeBy ?? 'gemini'; // who wrote the content: gemini (the pipeline) | claude-haiku (imported), admin only
+      out.made_by = madeBy ?? 'gemini'; // who wrote the content: gemini (the pipeline) | claude-haiku (imported) | mixed (Claude's, then changed by the Default AI), admin only
     } else delete out.filename;
     if (mine && !viewer.admin) {
       const records = ownerRecords(db, row.id, viewer.participant.id);

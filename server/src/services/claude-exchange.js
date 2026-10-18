@@ -7,6 +7,7 @@ import { openDb, runMigrations } from '../db/index.js';
 import { queueJob } from '../pipeline/jobs.js';
 import { runPipeline } from '../pipeline/run.js';
 import { checkRebuild, resetLesson } from './rebuild-lesson.js';
+import { CLAUDE_MADE_BY, MADE_BY_CLAUDE } from './lesson-author.js';
 import { DEFAULT_KEY_TERMS_MAX } from './settings.js';
 
 // A lesson written offline (Claude Code, Haiku agents) instead of by the Default AI, through exactly the same pipeline.
@@ -22,8 +23,7 @@ import { DEFAULT_KEY_TERMS_MAX } from './settings.js';
 // check that drops an item (or asks for a second try) shows up as a prompt or a line in the report. Nothing is
 // written to the database until a run has every reply.
 
-export const MADE_BY_CLAUDE = 'claude-haiku';
-export const CLAUDE_MADE_BY = { provider: 'claude', model: 'haiku' };
+export { CLAUDE_MADE_BY, MADE_BY_CLAUDE };
 const MANY = 64; // all of a stage's calls are issued at once, so every prompt a stage needs is seen in one round
 const FORMAT = 1;
 

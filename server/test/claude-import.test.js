@@ -311,6 +311,13 @@ describe('lesson export / import (a lesson written outside the app)', () => {
       assert.equal(db.inTransaction, false);
     });
 
+    it('an import over a lesson the Default AI had changed makes it Claude’s again, not mixed', async () => {
+      db.prepare("UPDATE lessons SET made_by = 'mixed' WHERE id = ?").run(lessonId);
+      await play();
+      await importExchange({ db, folder });
+      assert.equal(db.prepare('SELECT made_by FROM lessons WHERE id = ?').get(lessonId).made_by, 'claude-haiku');
+    });
+
     it('a rebuild sets the author back to the pipeline’s', async () => {
       db.prepare("UPDATE lessons SET made_by = 'claude-haiku' WHERE id = ?").run(lessonId);
       resetLesson(db, lessonId);

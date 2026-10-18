@@ -6,6 +6,7 @@ import { cardsNeedingDistractors, ensureDistractors } from '../quiz/distractors.
 import { prepareVersions, missingVersions } from '../services/prepare-versions.js';
 import { checksToReview, reviewChecks } from '../services/check-review.js';
 import { itemsToReview, reviewQuiz } from '../services/quiz-review.js';
+import { isClaudeImport, markMixedIfClaude } from '../services/lesson-author.js';
 import { logLessonEvent } from '../services/student-upload.js';
 import { getSetting, lessonThinking } from '../services/settings.js';
 import { generateFlashcards } from './flashcards.js';
@@ -218,6 +219,8 @@ export async function runPipeline({ db, ai: plainAi, lessonId, chunkTokens = DEF
       if (stages[stage].saved()) continue;
       begin(stage);
       recordThinking();
+      // the Default AI is about to work on a lesson Claude wrote (Review again, Remake quiz answers, Make cards, a retry)
+      if (!onDemand && !isClaudeImport(madeBy)) markMixedIfClaude(db, lessonId);
       onStage({ stage, event: 'start' });
       await stages[stage].run(chunks);
       onStage({ stage, event: 'end' });

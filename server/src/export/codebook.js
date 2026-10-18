@@ -79,8 +79,11 @@ lessons.csv - one row per lesson, with where it came from
   made_by   who wrote the lesson's generated content (sections, quick checks, key points, key terms, flashcards, quiz answer
             options and the AI reviews): gemini = the app's own pipeline with the admin Default AI (also every lesson made before this
             column existed, whatever provider was set then) | claude-haiku = written offline by Claude Code (Haiku) and imported with
-            npm run lesson:import through the same schemas and code checks. Explain simpler and Filipino/Taglish are always
-            written by the live AI, whatever this says.
+            npm run lesson:import through the same schemas and code checks | mixed = a lesson written by Claude that the
+            admin Default AI later changed (Regenerate this card, Review again, Remake quiz answers, Make cards, or the quiz
+            filling in missing wrong answers when a student starts it); it is marked when that work starts, so it can
+            over-claim a change when the work then failed, but never hides one. Re-importing sets claude-haiku again and
+            lesson:rebuild gemini. Explain simpler and Filipino/Taglish are always written by the live AI, whatever this says.
   thinking_level  how hard the AI was asked to think while it prepared the lesson (admin setting "Think harder when
             preparing lessons", reasoning_effort): minimal (no thinking was asked for) | low | medium | high (every
             preparation call asked for that level; above minimal the review, key points, key terms and flashcards

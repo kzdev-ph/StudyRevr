@@ -49,10 +49,12 @@ export function thinkingNote(lesson) {
   return name ? `Prepared with thinking: ${name}` : null;
 }
 
-// Admin's note on who wrote a lesson's content: only an imported one ('claude-haiku', npm run lesson:import) says so;
-// the pipeline's lessons (the default) say nothing. Never sent to a student.
+// Admin's note on who wrote a lesson's content: an imported one ('claude-haiku', npm run lesson:import) says so, and so
+// does one the Default AI changed afterwards ('mixed'); the pipeline's lessons (the default) say nothing. Never sent to
+// a student.
 export function madeByNote(lesson) {
-  return lesson.made_by === 'claude-haiku' ? 'Written by Claude (Haiku), imported' : null;
+  if (lesson.made_by === 'claude-haiku') return 'Written by Claude (Haiku), imported';
+  return lesson.made_by === 'mixed' ? 'Written by Claude (Haiku), then changed by the Default AI' : null;
 }
 
 // Admin's note on a student's upload: whose it is and who can see it. Null for the teacher's own lessons.
