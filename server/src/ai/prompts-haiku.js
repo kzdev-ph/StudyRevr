@@ -88,6 +88,8 @@ const keyTerms = (s) => {
   return t + QUOTE_RULE + READ_FIRST;
 };
 
+const COUNT_ANCHOR = '(fewer if the text has fewer ideas worth a card; never pad the list with trivia), in the order the ideas appear in the lesson.';
+
 const flashcards = (s) => {
   let t = swap(
     s,
@@ -100,6 +102,12 @@ const flashcards = (s) => {
     `
 - When a lesson line is "Name — what it means" ("Durable — lasts for many years"), ask what the named item does or means and answer with the description ("What does durable material do?" -> "Lasts for many years"), never the reverse: a one-word answer only gets synonyms as wrong answers.${NO_ASK}${QUOTE_RULE}
 - Cover the whole lesson: every slide that teaches something gets at least one card, also the lists near the end.`,
+  );
+  // the list-item coverage call asks for exactly one card per item and has no count to keep to
+  if (t.includes(COUNT_ANCHOR)) t = after(
+    t,
+    COUNT_ANCHOR,
+    ` Never go over that number: cards beyond it are cut from the end of the lesson, so its last slides would lose their cards. When the lesson has more details than cards, spread the cards over the whole lesson so every slide keeps at least one, and leave out the smallest details first. One question per card: never two questions joined into one ("How should X be, and what should it avoid?").`,
   );
   return t + READ_FIRST;
 };

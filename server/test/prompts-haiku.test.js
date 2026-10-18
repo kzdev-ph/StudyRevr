@@ -65,6 +65,8 @@ describe('the Haiku prompt set', () => {
     assert.match(sys('flashcards'), /never a heading or title and never a line that only introduces a list/);
     assert.match(sys('flashcards'), /never describe it with synonyms/);
     assert.doesNotMatch(sys('flashcards'), /describe it in plain words with the same meaning/);
+    assert.match(sys('flashcards'), /Never go over that number: cards beyond it are cut from the end of the lesson/);
+    assert.match(sys('flashcards'), /One question per card/);
     assert.match(sys('key_terms'), /never with a category phrase/);
     assert.match(sys('quiz_review'), /flag it on EVERY card in this batch where it is also right/);
     assert.match(sys('quiz_review'), /would a student who knows the lesson answer "Yes, this is the answer"\?/);
