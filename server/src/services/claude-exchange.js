@@ -3,6 +3,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import { createFileAi, promptHash } from '../ai/file-ai.js';
 import { DEFAULT_CHUNK_TOKENS } from '../ai/chunk.js';
+import { haikuRequest } from '../ai/prompts-haiku.js';
 import { openDb, runMigrations } from '../db/index.js';
 import { queueJob } from '../pipeline/jobs.js';
 import { runPipeline } from '../pipeline/run.js';
@@ -130,11 +131,14 @@ function applySettings(db, meta) {
 // `log` lines are what the code checks dropped or changed on the way.
 export async function runExchange({ db, meta, replies, lessonId = meta.lesson_id, log = [] }) {
   const ai = createFileAi({ replies });
+  // the writer gets its own prompt set (ai/prompts-haiku.js), applied before the file-backed AI hashes the prompt, so
+  // the exported prompts, the manifest and the replies are all for the Haiku text; the Default AI's prompts are unchanged
+  const writerAi = { ...ai, generateJSON: (request) => ai.generateJSON(haikuRequest(request, meta.raw_text, { maxCards: meta.flashcards_max })) };
   const lines = (line) => log.push(String(line));
   const logger = { info: lines, warn: lines, error: (...a) => lines(a.map(String).join(' ')) };
   const run = runPipeline({
     db,
-    ai,
+    ai: writerAi,
     lessonId,
     chunkTokens: meta.chunk_tokens,
     concurrency: MANY,
@@ -196,6 +200,13 @@ same schemas and code checks it uses for its own AI, so write to the lesson, not
    the prompts that were waiting on them (key points need the sections, flashcards need the key terms, the quiz options
    need the cards, and so on) or lists what was wrong with a reply (NEXT.txt).
 3. Repeat until it says COMPLETE, then \`npm run lesson:import -- <this folder> --as-new\`.
+
+How to write: read raw_text.txt from the first line to the last before you answer anything, and keep it in mind for every
+prompt. Cover every detail it teaches (every list item, definition, example and number), write only what it says (no
+fact, cause, effect or example of your own), in plain English a Grade 11 student understands, with no padding. A quote
+is the line that states the answer, never a heading or a line ending in ":". Wrong answers come from the lesson's own
+ideas about other things, fit the question's grammar, are never also right, and are never reused across cards. When
+you review, flag an option the same way on every card where it is also right.
 
 Rules: the lesson text in raw_text.txt / blocks.json is the only source. An evidence quote must be copied word for word
 from it. Replies are tied to the prompt they answer: when a reply you already wrote changes what a later prompt says,

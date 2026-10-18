@@ -188,6 +188,20 @@ describe('quiz building', () => {
       for (const q of buildQuiz({ cards, random: seeded(seed) })) assert.deepEqual(questionLeaks(q), [], `${q.type} #${q.flashcard_id}: ${q.question} / ${q.statement}`);
   });
 
+  it('a definition that holds a longer word than the term ("databases" for "Archival Data") is asked, with only the term blanked', () => {
+    const cards = [
+      term(1, 'Archival Data', 'Data taken from existing records or databases.'),
+      term(2, 'Self-Report Measures', 'Information collected directly from participants.'),
+      term(3, 'Physiological Measures', 'Responses based on physical or biological signals.'),
+      term(4, 'Observational Studies', 'Watching participants or events in natural or controlled settings.'),
+    ];
+    const p = quizCandidates(cards).find((x) => x.card.id === 1);
+    assert.equal(p.shown, '___ taken from existing records or databases.');
+    assert.equal(p.mcClean.length, 3, 'still asked as multiple choice');
+    for (let seed = 1; seed <= 30; seed++)
+      for (const q of buildQuiz({ cards, random: seeded(seed) })) assert.deepEqual(questionLeaks(q), [], `${q.type} #${q.flashcard_id}: ${q.question} / ${q.statement}`);
+  });
+
   it('a saved wrong answer that is another card’s answer is used neither as an option nor as a false statement', () => {
     const cards = CONCEPTS.slice(0, 3);
     const distractors = wrongFor(cards);

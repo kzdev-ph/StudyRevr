@@ -157,7 +157,10 @@ describe('section rewrites and review progress', () => {
       assert.equal(first.body.cached, false);
       assert.equal(first.body.version.title, 'Ang hypothesis');
       assert.equal(first.body.version.check_questions.length, 2);
-      assert.match(ai.calls[0].system, /always keep them in English: Hypothesis/);
+      assert.match(ai.calls[0].system, /These are the lesson's key terms: Hypothesis\. When one of them appears in the section, keep it in English\./);
+      // the list means "keep these in English", never "use these words" (Gemini audit 2026-10-18)
+      assert.match(ai.calls[0].system, /never put a key term into the section where the section does not use it/);
+      assert.doesNotMatch(ai.calls[0].system, /always keep them in English/);
       assert.match(ai.calls[0].system, /parentheses/);
 
       const again = await send('POST', `/api/sections/${sectionIds[0]}/translate`);

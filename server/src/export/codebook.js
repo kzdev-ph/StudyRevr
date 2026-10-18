@@ -67,7 +67,9 @@ ${lessons.map((l) => `                                    L${l.id} = ${l.title}`
     self_monitoring_quiz_retakes (+all)     quiz retakes started
     self_monitoring_review_flashcards_taps (+all)  taps on "Review these flashcards" after a quiz
     self_monitoring_simplify_taps (+all)    taps on a section's "Explain simpler"
-    self_monitoring_translate_taps (+all)   taps on a section's "Filipino/Taglish"
+    self_monitoring_translate_taps (+all)   taps on a section's "Filipino/Taglish" (0 while the researcher has
+                                            "Show Filipino/Taglish to students" off, the default: the button is
+                                            hidden and the tap is refused)
 
 lessons.csv - one row per lesson, with where it came from
   origin    admin (the teacher's lesson, everyone's) | student (uploaded by a student)
@@ -151,6 +153,9 @@ events.csv - self-monitoring events
   type  stats_view | quiz_retake | review_flashcards_tap | section_simplify | section_translate
   section_index  0-based section number, for section_simplify and section_translate
   (every tap that opens a rewrite is an event, whether or not the AI was asked; see ai_calls.csv for the AI requests)
+  section_translate events exist only while the researcher's switch "Show Filipino/Taglish to students" is on. It is
+  off by default; its changes are kept in the app's admin log, not in this export, so the researcher notes the days
+  it was turned on and off.
 
 setting_events.csv - settings a participant changed, one row per change
   setting  motion (the Motion choice in Settings) or theme (the Appearance choice)

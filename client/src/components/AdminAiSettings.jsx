@@ -293,6 +293,25 @@ function StudySettings() {
       <p id="admin-keys-note" className="muted">
         Only for Explain simpler and Filipino/Taglish. Answers from a student’s key are shown to that student only. Lessons are always prepared with the Default.
       </p>
+      <label className="check-row">
+        <input
+          type="checkbox"
+          role="switch"
+          checked={settings.show_taglish}
+          disabled={busy}
+          onChange={(e) =>
+            save(
+              { show_taglish: e.target.checked },
+              e.target.checked ? 'Students now see Filipino/Taglish under each section.' : 'Filipino/Taglish is hidden from students.',
+            )
+          }
+          aria-describedby="admin-taglish-note"
+        />
+        Show Filipino/Taglish to students
+      </label>
+      <p id="admin-taglish-note" className="muted">
+        Off by default. While it is off students see only English, and Prepare still makes the Taglish versions for later.
+      </p>
       <p className="muted">
         {settings.student_keys_saved
           ? `${settings.student_keys_saved} student key${settings.student_keys_saved === 1 ? ' is' : 's are'} saved on this computer.`

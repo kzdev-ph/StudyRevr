@@ -123,6 +123,7 @@ export function saveAiSettings(db, input, envAi = {}) {
 //   allow_student_keys        students may use their own AI key for Explain simpler and Filipino/Taglish (default off)
 //   allow_student_uploads     students may upload their own lessons (default off)
 //   student_uploads_per_day   uploads per student per study day (default 2)
+//   show_taglish              students see the Filipino/Taglish button (default off; admin's Prepare still makes the versions)
 //   lesson_thinking           'minimal' | 'low' | 'medium' | 'high': how hard lesson processing asks the model to think (reasoning_effort;
 //                             'minimal' sends nothing, the old 'off'; default 'low' (migration 016); live Explain simpler /
 //                             Filipino-Taglish never think)
@@ -140,6 +141,7 @@ export const appSettingsBody = z.strictObject({
   allow_student_uploads: z.boolean().optional(),
   student_uploads_per_day: z.number().int().min(0).max(20).optional(),
   lesson_thinking: z.enum(LESSON_THINKING).optional(),
+  show_taglish: z.boolean().optional(),
 });
 
 // Uploads each student may make per study day (0 is allowed: nobody can).
@@ -150,6 +152,9 @@ export function uploadsPerDay(db) {
 
 export const studentUploadsAllowed = (db) => getBoolSetting(db, 'allow_student_uploads', false);
 
+// "Show Filipino/Taglish to students": off by default, so the study runs with English only unless the researcher turns it on.
+export const taglishShown = (db) => getBoolSetting(db, 'show_taglish', false);
+
 export function describeAppSettings(db, { newPerDay }) {
   return {
     flashcard_new_per_day: newPerDay,
@@ -158,6 +163,7 @@ export function describeAppSettings(db, { newPerDay }) {
     allow_student_uploads: studentUploadsAllowed(db),
     student_uploads_per_day: uploadsPerDay(db),
     lesson_thinking: lessonThinking(db),
+    show_taglish: taglishShown(db),
   };
 }
 
@@ -177,6 +183,7 @@ export function saveAppSettings(db, input, current = null) {
     put('allow_student_uploads', input.allow_student_uploads, before.allow_student_uploads);
     put('student_uploads_per_day', input.student_uploads_per_day, before.student_uploads_per_day);
     put('lesson_thinking', input.lesson_thinking, before.lesson_thinking);
+    put('show_taglish', input.show_taglish, before.show_taglish);
   })();
   return changed;
 }

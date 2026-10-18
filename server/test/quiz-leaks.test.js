@@ -161,6 +161,18 @@ describe('leak checks: quiz rules a-f', () => {
     assert.equal(maskTerm(card(FIL_LESSON, 11).back, 'Balarila'), card(FIL_LESSON, 11).back);
   });
 
+  it('d: only forms of the term are blanked (sameForm), never a longer word that holds one (lesson 32, card #742)', () => {
+    assert.equal(maskTerm('Data taken from existing records or databases.', 'Archival Data'), '___ taken from existing records or databases.');
+    assert.deepEqual(termInText('Archival Data', 'Data taken from existing records or databases.'), ['data']);
+    assert.equal(termInText('Archival Data', '___ taken from existing records or databases.'), null, 'nothing left of the term once blanked');
+    assert.equal(termInText('Data', 'Stored in a database.'), null);
+    assert.equal(maskTerm('Records kept in databases.', 'Archival Data'), 'Records kept in databases.');
+    // forms of a word are still the word, and so is a shorter word the term's word starts with (lesson 32, card #732)
+    assert.equal(maskTerm('Observing people where they live.', 'Observation'), '___ people where they live.');
+    assert.equal(maskTerm('Data collected by observing participants or events.', 'Observational Studies'), 'Data collected by ___ participants or events.');
+    assert.equal(maskTerm('Data collected from the same people.', 'Data Collection'), '___ from the same people.');
+  });
+
   it('e: a false Yes/No statement that is false from its wording', () => {
     assert.deepEqual(rules(falseStatementProblems('Upang itago ang mga konsepto sa mga mag-aaral.', card(FIL_LESSON, 14).back)), ['e']);
     assert.deepEqual(rules(falseStatementProblems('It is used to collect taxes from citizens.', card(FIL_LESSON, 16).back)), ['e']);

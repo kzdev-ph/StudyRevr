@@ -70,9 +70,11 @@ export default function SectionPage({ lesson, section, variant, busy, failure, n
           <button type="button" className="chip-btn" aria-pressed={variant === 'simple'} onClick={() => onVariant('simple')}>
             <SimplerIcon size={18} /> Explain simpler
           </button>
-          <button type="button" className="chip-btn" aria-pressed={variant === 'filipino'} onClick={() => onVariant('filipino')}>
-            <TranslateIcon size={18} /> Filipino/Taglish
-          </button>
+          {lesson.show_taglish && (
+            <button type="button" className="chip-btn" aria-pressed={variant === 'filipino'} onClick={() => onVariant('filipino')}>
+              <TranslateIcon size={18} /> Filipino/Taglish
+            </button>
+          )}
           <button type="button" className="chip-btn" aria-pressed={showSource} onClick={onToggleSource}>
             <SourceIcon size={18} /> Original text
           </button>

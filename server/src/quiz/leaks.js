@@ -143,6 +143,11 @@ function wordForms(word) {
 }
 export const sameForm = (x, y) => x === y || [...wordForms(x)].some((f) => wordForms(y).has(f));
 const exact = (a, b) => a.some((x) => b.some((y) => sameForm(x, y)));
+// A word of a term (`term`) found as a word of a text (`text`), both lists of stems: a form of it (exact), or a shorter
+// text word it starts with ("observ", from "observing", in "observational", which no ending rule reduces), never a
+// longer text word that holds it ("databases" for "data"). termInText and maskTerm.
+const PREFIX_MIN_LETTERS = 4;
+const inTerm = (term, text) => exact(term, text) || text.some((x) => x.length >= PREFIX_MIN_LETTERS && term.some((y) => y.length > x.length && y.startsWith(x)));
 const shared = (list, other, same = matches) => list.filter((w) => other.some((o) => same(w, o)));
 const names = (list) => list.map((forms) => forms[0]);
 const coverage = (part, whole) => (part.length ? shared(part, whole).length / part.length : 0);
@@ -268,28 +273,31 @@ const POSITION_PATTERNS = [
 ];
 export const asksByPosition = (question) => POSITION_PATTERNS.some((p) => p.test(String(question ?? '')));
 
-// Rule d / h: the term (or half of a multi-word term) appears in the text. -> the words found, or null. Generous, for
-// blanking (rule d: blanking a word too many costs nothing). `strict` (rule h, the flashcard itself): only the term's
-// own stems, and every word of a one- or two-word term (more than half of a longer one), so "Cell membrane" is not
-// flagged for a definition that says "cell".
+// Rule d / h: the term (or half of a multi-word term) appears in the text. -> the words found, or null. A word of the
+// term is found as itself, a form of it (sameForm: "observing" for "Observation") or a shorter word it starts with
+// ("observing" for "Observational": inTerm), never inside a longer word: a blank where the definition said "databases"
+// under "Archival Data" left a fragment ("___ taken from existing records or ___.", lesson 32 card #742, Gemini audit
+// 2026-10-18). The same match decides what maskTerm blanks, what counts as still showing the term and rules d / e, so
+// they never disagree. `strict` (rule h, the flashcard itself): only forms (sameForm), and every word of a one- or
+// two-word term (more than half of a longer one), so "Cell membrane" is not flagged for a definition that says "cell".
 export function termInText(term, text, { strict = false } = {}) {
   const termWords = wordStems(term);
   if (!termWords.length) return null;
-  const found = shared(termWords, wordStems(text), strict ? exact : matches);
+  const found = shared(termWords, wordStems(text), strict ? exact : inTerm);
   const enough = strict ? found.length === termWords.length || (termWords.length >= 3 && found.length * 2 > termWords.length) : found.length === termWords.length || (termWords.length >= 2 && found.length * 2 >= termWords.length);
   return enough ? names(found) : null;
 }
 
 // A definition with its own term blanked out, so "Does this describe X?" and "Which term matches?" don't answer
-// themselves. Only words that are forms of the term's words are replaced; the rest is left as written. Each word is
-// stemmed the way termInText stems the text, so every form it finds is blanked.
+// themselves. Only words that are forms of the term's words (sameForm, as termInText finds them) are replaced; the rest
+// is left as written. Each word is stemmed the way termInText stems the text, so every form it finds is blanked.
 export function maskTerm(text, term) {
   if (!termInText(term, text)) return text;
   const termWords = wordStems(term);
   const lang = language(text);
   const masked = String(text).replace(/[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)*/gu, (w) => {
     const lower = w.normalize('NFKC').toLowerCase();
-    return isContent(lower) && termWords.some((t) => matches(stemsOf(lower, lang), t)) ? '___' : w;
+    return isContent(lower) && termWords.some((t) => inTerm(t, stemsOf(lower, lang))) ? '___' : w;
   });
   return masked.replace(/___(?:\s+___)+/g, '___');
 }

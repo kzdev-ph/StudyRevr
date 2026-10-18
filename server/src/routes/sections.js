@@ -5,9 +5,11 @@ import { HttpError } from '../middleware/errors.js';
 import { requireParticipant } from '../middleware/participant.js';
 import { liveRewrite } from '../services/live-rewrite.js';
 import { parseFilipino, parseSimple } from '../services/section-versions.js';
+import { taglishShown } from '../services/settings.js';
 import { readStudentKey, studentKeysAllowed } from '../services/student-ai.js';
 
 const idParam = z.object({ id: z.coerce.number().int().positive() });
+export const taglishOff = () => new HttpError(403, 'Filipino/Taglish is turned off right now.', { code: 'taglish_off' });
 
 // On-demand rewrites of one section (Explain simpler, Filipino/Taglish). The shared version, made by the admin Default
 // (on a first tap, or ahead of time by admin's "Prepare"), is cached in the sections row and served without an AI
@@ -44,6 +46,8 @@ export function sectionsRouter({ ai, db, access, config = {}, clock = () => new 
       const viewer = access.viewerOf(req);
       const section = loadSection(req, viewer);
       const participant = requireParticipant(db, req); // no code, no AI call
+      // admin's "Show Filipino/Taglish to students" is off: no student gets a version (Prepare still makes them)
+      if (kind === 'translate' && !viewer.admin && !taglishShown(db)) throw taglishOff();
       const shared = parse(section[column]);
       const ownKey = participant && studentKeysAllowed(db) && readStudentKey(db, participant.id);
       if (shared && !ownKey) {

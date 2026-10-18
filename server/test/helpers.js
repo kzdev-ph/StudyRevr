@@ -65,11 +65,13 @@ export const studyFetch = (url, init = {}) => globalThis.fetch(url, { ...init, h
 //   const t = await startStudyApp({ now: '2026-10-05T04:00:00.000Z' });
 //   await t.call('POST', '/api/sessions', { as: 'P01', body: {...} })   // as: participant code; pin: admin PIN
 //   t.now = '...'  moves the clock;  await t.close()
-export async function startStudyApp({ now = '2026-10-05T04:00:00.000Z', adminPin = TEST_PIN, ai, random, runner = { enqueue() {} }, db: given } = {}) {
+// `showTaglish` (default true here, false in the app) sets admin's "Show Filipino/Taglish to students".
+export async function startStudyApp({ now = '2026-10-05T04:00:00.000Z', adminPin = TEST_PIN, ai, random, runner = { enqueue() {} }, db: given, showTaglish = true } = {}) {
   const { openDb, runMigrations } = await import('../src/db/index.js');
   const { createApp } = await import('../src/app.js');
   const db = given ?? openDb(':memory:');
   if (!given) runMigrations(db);
+  if (showTaglish) db.prepare("INSERT INTO settings (key, value) VALUES ('show_taglish', 'true') ON CONFLICT(key) DO UPDATE SET value = 'true'").run();
   const t = { db, now };
   ai ??= { async generateJSON() { throw new Error('no AI in this test'); } };
   const app = createApp(db, { maxUploadBytes: 1024 * 1024, adminPin, clientDist: null }, { ai, runner, clock: () => new Date(t.now), random });
