@@ -49,3 +49,26 @@ export function checkEvidence({ term, evidence, sourceKey, minExplaining = MIN_E
   if (!sourceKey.includes(comparable(quote))) return { ok: false, reason: 'evidence not found in the lesson text' };
   return { ok: true, evidence: trimQuote(quote, maxWords) };
 }
+
+const CONTEXT_CHARS = 16000;
+
+// The lesson for one review or wrong-answers call: all of it when short, else the blocks around the batch's quotes
+// (one on each side), at most twice CONTEXT_CHARS, so a long upload can't blow the 25 s timeout or the tokens a minute.
+export function contextForBatch(rawText, evidences) {
+  const text = String(rawText ?? '');
+  if (text.length <= CONTEXT_CHARS) return text;
+  const blocks = text.split(/\n\s*\n/);
+  const keys = blocks.map(comparable);
+  const keep = new Set();
+  for (const evidence of evidences) {
+    const key = comparable(evidence ?? '');
+    const at = key ? keys.findIndex((b) => b.includes(key)) : -1;
+    if (at >= 0) for (const i of [at - 1, at, at + 1]) if (i >= 0 && i < blocks.length) keep.add(i);
+  }
+  if (!keep.size) return text.slice(0, CONTEXT_CHARS);
+  return [...keep]
+    .sort((a, b) => a - b)
+    .map((i) => blocks[i])
+    .join('\n\n')
+    .slice(0, CONTEXT_CHARS * 2);
+}

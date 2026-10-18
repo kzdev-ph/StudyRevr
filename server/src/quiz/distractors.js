@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { mapLimit } from '../ai/pool.js';
 import { distractorsPrompt } from '../ai/prompts.js';
+import { contextForBatch } from '../pipeline/evidence.js';
 import { hasText, quizCandidates, usableWrong } from './build.js';
 import { listGroups, siblingItems } from './list-items.js';
 import { answerInQuestion, cardLeaks, language, lessonWords as lessonWordsOf, optionSetProblems, wrongOptionProblems } from './leaks.js';
@@ -103,9 +104,10 @@ export function checkWrong(list, correct, lessonWords = null, otherAnswers = [])
 }
 
 // One call for `cards`. `earlier` (card id -> the first try's result) makes it the follow-up: the prompt shows what
-// was rejected and why, and the clean answers from the first try are kept behind the new ones.
+// was rejected and why, and the clean answers from the first try are kept behind the new ones. `rawText`: the lesson,
+// sent with the cards (contextForBatch) so wrong answers come from what it says about other items of the same kind.
 // -> [{ card, wrong, ok, problems, clean, rejected }]
-async function makeBatch({ ai, cards, keyTerms, answers, lessonWords, earlier = null, label: callLabel = null }) {
+async function makeBatch({ ai, cards, keyTerms, answers, lessonWords, rawText = '', earlier = null, label: callLabel = null }) {
   const numbered = cards.map((c, i) => {
     const before = earlier?.get(c.id);
     return {
@@ -118,7 +120,8 @@ async function makeBatch({ ai, cards, keyTerms, answers, lessonWords, earlier = 
       ...(before ? { keep: before.clean, rejected: before.rejected, problems: before.problems.map((p) => p.detail) } : {}),
     };
   });
-  const { system, user } = distractorsPrompt({ cards: numbered, keyTerms });
+  const text = contextForBatch(rawText, cards.map((c) => c.evidence));
+  const { system, user } = distractorsPrompt({ cards: numbered, keyTerms, text, wholeLesson: text === String(rawText ?? '') });
   const label = callLabel ?? (earlier ? 'the quiz answer options (second try)' : 'the quiz answer options');
   const reply = await ai.generateJSON({ system, user, schema: replySchema, responseSchema, maxTokens: 4000, label });
   const byN = new Map(reply.items.map((item) => [item.n, item.wrong]));
@@ -171,7 +174,8 @@ function saveResults(db, results, now) {
 // rejected: [{ text, why }] }]. -> { made, error }
 export async function remakeFlagged({ db, ai, lessonId, fixes, concurrency = 1, batchSize = BATCH_SIZE, now = () => new Date(), log = console }) {
   if (!fixes.length) return { made: 0, error: null };
-  const lessonWords = lessonWordsOf(lessonTextOf(db, lessonId));
+  const rawText = lessonTextOf(db, lessonId);
+  const lessonWords = lessonWordsOf(rawText);
   const keyTerms = db.prepare('SELECT term FROM key_terms WHERE lesson_id = ? ORDER BY id').all(lessonId).map((t) => t.term);
   const answers = db.prepare("SELECT id, back FROM flashcards WHERE lesson_id = ? AND kind <> 'term'").all(lessonId);
   const batches = [];
@@ -181,7 +185,7 @@ export async function remakeFlagged({ db, ai, lessonId, fixes, concurrency = 1, 
   await mapLimit(batches, concurrency, async (batch) => {
     try {
       const earlier = new Map(batch.map((x) => [x.card.id, { clean: x.keep, rejected: x.rejected, problems: [] }]));
-      const results = await makeBatch({ ai, cards: batch.map((x) => x.card), keyTerms, answers, lessonWords, earlier, label: 'the quiz answer options (after review)' });
+      const results = await makeBatch({ ai, cards: batch.map((x) => x.card), keyTerms, answers, lessonWords, rawText, earlier, label: 'the quiz answer options (after review)' });
       made += saveResults(db, results.map((r) => ({ ...r, settled: !r.ok })), now);
     } catch (err) {
       error ??= err.message;
@@ -194,7 +198,8 @@ export async function remakeFlagged({ db, ai, lessonId, fixes, concurrency = 1, 
 async function makeDistractors({ db, ai, lessonId, includeFailing = false, concurrency = 1, batchSize = BATCH_SIZE, now = () => new Date(), log = console, onProgress }) {
   const cards = cardsNeedingDistractors(db, lessonId, { includeFailing });
   if (!cards.length) return { made: 0, error: null };
-  const lessonWords = lessonWordsOf(lessonTextOf(db, lessonId));
+  const rawText = lessonTextOf(db, lessonId);
+  const lessonWords = lessonWordsOf(rawText);
   const keyTerms = db.prepare('SELECT term FROM key_terms WHERE lesson_id = ? ORDER BY id').all(lessonId).map((t) => t.term);
   // the lesson's concept answers: a wrong answer that is another card's answer is dropped (it answers that question)
   const answers = db.prepare("SELECT id, back FROM flashcards WHERE lesson_id = ? AND kind <> 'term'").all(lessonId);
@@ -207,7 +212,7 @@ async function makeDistractors({ db, ai, lessonId, includeFailing = false, concu
   onProgress?.({ done, total: batches.length });
   await mapLimit(batches, concurrency, async (batch) => {
     try {
-      let results = await makeBatch({ ai, cards: batch, keyTerms, answers, lessonWords });
+      let results = await makeBatch({ ai, cards: batch, keyTerms, answers, lessonWords, rawText });
       const retry = results.filter((r) => !r.ok);
       if (retry.length) {
         for (const r of retry) {
@@ -215,7 +220,7 @@ async function makeDistractors({ db, ai, lessonId, includeFailing = false, concu
           log.info?.(`[quiz] lesson ${lessonId}, card ${r.card.id}: asking again (${why})`);
         }
         try {
-          const again = await makeBatch({ ai, cards: retry.map((r) => r.card), keyTerms, answers, lessonWords, earlier: new Map(retry.map((r) => [r.card.id, r])) });
+          const again = await makeBatch({ ai, cards: retry.map((r) => r.card), keyTerms, answers, lessonWords, rawText, earlier: new Map(retry.map((r) => [r.card.id, r])) });
           // still not clean after the follow-up: settled, so a later remake or retry doesn't ask for it again
           const byId = new Map(again.map((r) => [r.card.id, { ...r, settled: !r.ok }]));
           results = results.map((r) => byId.get(r.card.id) ?? r);

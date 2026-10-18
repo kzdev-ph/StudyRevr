@@ -262,18 +262,28 @@ Reply with this JSON shape:
 // follow-up call also passes `keep` (wrong answers that passed the checks), `rejected` ([{ text, why }]) and
 // `problems` (why the set still gave the answer away). The wrong answers must be believable but wrong according to the
 // lesson, and look like the right one so length, wording and tone give nothing away (checked in code: quiz/leaks.js).
-export function distractorsPrompt({ cards, keyTerms = [] }) {
+// `text`: the lesson (contextForBatch: all of it under 16K characters, else the blocks around the cards' quotes), so
+// wrong answers are built from what the lesson says about other items of the same kind (Gemini audit 2026-10-18,
+// variant b); `wholeLesson` says which of the two it is.
+export function distractorsPrompt({ cards, keyTerms = [], text = '', wholeLesson = true }) {
   const system = `You help a teacher write a multiple-choice quiz from their lesson.
 
 Rules:
 1. Use ONLY the lesson content you are given: each card's question, its correct answer and a quote copied from the lesson. Do not use outside knowledge or add facts, names, dates or numbers that are not in it.
-2. A quote may come from the teacher's spoken notes for a slide (written after a line "${NOTES_LABEL}" in the lesson). Treat it as lesson content that explains that slide, not as a separate topic.
+2. A quote${text ? ' or a part of <lesson_text>' : ''} may come from the teacher's spoken notes for a slide (written after a line "${NOTES_LABEL}" in the lesson). Treat it as lesson content that explains that slide, not as a separate topic.
 3. Write each wrong answer in the language of that card's correct answer (English, Filipino or Taglish).
 4. Reply with ONE JSON object and nothing else: no markdown, no code fences, no commentary.
 
-Task: for each card, write 3 wrong answers to its question. A student who has not studied must not be able to pick the right answer from how the options look.
+Task: for each card, write 3 wrong answers to its question. A student who has not studied must not be able to pick the right answer from how the options look.${
+    text
+      ? `
+- <lesson_text> below ${wholeLesson ? 'is the whole lesson' : 'holds the parts of the lesson around these cards'}. Build each wrong answer from what the lesson says about a DIFFERENT item, step or idea of the same kind (another quality, method, consideration, type or purpose), worded to fit this question. It must be plainly wrong to a student who studied and believable to one who did not.`
+      : ''
+  }
+- Never a synonym or near-synonym of the correct answer ("Dependable" for "Reliable", "Data precision" for "Data quality", "Respondent willingness" for "Response rate", "A standardized and controlled plan" for "A structured and systematic approach"): a student who knows the lesson would pick it too. Test each wrong answer: if the lesson's own words for the correct answer also describe it, replace it.
+- When the correct answer is one word or a short name, the wrong answers are other names of the same kind that the lesson uses (the other qualities, types or methods it lists).
 - Each wrong answer must directly answer THIS question and be the same kind of thing it asks for (a time or condition for "Kailan…/When…", a cause for "Bakit…/Why…", a list of the same category for "Anong uri…/What kinds…"), clearly wrong according to the lesson but believable: a related item of the same kind swapped in (another period, another field, another influence, another group, a cause given as the effect).
-- Believable means a student who has NOT read the lesson could pick it: a sensible, ordinary answer that sounds as reasonable as the right one. Never a caricature or an extreme ("loudly and formally", "strictly and lengthily", "as long as possible"), and never something the lesson itself recommends or says is true (not even partly: if the lesson says to share relevant details, "share details that interest the audience" is too close to right). If the lesson lists several right items, a wrong answer is never another item from that same list.
+- Believable means a student who has NOT read the lesson could pick it: a sensible, ordinary answer that sounds as reasonable as the right one. Never a caricature or an extreme ("loudly and formally", "strictly and lengthily", "as long as possible"), and never something the lesson itself recommends or says is true (not even partly: if the lesson says to share relevant details, "share details that interest the audience" is too close to right).
 - Never use another card's correct answer, copied or reworded, as a wrong answer: it plainly answers that other question, so a student matches it away.
 - Stay on the subject of the question: each wrong answer is about the same thing the question asks about, built from the lesson's own ideas. Never switch to an unrelated topic (food, buildings, prices, jobs, population) and never copy the whole question into a wrong answer: either one is ruled out at a glance.
 - Same tone and polarity as the correct answer. If the correct answer is a positive statement, every wrong answer is a positive statement too: no negations ("not", "never", "no", "hindi", "wala", "walang"), no opposites, no version that hides, prevents, limits, removes or makes harder what the correct answer says. An option that sounds negative or absurd is ruled out at a glance.
@@ -303,7 +313,7 @@ Reply with this JSON shape, one item per card, using the card's number as "n":
       return lines.join('\n');
     })
     .join('\n');
-  return { system, user: `<cards>\n${list}\n</cards>` };
+  return { system, user: `<cards>\n${list}\n</cards>${text ? `\n\n${lessonText(text)}` : ''}` };
 }
 
 // One flashcard written again because it gives its answer away (admin "Regenerate this card"). `card`: { kind, front,

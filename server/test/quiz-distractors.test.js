@@ -2,7 +2,7 @@ import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { openDb, runMigrations } from '../src/db/index.js';
 import { distractorsPrompt } from '../src/ai/prompts.js';
-import { BATCH_SIZE, cardsNeedingDistractors, checkWrong, ensureDistractors, loadDistractors, pickWrongSet } from '../src/quiz/distractors.js';
+import { BATCH_SIZE, cardsNeedingDistractors, checkWrong, ensureDistractors, loadDistractors, pickWrongSet, remakeFlagged } from '../src/quiz/distractors.js';
 import { contentWords } from '../src/quiz/leaks.js';
 
 const quiet = { warn() {}, log() {}, error() {}, info() {} };
@@ -239,5 +239,41 @@ describe('quiz wrong answers', () => {
     assert.match(system, /key terms: Sample/);
     assert.doesNotMatch(system, /rejected answers/, 'only the follow-up explains rejections');
     assert.match(user, /\[1\] Question: Why sample\?\n {4}Correct answer: To save time\.\n {4}From the lesson: "Sampling saves time\."\n {4}Write each wrong answer in about 3 words, in English\./);
+  });
+
+  it('variant b of the Gemini audit: the lesson text, no synonyms of the right answer, other names of the same kind for a short name', () => {
+    const cards = [{ n: 1, question: 'Which quality means producing consistent results?', answer: 'Reliable', evidence: 'Reliable — produces consistent results', words: 1, language: 'en' }];
+    const { system, user } = distractorsPrompt({ cards, text: 'Accurate — reflects the information\nReliable — produces consistent results' });
+    assert.match(system, /<lesson_text> below is the whole lesson\. Build each wrong answer from what the lesson says about a DIFFERENT item, step or idea of the same kind/);
+    assert.match(system, /Never a synonym or near-synonym of the correct answer \("Dependable" for "Reliable"/);
+    assert.match(system, /When the correct answer is one word or a short name, the wrong answers are other names of the same kind that the lesson uses/);
+    assert.doesNotMatch(system, /never another item from that same list/);
+    assert.match(system, /A quote or a part of <lesson_text> may come from the teacher's spoken notes/);
+    assert.match(user, /<\/cards>\n\n<lesson_text>\nAccurate — reflects the information\nReliable — produces consistent results\n<\/lesson_text>$/);
+    assert.match(distractorsPrompt({ cards, text: 'part', wholeLesson: false }).system, /<lesson_text> below holds the parts of the lesson around these cards\./);
+    const bare = distractorsPrompt({ cards });
+    assert.doesNotMatch(bare.system + bare.user, /lesson_text/);
+  });
+
+  it('every call sends the lesson: the stage, the follow-up, a quiz-start fallback and the review’s remake (a long lesson only the blocks around the quotes)', async () => {
+    const [id] = addCards(1);
+    const ai = fakeAi((cards, call) => ({ items: cards.map((c) => ({ n: c.n, wrong: call === 1 ? [CLEAN[0]] : CLEAN })) }));
+    await ensureDistractors({ db, ai, lessonId, log: quiet });
+    assert.equal(ai.calls.length, 2, 'the first try and its follow-up');
+    for (const call of ai.calls) assert.ok(call.user.endsWith(`<lesson_text>\n${TEXT}\n</lesson_text>`), call.label);
+    await remakeFlagged({ db, ai, lessonId, fixes: [{ card: { id, front: 'Why is a survey used in study 1?', back: ANSWER, evidence: 'a quote' }, keep: [], rejected: [{ text: 'x', why: 'two_correct' }] }], log: quiet });
+    assert.equal(ai.calls.at(-1).label, 'the quiz answer options (after review)');
+    assert.ok(ai.calls.at(-1).user.endsWith(`<lesson_text>\n${TEXT}\n</lesson_text>`));
+
+    const far = Array.from({ length: 40 }, (_, i) => `Block ${i} ${'filler words here '.repeat(30)}`);
+    far[25] = 'A survey collects data from many people quickly.';
+    db.prepare('UPDATE lessons SET raw_text = ? WHERE id = ?').run(far.join('\n\n'), lessonId);
+    db.prepare('UPDATE flashcards SET evidence = ? WHERE id = ?').run('A survey collects data from many people quickly.', id);
+    db.prepare('DELETE FROM quiz_distractors').run();
+    const long = fakeAi(threeClean);
+    await ensureDistractors({ db, ai: long, lessonId, log: quiet });
+    const sent = /<lesson_text>\n([^]*)\n<\/lesson_text>$/.exec(long.calls[0].user)[1];
+    assert.deepEqual(sent.split('\n\n').map((b) => b.slice(0, 8)), ['Block 24', 'A survey', 'Block 26']);
+    assert.match(long.calls[0].system, /holds the parts of the lesson around these cards/);
   });
 });
