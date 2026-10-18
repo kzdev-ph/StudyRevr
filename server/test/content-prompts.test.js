@@ -80,6 +80,14 @@ describe('prompts keep the lesson’s meaning', () => {
   });
 });
 
+describe('key-term definitions (Gemini audit 2026-10-18, variant b)', () => {
+  it('start with what the lesson says about the term, not a category phrase, and fit this term only', () => {
+    const { system } = keyTermsPrompt({ text: 'x', index: 0, total: 1, maxTerms: 5 });
+    assert.match(system, /Start with what the lesson says about this term itself \("Collects data at one point in time to describe the current situation of a population\."\), not with a category phrase \("A type of survey research that…", "A method that…", "A collection method that…"\)/);
+    assert.match(system, /The definition must fit this term only, so a student can tell it apart from the lesson's other terms\. Never just list examples/);
+  });
+});
+
 describe('quick checks', () => {
   it('the sections prompt asks only what the lesson states, with a quote per check', () => {
     const { system } = sectionsPrompt({ text: 'x', summaryLength: 'short' });
