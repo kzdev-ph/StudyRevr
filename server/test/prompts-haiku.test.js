@@ -80,6 +80,16 @@ describe('the Haiku prompt set', () => {
     assert.ok(wrong.user.endsWith(`<lesson_text>\n${LESSON}\n</lesson_text>`));
   });
 
+  it('asks the flashcard writer for the number of cards the pipeline really keeps', () => {
+    const p = flashcardsPrompt({ text: LESSON, keyTerms: ['Clay', 'Sand', 'Loam'], index: 0, total: 1, targetCards: 25 });
+    assert.match(haikuRequest(p, LESSON).system, /Give about 25 cards/);
+    assert.match(haikuRequest(p, LESSON, { maxCards: 30 }).system, /Give about 25 cards/);
+    assert.match(haikuRequest(p, LESSON, { maxCards: 20 }).system, /Give about 17 cards/);
+    // the list-item call has no count
+    const items = haikuRequest(PROMPTS.flashcards[1], LESSON, { maxCards: 20 }).system;
+    assert.doesNotMatch(items, /Give about/);
+  });
+
   it('leaves the key-terms merge and any unknown prompt alone', () => {
     const merge = keyTermsMergePrompt({ candidates: [{ term: 'Clay', versions: [{ definition: 'd', evidence: 'e' }] }], maxTerms: 12 });
     assert.equal(promptKind(merge.system), 'key_terms_merge');

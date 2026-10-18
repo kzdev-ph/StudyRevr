@@ -133,7 +133,7 @@ export async function runExchange({ db, meta, replies, lessonId = meta.lesson_id
   const ai = createFileAi({ replies });
   // the writer gets its own prompt set (ai/prompts-haiku.js), applied before the file-backed AI hashes the prompt, so
   // the exported prompts, the manifest and the replies are all for the Haiku text; the Default AI's prompts are unchanged
-  const writerAi = { ...ai, generateJSON: (request) => ai.generateJSON(haikuRequest(request, meta.raw_text)) };
+  const writerAi = { ...ai, generateJSON: (request) => ai.generateJSON(haikuRequest(request, meta.raw_text, { maxCards: meta.flashcards_max })) };
   const lines = (line) => log.push(String(line));
   const logger = { info: lines, warn: lines, error: (...a) => lines(a.map(String).join(' ')) };
   const run = runPipeline({

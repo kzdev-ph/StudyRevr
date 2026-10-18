@@ -90,7 +90,19 @@ const keyTerms = (s) => {
 
 const COUNT_ANCHOR = '(fewer if the text has fewer ideas worth a card; never pad the list with trivia), in the order the ideas appear in the lesson.';
 
-const flashcards = (s) => {
+// The shared prompt asks for `target - term share` cards, but the pipeline keeps at most `flashcards_max` minus the
+// term cards and cuts the rest from the end of the lesson (RSCH2120: "about 25" asked, 20 kept, the last slides lost).
+// The writer is told the number that is really kept.
+const keptCount = (s, maxCards) => {
+  const asked = s.match(/Give about (\d+) cards/);
+  if (!asked || !maxCards) return s;
+  const terms = s.match(/These key terms already have their own "term -> definition" cards: (.*?)\. Do not make/);
+  const room = maxCards - (terms ? terms[1].split('; ').length : 0);
+  const n = Math.max(1, Math.min(Number(asked[1]), room));
+  return s.replace(asked[0], `Give about ${n} cards`);
+};
+
+const flashcards = (s, { maxCards } = {}) => {
   let t = swap(
     s,
     `When the lesson says nothing more about an item than the item itself, describe it in plain words with the same meaning, never with the item's own words ("Which purpose of a self-introduction is about making others see you well from the start?" -> "Create a positive first impression").`,
@@ -109,7 +121,7 @@ const flashcards = (s) => {
     COUNT_ANCHOR,
     ` Never go over that number: cards beyond it are cut from the end of the lesson, so its last slides would lose their cards. When the lesson has more details than cards, spread the cards over the whole lesson so every slide keeps at least one, and leave out the smallest details first. One question per card: never two questions joined into one ("How should X be, and what should it avoid?").`,
   );
-  return t + READ_FIRST;
+  return keptCount(t, maxCards) + READ_FIRST;
 };
 
 const wrongAnswers = (s, u, rawText) => {
@@ -170,13 +182,13 @@ const EDIT = {
 };
 
 // A pipeline request with the Haiku prompt in place of the shared one. `rawText` is the lesson (the wrong-answer
-// prompt gets it whole: the shared one sees only each card's quote). Unknown prompts (the key-terms merge, which only
+// prompt gets it whole: the shared one sees only each card's quote). `options.maxCards` is the lesson's flashcards_max. Unknown prompts (the key-terms merge, which only
 // picks among candidates) pass through unchanged.
-export function haikuRequest(request, rawText) {
+export function haikuRequest(request, rawText, options = {}) {
   const kind = promptKind(request.system);
   if (kind === 'wrong_answers') return { ...request, ...wrongAnswers(request.system, request.user, rawText) };
   const edit = EDIT[kind];
-  return edit ? { ...request, system: edit(request.system) } : request;
+  return edit ? { ...request, system: edit(request.system, options) } : request;
 }
 
 // Every kind the set changes, for the tests.
