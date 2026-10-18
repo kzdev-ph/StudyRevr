@@ -42,7 +42,7 @@ Before you write anything, read the whole lesson text from the first line to the
 
 // A quote is the line that says it, never a heading (#744 quoted "Helps gather information about:").
 const QUOTE_RULE = `
-- An "evidence" quote is the lesson line that states or explains the answer, never a heading or title and never a line that only introduces a list (a line ending in ":" such as "Helps gather information about:"). When the answer is the items of a list, quote the item lines themselves (neighbouring lines may be quoted together, in order).`;
+- An "evidence" quote is the lesson line that states or explains the answer, never a heading or title and never a line that only introduces a list (a line ending in ":" such as "Good soil contains:"). When the answer is the items of a list, quote the item lines themselves (neighbouring lines may be quoted together, in order).`;
 
 // #751 #753 #754 #756: "What does a survey method's response rate ask?" — a lesson line written as a question
 // ("Response rate — How likely are participants to respond?") was turned into "what does X ask".
@@ -92,7 +92,7 @@ const flashcards = (s) => {
   let t = swap(
     s,
     `When the lesson says nothing more about an item than the item itself, describe it in plain words with the same meaning, never with the item's own words ("Which purpose of a self-introduction is about making others see you well from the start?" -> "Create a positive first impression").`,
-    `When the lesson says nothing more about an item than its name, never describe it with synonyms ("regarding suppositions" for "Test hypotheses"): a synonym is only a vocabulary match, and it gives the answer away. Split the item instead: keep its verb or frame in the question and put the rest in the answer ("What does the collected data help researchers test?" -> "Hypotheses").`,
+    `When the lesson says nothing more about an item than its name, never describe it with synonyms ("regarding paths" for "Find the trail"): a synonym is only a vocabulary match, and it gives the answer away. Split the item instead: keep its verb or frame in the question and put the rest in the answer ("What does a good map help hikers measure?" -> "Distances"). Its "evidence" is then the line that introduces the list together with the item line, in order ("A good map helps hikers: Find the trail Measure distances"): the item line alone ("Measure distances") says nothing beyond the answer and the card is dropped.`,
   );
   t = after(
     t,
@@ -114,9 +114,9 @@ const wrongAnswers = (s, u, rawText) => {
     t,
     'No "all of the above", "none of the above", jokes or obviously silly options.',
     `
-- Read the whole lesson text first. Build each wrong answer from the lesson's own ideas: what the lesson says about another item of the same kind (another method, type, quality, step or consideration) or about another part of the lesson, written to fit this question. Never an idea the lesson does not contain, and never something plainly outside the subject (for what research answers, "Exam questions" or "Classroom questions" are ruled out at a glance).
+- Read the whole lesson text first. Build each wrong answer from the lesson's own ideas: what the lesson says about another item of the same kind (another method, type, quality, step or consideration) or about another part of the lesson, written to fit this question. Never an idea the lesson does not contain, and never something plainly outside the subject (for what clay soil holds, "Train tickets" is ruled out at a glance).
 - A wrong answer must not be the exact correct answer of another card of the lesson (that is checked in code and the option is dropped): take a different detail, or the same kind of detail about another item.
-- Never a synonym, a narrower or broader name, or a rewording of the correct answer ("Their reach" for "Their generalizability"). If a wrong answer would ALSO be true for this question according to the lesson, do not use it.
+- Never a synonym, a narrower or broader name, or a rewording of the correct answer ("Their toughness" for "Their durability"). If a wrong answer would ALSO be true for this question according to the lesson, do not use it.
 - Every wrong answer fits the question's grammar and asks for the same kind of thing: if the question asks "What does reliable data produce?", each option is a kind of result.
 - Each wrong answer is also shown alone as "Is this the answer?": a student who studied the lesson must be able to say No, and one who did not must find it believable.
 - Give every card its own wrong answers: never the same wrong answer, or the same set, for two cards.
@@ -132,7 +132,7 @@ const quizReview = (s) => {
     `
 Be consistent across cards. Check every option of every item on its own, and when an option (or a false statement) is right for one card, flag it on EVERY card in this batch where it is also right. In particular a broader term, or a definition of one, that covers the asked term is "two_correct" on each card it covers: if a lesson says studies of one kind are "fieldwork", the option "Fieldwork" (and "Work done outside the lab.") is two_correct on every card about a study of that kind, never on only some of them. Two different kinds of one thing are not two_correct for each other.
 For every option marked "yes_no" or "both", ask: would a student who knows the lesson answer "Yes, this is the answer"? Then it is "two_correct".
-An option a student who has not read the lesson would never pick (it is plainly outside the subject, such as "Classroom questions" for what research answers) is "giveaway".
+An option a student who has not read the lesson would never pick (it is plainly outside the subject, such as "Train tickets" for what clay soil holds) is "giveaway".
 A question where a thing does the asking ("What does X ask?", "What does X ask researchers to check?") is "vague".`,
   );
   return t;
