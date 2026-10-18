@@ -92,8 +92,9 @@ export function listGroups(lessonText) {
 }
 
 // The other items of the list `answer` is an item of (exactly, as itemKey compares) that have its shape (sameShape,
-// judged on the list's own item, so the card's casing doesn't matter), or null when it is not an item of a list. Each
-// is written with the answer's closing full stop (or none), so the stop alone never marks the right option: the AI
+// judged on the list's own item, so the card's casing doesn't matter), or null when it is not an item of a list or none
+// of its list's other items has its shape (callers treat any non-null value as "a list item": a card with no usable
+// siblings falls back to AI wrong answers like any concept card). Each is written with the answer's closing full stop (or none), so the stop alone never marks the right option: the AI
 // writes a card's answer with one while a lesson's list lines often have none.
 export function siblingItems(groups, answer) {
   const key = itemKey(answer);
@@ -102,7 +103,8 @@ export function siblingItems(groups, answer) {
   if (!group) return null;
   const stop = /\.\s*$/.test(String(answer));
   const likeAnswer = (i) => (stop ? (/\.\s*$/.test(i) ? i : `${i.trim()}.`) : i.replace(/\.\s*$/, ''));
-  return group.filter((i) => itemKey(i) !== key && sameShape(own, i)).map(likeAnswer);
+  const siblings = group.filter((i) => itemKey(i) !== key && sameShape(own, i)).map(likeAnswer);
+  return siblings.length ? siblings : null;
 }
 
 export const sameItem = (a, b) => itemKey(a) === itemKey(b);

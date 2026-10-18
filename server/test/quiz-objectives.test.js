@@ -134,4 +134,20 @@ describe('list siblings', () => {
     const groups = [['Clear and Concise Language', 'Relevant Information', 'Authentic Tone', 'Unique Value']];
     assert.deepEqual(siblingItems(groups, 'authentic tone'), ['Clear and Concise Language', 'Relevant Information', 'Unique Value']);
   });
+
+  it('is null when no other item of the list has the answer’s shape, so the card keeps its AI wrong answers', () => {
+    const groups = [['Bias', 'Error', 'Reduces the risk of mistakes that spread through the whole study']];
+    assert.deepEqual(siblingItems(groups, 'Reduces the risk of mistakes that spread through the whole study.'), null);
+    assert.deepEqual(siblingItems(groups, 'Bias'), ['Error'], 'a name still has its sibling name');
+    assert.equal(siblingItems(groups, 'Not in the list'), null);
+  });
+
+  it('a list item with no sibling of its shape is built from its saved wrong answers like any concept card', () => {
+    const lessonText = ['Sampling', '- Random Sampling', '- Stratified Sampling', '- Each member of the group is chosen by chance alone.'].join('\n');
+    const card = { id: 1, kind: 'concept', front: 'How is a member chosen in the simplest kind of sample?', back: 'Each member of the group is chosen by chance alone.', evidence: 'Each member of the group is chosen by chance alone.' };
+    const distractors = new Map([[1, ['Members are picked because the researcher knows them well.', 'Members are split into fixed numbers before anyone is asked.', 'Members who volunteer first are placed in the sample.']]]);
+    const [p] = quizCandidates([card], { distractors, lessonText });
+    assert.equal(p.mcClean.length, 3, JSON.stringify(p.problems));
+    assert.deepEqual([...p.mcClean].sort(), [...distractors.get(1)].sort());
+  });
 });
