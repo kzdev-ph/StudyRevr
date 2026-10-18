@@ -31,6 +31,32 @@ describe('objective blocks', () => {
     assert.ok(!isObjectiveBlock(''));
   });
 
+  it('read "At / By the end of" as a heading only when it is about the lesson or says what students will do', () => {
+    const list = '\n- Define a sample.\n- Name a method.';
+    for (const heading of [
+      'At the end of this lesson',
+      'By the end of today’s class:',
+      'By the end of the session',
+      'At the end of the lesson, students will:',
+      'By the end of the week, you will:',
+      'At the end of week 1 you will',
+      'By the end of the course, learners will',
+    ]) assert.ok(isObjectiveBlock(heading + list), heading);
+    for (const heading of [
+      'At the end of the study period',
+      'At the end of the experiment',
+      'By the end of the survey',
+      'At the end of the interview:',
+      'By the end of data collection',
+    ]) {
+      assert.ok(!isObjectiveBlock(heading + list), `${heading} is content`);
+      assert.equal(withoutObjectives(heading + list), heading + list);
+    }
+    // content under it is still found in the lesson, listed and asked about
+    assert.deepEqual(listGroups('At the end of the study period\n- Collect the forms.\n- Count the answers.\n- Report the totals.'), [['Collect the forms.', 'Count the answers.', 'Report the totals.']]);
+    assert.equal(listItems('At the end of the study period\n- Collect the forms.\n- Count the answers.\n- Report the totals.').length, 3);
+  });
+
   it('are left out of the lesson text, the list groups and the list items', () => {
     assert.equal(withoutObjectives(LESSON), BODY);
     assert.deepEqual(listGroups(LESSON), [['Random sampling picks members by chance.', 'Stratified sampling splits the group first.', 'Quota sampling fills fixed numbers.']]);
@@ -133,5 +159,21 @@ describe('list siblings', () => {
   it('judges the shape on the list’s own item, so a card’s casing does not matter', () => {
     const groups = [['Clear and Concise Language', 'Relevant Information', 'Authentic Tone', 'Unique Value']];
     assert.deepEqual(siblingItems(groups, 'authentic tone'), ['Clear and Concise Language', 'Relevant Information', 'Unique Value']);
+  });
+
+  it('is null when no other item of the list has the answer’s shape, so the card keeps its AI wrong answers', () => {
+    const groups = [['Bias', 'Error', 'Reduces the risk of mistakes that spread through the whole study']];
+    assert.deepEqual(siblingItems(groups, 'Reduces the risk of mistakes that spread through the whole study.'), null);
+    assert.deepEqual(siblingItems(groups, 'Bias'), ['Error'], 'a name still has its sibling name');
+    assert.equal(siblingItems(groups, 'Not in the list'), null);
+  });
+
+  it('a list item with no sibling of its shape is built from its saved wrong answers like any concept card', () => {
+    const lessonText = ['Sampling', '- Random Sampling', '- Stratified Sampling', '- Each member of the group is chosen by chance alone.'].join('\n');
+    const card = { id: 1, kind: 'concept', front: 'How is a member chosen in the simplest kind of sample?', back: 'Each member of the group is chosen by chance alone.', evidence: 'Each member of the group is chosen by chance alone.' };
+    const distractors = new Map([[1, ['Members are picked because the researcher knows them well.', 'Members are split into fixed numbers before anyone is asked.', 'Members who volunteer first are placed in the sample.']]]);
+    const [p] = quizCandidates([card], { distractors, lessonText });
+    assert.equal(p.mcClean.length, 3, JSON.stringify(p.problems));
+    assert.deepEqual([...p.mcClean].sort(), [...distractors.get(1)].sort());
   });
 });

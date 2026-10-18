@@ -65,7 +65,7 @@ export function describeAttempt(e) {
   return `${tag} FAIL ${why} after ${secs(e.ms)}${e.retry ? `, retry in ${secs(e.waitMs)}` : ', giving up'}`;
 }
 
-const issueSummary = (error) =>
+export const issueSummary = (error) =>
   error.issues
     .slice(0, 4)
     .map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`)

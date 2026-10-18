@@ -57,6 +57,36 @@ export function usableWrong(wrong, correct, limit = WRONG_PER_QUESTION) {
   return kept;
 }
 
+// Trailing punctuation must not tell options apart ("Hypotheses." beside "Attitudes", "Opinions", "Behaviors": the one
+// with the full stop is the right answer). Of the texts shown together (the options of one question; for Yes/No the
+// statement with its sibling false statements and the answer), when some end in a full stop, a colon or an ellipsis and
+// others don't, that mark is taken off every text that has it. Display only: the cards, saved wrong answers and
+// reviews are never changed, only the copy in the built question. Left as they are when taking a mark off would make
+// two different texts the same ("Errors." and "Errors") or leave one without text.
+const TRAILING = [
+  ['stop', /(?<!\.)\.\s*$/],
+  ['colon', /:\s*$/],
+  ['ellipsis', /(?:…|\.{3,})\s*$/],
+];
+const markOf = (text) => TRAILING.find(([, re]) => re.test(String(text ?? '')))?.[0];
+const dropMark = (text, mark) => String(text ?? '').replace(TRAILING.find(([name]) => name === mark)[1], '').trimEnd();
+
+// -> the same texts, in the same order, with any disagreeing trailing mark taken off
+export function normalizeTrailing(texts) {
+  const distinct = [...new Set(texts)];
+  const marks = TRAILING.map(([name]) => name).filter((name) => {
+    const n = distinct.filter((t) => markOf(t) === name).length;
+    return n > 0 && n < distinct.length;
+  });
+  if (!marks.length) return [...texts];
+  const cleaned = new Map(distinct.map((t) => [t, marks.includes(markOf(t)) ? dropMark(t, markOf(t)) : t]));
+  const out = [...cleaned.values()];
+  const changed = distinct.filter((t) => cleaned.get(t) !== t);
+  const blank = changed.some((t) => !hasText(cleaned.get(t)));
+  const collide = out.some((a, i) => out.some((b, j) => i < j && sameAnswer(a, b)));
+  return blank || collide ? [...texts] : texts.map((t) => cleaned.get(t));
+}
+
 export function shuffle(list, random = Math.random) {
   const out = [...list];
   for (let i = out.length - 1; i > 0; i--) {
@@ -214,14 +244,14 @@ const usable = (p) => canMc(p) || p.falseClean.length > 0;
 function multipleChoice({ card, shown, mcClean }, random) {
   const wrong = shuffle(mcClean, random).slice(0, WRONG_PER_QUESTION);
   const term = card.kind === 'term';
-  const correct = term ? card.front : card.back;
+  const [correct, ...options] = normalizeTrailing([term ? card.front : card.back, ...wrong]);
   return {
     flashcard_id: card.id,
     type: 'mc',
     kind: card.kind,
     question: term ? shown : card.front,
     statement: null,
-    ...arrange(correct, wrong, random),
+    ...arrange(correct, options, random),
     answer_text: correct,
     evidence: card.evidence ?? null,
   };
@@ -229,15 +259,18 @@ function multipleChoice({ card, shown, mcClean }, random) {
 
 function trueFalse({ card, shown, falseClean }, random) {
   const truth = random() < 0.5;
+  const statement = truth ? shown : pickOne(falseClean, random);
+  // the statement and the real answer are cleaned together with every false statement it could have been
+  const [text, answer] = normalizeTrailing([statement, card.back, shown, ...falseClean]);
   return {
     flashcard_id: card.id,
     type: 'tf',
     kind: card.kind,
     question: card.front,
-    statement: truth ? shown : pickOne(falseClean, random),
+    statement: text,
     choices: TF_CHOICES,
     answer_index: truth ? 0 : 1,
-    answer_text: card.back,
+    answer_text: answer,
     evidence: card.evidence ?? null,
   };
 }

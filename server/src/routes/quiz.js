@@ -9,6 +9,7 @@ import { answerQuestion, attemptQuestions, findOpenAttempt, finishAttempt, getAt
 import { buildQuiz, QUIZ_LENGTH, reshuffle, usableCount } from '../quiz/build.js';
 import { ensureDistractors } from '../quiz/distractors.js';
 import { quizBuildOptions } from '../quiz/options.js';
+import { markMixedIfClaude } from '../services/lesson-author.js';
 
 const id = z.coerce.number().int().positive();
 const startBody = z.object({ retake_of: id.nullable().optional() });
@@ -46,7 +47,12 @@ export function quizRouter({ db, ai, access, clock = () => new Date(), random = 
 
   // Normally made when the lesson was processed; this fills in whatever is still missing (older lessons, a failed
   // stage). Two quick starts, or a start during an admin retry, share one AI call.
-  const distractorsFor = (lessonId) => ensureDistractors({ db, ai, lessonId, concurrency: tuning().concurrency ?? 1, now: clock, log });
+  // It writes into the lesson, so a Claude-written lesson that needed it is no longer all Claude's (made_by 'mixed').
+  const distractorsFor = async (lessonId) => {
+    const result = await ensureDistractors({ db, ai, lessonId, concurrency: tuning().concurrency ?? 1, now: clock, log });
+    if (result.made > 0) markMixedIfClaude(db, lessonId);
+    return result;
+  };
 
   // One row per lesson for the Mock Quiz tab: how many questions it supports and the best finished score.
   router.get('/quiz', (req, res) => {

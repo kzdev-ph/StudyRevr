@@ -7,7 +7,7 @@ import { quizOptionsNotice } from '../lib/quizOptions.js';
 import { quizReviewNotice } from '../lib/quizReview.js';
 import { sectionVersionsNotice } from '../lib/sectionVersions.js';
 import { paths } from '../lib/router.js';
-import { adminLessonNote, ownLessonNote, processingLine, rowActions, thinkingNote } from '../lib/uploads.js';
+import { adminLessonNote, ownLessonNote, processingLine, rowActions, thinkingNote, madeByNote } from '../lib/uploads.js';
 
 const formatDate = (iso) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 const formatWords = (n) => `${n.toLocaleString()} ${n === 1 ? 'word' : 'words'}`;
@@ -87,7 +87,7 @@ export default function LessonRow({ lesson, admin = false, onDelete, onDeleteOwn
   const actions = rowActions(lesson);
   const canDeleteOwn = Boolean(onDeleteOwn) && actions.delete;
   const canShare = Boolean(onShare) && lesson.origin === 'student' && !lesson.shared && lesson.status === 'ready';
-  const note = admin ? [adminLessonNote(lesson), thinkingNote(lesson)].filter(Boolean).join(' · ') : ownLessonNote(lesson);
+  const note = admin ? [adminLessonNote(lesson), madeByNote(lesson), thinkingNote(lesson)].filter(Boolean).join(' · ') : ownLessonNote(lesson);
   const stage = lesson.mine ? processingLine(lesson) : null;
   const failedMine = lesson.mine && lesson.status === 'failed';
   // admin's list is where a failed lesson is retried (the reader has no PIN); a student retries their own upload

@@ -76,6 +76,14 @@ lessons.csv - one row per lesson, with where it came from
   owner     the uploader's code; blank for the teacher's lessons and when the uploader was withdrawn (a shared lesson
             stays after its owner is deleted; origin stays student)
   status    ready | processing | failed;  word_count, source_kind (slide | page | paragraph), created_at (UTC)
+  made_by   who wrote the lesson's generated content (sections, quick checks, key points, key terms, flashcards, quiz answer
+            options and the AI reviews): gemini = the app's own pipeline with the admin Default AI (also every lesson made before this
+            column existed, whatever provider was set then) | claude-haiku = written offline by Claude Code (Haiku) and imported with
+            npm run lesson:import through the same schemas and code checks | mixed = a lesson written by Claude that the
+            admin Default AI later changed (Regenerate this card, Review again, Remake quiz answers, Make cards, or the quiz
+            filling in missing wrong answers when a student starts it); it is marked when that work starts, so it can
+            over-claim a change when the work then failed, but never hides one. Re-importing sets claude-haiku again and
+            lesson:rebuild gemini. Explain simpler and Filipino/Taglish are always written by the live AI, whatever this says.
   thinking_level  how hard the AI was asked to think while it prepared the lesson (admin setting "Think harder when
             preparing lessons", reasoning_effort): minimal (no thinking was asked for) | low | medium | high (every
             preparation call asked for that level; above minimal the review, key points, key terms and flashcards
@@ -133,6 +141,10 @@ quiz_answers.csv - one row per question of each attempt above
                     statement (true/false) is stored masked: where a definition names its term (or a form of it),
                     the term is written as ___, so the definition doesn't give the term away. The flashcard itself
                     is unchanged.
+                    Options are also stored as shown with their trailing punctuation made alike: when some
+                    options (or, for true/false, the statement and its sibling statements) end in a full stop,
+                    colon or ellipsis and others don't, that mark is taken off all of them, so the mark can't
+                    point at the right one. The flashcard and its saved wrong answers keep their text.
   chosen_answer, right_answer, correct (1/0; blank if not answered), time_ms on the question
 
 events.csv - self-monitoring events

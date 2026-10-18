@@ -5,6 +5,7 @@ import { getJobStatus } from '../pipeline/jobs.js';
 import { checkEvidence, comparable } from '../pipeline/evidence.js';
 import { isDuplicate, MAX_ANSWER_WORDS, MAX_QUESTION_WORDS, shortDefinition } from '../pipeline/flashcards.js';
 import { cardLeaks, lessonWords, wordStems } from '../quiz/leaks.js';
+import { markMixedIfClaude } from './lesson-author.js';
 import { hasRecords, participantRecords } from './lesson-records.js';
 
 // Admin "Regenerate this card": one AI call writes a flashcard again when it gives its answer away (quiz/leaks.js).
@@ -105,6 +106,7 @@ export async function regenerateCard({ db, ai, cardId, log = console }) {
     if (current?.front !== card.front || current.back !== card.back) throw new HttpError(409, 'This card changed while it was being written. Look at it again before regenerating.', { code: 'card_changed' });
     db.prepare('UPDATE flashcards SET front = ?, back = ?, evidence = ? WHERE id = ?').run(next.front, next.back, next.evidence, card.id);
     db.prepare('DELETE FROM quiz_distractors WHERE flashcard_id = ?').run(card.id);
+    markMixedIfClaude(db, lesson.id);
   })();
   log.info?.(`[admin] lesson ${lesson.id}: card ${card.id} regenerated ("${card.front}" -> "${next.front}")`);
   return { id: card.id, kind: card.kind, front: next.front, back: next.back, evidence: next.evidence, rules: [] };

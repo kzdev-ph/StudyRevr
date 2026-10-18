@@ -12,7 +12,9 @@
     "quiz:check": "node scripts/quiz-check.js",
     "participant:delete": "node scripts/delete-participant.js",
     "restore": "node scripts/restore.js",
-    "lesson:rebuild": "node scripts/rebuild-lesson.js"
+    "lesson:rebuild": "node scripts/rebuild-lesson.js",
+    "lesson:export": "node scripts/export-lesson.js",
+    "lesson:import": "node scripts/import-lesson.js"
   },
   "engines": {
     "node": ">=22.13"
