@@ -83,7 +83,7 @@ const keyTerms = (s) => {
   t = after(
     t,
     '- everyday words, slide or section titles, and anything the lesson does not explain well enough to define.',
-    ` Leave out the lesson's overall topic when the lesson's other terms are kinds or parts of it (its definition would fit every one of them, so a student could never tell them apart).`,
+    ` Leave out any term whose kinds or parts are also on your list (the lesson's overall topic, or a heading such as "Types of tests" whose items you list as terms): its definition fits every one of them, so a student could never tell them apart. A term whose only lesson line uses the term's own word ("Glass jars — jars made of glass") is left out too, since its definition would name it.`,
   );
   return t + QUOTE_RULE + READ_FIRST;
 };
