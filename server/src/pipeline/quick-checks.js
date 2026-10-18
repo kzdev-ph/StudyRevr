@@ -6,6 +6,7 @@
 import { z } from 'zod';
 import { quickChecksPrompt } from '../ai/prompts.js';
 import { asksByPosition, wordStems } from '../quiz/leaks.js';
+import { onlyInObjectives, withoutObjectives } from '../quiz/list-items.js';
 import { checkEvidence, comparable, MAX_CHECK_EVIDENCE_WORDS } from './evidence.js';
 
 export const MAX_CHECKS = 2;
@@ -21,7 +22,7 @@ const ASKS_REASON = /^\s*(why|bakit)\b|^\s*how\s+(?:does|do|did|can|could|will|w
 const flat = (text) => new Set(wordStems(text).flat());
 
 // -> { ok: true, check: { question, answer, evidence } } or { ok: false, reason }. `sourceKey` = comparable(raw_text).
-export function checkQuickCheck(check, sourceKey) {
+export function checkQuickCheck(check, sourceKey, bodyKey = null) {
   const question = String(check?.question ?? '').trim();
   const answer = String(check?.answer ?? '').trim();
   if (!question || !answer) return { ok: false, reason: 'no question or answer' };
@@ -30,6 +31,7 @@ export function checkQuickCheck(check, sourceKey) {
   const found = checkEvidence({ term: question, evidence: check.evidence, sourceKey, minExplaining: 0, maxWords: MAX_CHECK_EVIDENCE_WORDS });
   if (!found.ok) return { ok: false, reason: found.reason };
   const quote = found.evidence;
+  if (bodyKey && onlyInObjectives(comparable(quote), sourceKey, bodyKey)) return { ok: false, reason: 'its quote is only in the learning objectives / outline, not in what the lesson teaches' };
   if (ASKS_REASON.test(question) && !REASON.test(quote)) return { ok: false, reason: 'it asks why, and the lesson’s quote gives no reason' };
   if (REASON.test(answer) && !REASON.test(quote)) return { ok: false, reason: 'the answer gives a reason the lesson’s quote doesn’t state' };
   const ev = checkEvidence({ term: question, evidence: check.evidence, sourceKey, minExplaining: 2, maxWords: MAX_CHECK_EVIDENCE_WORDS });
@@ -80,6 +82,7 @@ const retryResponse = {
 export async function askAgain({ ai, items, rawText, label, onDrop = () => {} }) {
   if (!items.length) return { checks: [], error: null };
   const sourceKey = comparable(rawText);
+  const bodyKey = comparable(withoutObjectives(rawText));
   const { system, user } = quickChecksPrompt({
     checks: items.map((it, i) => ({ n: i + 1, section: it.section.title, content: it.section.content, ...it.check, why: it.why })),
     text: String(rawText ?? '').slice(0, MAX_LESSON_CHARS),
@@ -97,7 +100,7 @@ export async function askAgain({ ai, items, rawText, label, onDrop = () => {} })
     const drop = (reason) => (onDrop({ section: it.section.title, question: it.check.question, reason }), null);
     if (!r?.question) return drop('none given');
     if (unchangedCheck(it.check, r)) return drop('came back unchanged');
-    const result = checkQuickCheck(r, sourceKey);
+    const result = checkQuickCheck(r, sourceKey, bodyKey);
     return result.ok ? result.check : drop(result.reason);
   });
   return { checks, error: null };
@@ -107,10 +110,11 @@ export async function askAgain({ ai, items, rawText, label, onDrop = () => {} })
 // MAX_CHECKS kept per section. -> the sections with grounded `check_questions` (never fails the stage).
 export async function groundQuickChecks({ ai, sections, rawText, onDrop = () => {} }) {
   const sourceKey = comparable(rawText);
+  const bodyKey = comparable(withoutObjectives(rawText));
   const failing = [];
   const kept = sections.map((section) =>
     (section.check_questions ?? []).slice(0, MAX_CHECKS).map((check) => {
-      const result = checkQuickCheck(check, sourceKey);
+      const result = checkQuickCheck(check, sourceKey, bodyKey);
       if (result.ok) return result.check;
       failing.push({ section, check: { question: check.question, answer: check.answer, evidence: check.evidence ?? '' }, why: result.reason });
       return { retry: failing.length - 1 };

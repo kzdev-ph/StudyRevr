@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { bestLine, elapsed, formatDuration, lessonQuizLine, percent, questionLead, questionText, quizKeyAction, scoreLine, yesNo, yesNoAsk } from '../src/lib/quiz.js';
+import { bestLine, capitalFirst, elapsed, formatDuration, lessonQuizLine, percent, questionLead, questionText, quizKeyAction, scoreLine, yesNo, yesNoAsk } from '../src/lib/quiz.js';
 
 const key = (k, extra = {}) => ({ key: k, target: { tagName: 'BODY' }, ...extra });
 
@@ -33,9 +33,30 @@ describe('quiz wording', () => {
     assert.equal(questionLead({ type: 'tf', kind: 'concept' }), 'Yes or no?');
   });
   it('spells a true / false question out as one Yes / No question', () => {
-    assert.equal(questionText({ type: 'tf', kind: 'term', question: 'Sample', statement: 'Part of the population.' }), 'Does this describe Sample? “Part of the population.”');
-    assert.equal(questionText({ type: 'tf', kind: 'concept', question: 'Why sample?', statement: 'To save time.' }), 'Is this the right answer to Why sample? “To save time.”');
-    assert.deepEqual(yesNoAsk({ kind: 'concept', question: 'Why sample?' }), { before: 'Is this the right answer to', subject: 'Why sample', after: '?' });
+    assert.equal(questionText({ type: 'tf', kind: 'term', question: 'Sample', statement: 'part of the population.' }), 'Sample. Suggested meaning: Part of the population. Does this match?');
+    assert.equal(questionText({ type: 'tf', kind: 'concept', question: 'Why sample?', statement: 'to save time' }), 'To save time. For: Why sample? Is this the answer?');
+  });
+  it('puts what is judged first: the term, or the suggested answer', () => {
+    assert.deepEqual(yesNoAsk({ kind: 'term', question: 'Sample', statement: 'Part of the population.' }), {
+      heading: 'Sample',
+      label: 'Suggested meaning:',
+      context: 'Part of the population.',
+      ask: 'Does this match?',
+    });
+    assert.deepEqual(yesNoAsk({ kind: 'concept', question: 'Why sample?', statement: 'To save time.' }), {
+      heading: 'To save time.',
+      label: 'For:',
+      context: 'Why sample?',
+      ask: 'Is this the answer?',
+    });
+  });
+  it('capitalises the first letter for display only, leaving names like iPhone and pH alone', () => {
+    assert.equal(capitalFirst('builds confidence.'), 'Builds confidence.');
+    assert.equal(capitalFirst('“quoted” text'), '“Quoted” text');
+    assert.equal(capitalFirst('iPhone use'), 'iPhone use');
+    assert.equal(capitalFirst('pH scale'), 'pH scale');
+    assert.equal(capitalFirst('___ is a method'), '___ is a method');
+    assert.equal(capitalFirst(''), '');
   });
   it('shows True / False as Yes / No on true / false questions only', () => {
     const tf = { type: 'tf' };

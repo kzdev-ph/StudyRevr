@@ -4,10 +4,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  ASK_BY_MEANING,
   flashcardsPrompt,
   distractorsPrompt,
   KEEP_MEANING,
   keyPointsPrompt,
+  keyTermsPrompt,
+  NO_OBJECTIVES,
   NO_POSITION,
   quickCheckReviewPrompt,
   quickChecksPrompt,
@@ -16,6 +19,8 @@ import {
   regenerateCardsPrompt,
   sectionsPrompt,
 } from '../src/ai/prompts.js';
+import { CHECK_FLAGS } from '../src/services/check-review.js';
+import { CARD_FLAGS, OPTION_FLAGS } from '../src/quiz/review-flags.js';
 
 const card = { kind: 'concept', front: 'Q?', back: 'A.', evidence: 'e' };
 
@@ -146,5 +151,44 @@ describe('leftover fixes from the lesson 12 check', () => {
 
   it('the card reviewer must answer for every item', () => {
     assert.match(quizReviewPrompt({ items: [], text: 'x' }).system, /exactly one entry for EVERY item[^]*Do not leave an item out/);
+  });
+});
+
+describe('prompts never build questions from learning objectives', () => {
+  const cards = [{ n: 1, question: 'Q?', answer: 'A.', evidence: 'e', wordCount: 1, language: 'en' }];
+  it('every prompt that writes a question, card, key point, term or wrong answer carries NO_OBJECTIVES (the rewrites keep to the card’s own evidence)', () => {
+    assert.match(NO_OBJECTIVES, /learning objectives/);
+    assert.match(NO_OBJECTIVES, /at the end of this lesson/);
+    assert.match(NO_OBJECTIVES, /outline/);
+    assert.match(NO_OBJECTIVES, /agenda/);
+    for (const [name, system] of Object.entries({
+      sections: sectionsPrompt({ text: 'x', summaryLength: 'short' }).system,
+      keyPoints: keyPointsPrompt({ text: 'x', index: 0, total: 1 }).system,
+      keyTerms: keyTermsPrompt({ text: 'x', index: 0, total: 1, maxTerms: 5 }).system,
+      flashcards: flashcardsPrompt({ text: 'x', index: 0, total: 1, targetCards: 5 }).system,
+      distractors: distractorsPrompt({ cards }).system,
+      quickChecks: quickChecksPrompt({ checks: [], text: 'x' }).system,
+    })) {
+      assert.match(system, /learning objectives/, name);
+    }
+  });
+
+  it('card-writing prompts tell the model to ask by meaning, not by a "regarding" tail', () => {
+    assert.match(ASK_BY_MEANING, /regarding \/ related to \/ concerning/);
+    assert.match(flashcardsPrompt({ text: 'x', index: 0, total: 1, targetCards: 5, items: ['A'] }).system, /regarding \/ related to \/ concerning/);
+    assert.match(regenerateCardPrompt({ card, text: 'x' }).system, /regarding \/ related to \/ concerning/);
+  });
+
+  it('the distractor prompt forbids synonym rewordings and absolute words', () => {
+    assert.match(distractorsPrompt({ cards }).system, /swapping words for synonyms/);
+    assert.match(distractorsPrompt({ cards }).system, /absolute word/);
+  });
+
+  it('both reviewers flag a question made from objectives as off_topic', () => {
+    assert.match(quizReviewPrompt({ items: [], text: 'x' }).system, /"off_topic": the card is made from the lesson's learning objectives/);
+    assert.match(quickCheckReviewPrompt({ sections: [], text: 'x' }).system, /"off_topic": the question is made from the lesson's learning objectives/);
+    assert.ok(CARD_FLAGS.includes('off_topic'));
+    assert.ok(CHECK_FLAGS.includes('off_topic'));
+    assert.ok(OPTION_FLAGS.includes('off_topic'));
   });
 });

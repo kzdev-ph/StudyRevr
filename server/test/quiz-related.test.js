@@ -60,14 +60,14 @@ describe('quiz building leaves related terms out', () => {
   it('sibling kinds still face each other, including a key term without a card', () => {
     const p = byId(quizCandidates(CARDS, { extraTerms: EXTRA }), WRITTEN.id);
     assert.deepEqual(p.mcWrong.sort(), [MULTI, 'Oral Self-Introduction'].sort());
-    assert.deepEqual(p.falseClean, [ORAL.back]);
+    assert.deepEqual(p.falseClean, [], 'its definition is shown blanked ("written"), so it is not asked as Yes/No');
   });
 
   it('with the AI family, siblings are left out too', () => {
     const termFamilies = [['Written Self-Introduction', 'Oral Self-Introduction', 'Multimodal Self-Introduction']];
     const p = byId(quizCandidates([...CARDS, ...UNRELATED], { extraTerms: EXTRA, termFamilies }), WRITTEN.id);
     assert.deepEqual(p.mcWrong.sort(), ['Authentic Tone', 'Unique Value']);
-    assert.deepEqual(p.falseClean.sort(), [UNRELATED[0].back, UNRELATED[1].back].sort());
+    assert.deepEqual(p.falseClean, [], 'blanked: no Yes/No');
   });
 
   it('no quiz question ever offers a related term or a related definition as wrong', () => {
@@ -99,7 +99,7 @@ describe('quiz building leaves related terms out', () => {
     assert.deepEqual(byId(candidates, multi.id).falseClean, [oral.back]);
     const w = byId(candidates, written.id);
     assert.equal(w.shown, 'This is presented in ___ form.', 'its own question still shows the blank');
-    assert.deepEqual(w.falseClean.sort(), [oral.back, multi.back].sort(), 'it is still asked, against unblanked definitions');
+    assert.deepEqual(w.falseClean, [], 'a blanked definition gets no Yes/No form: the gap would point at the true statement');
     for (let seed = 1; seed <= 30; seed++) {
       for (const q of buildQuiz({ cards, extraTerms: cards.map((c) => c.front), random: createRng(seed), count: 4 })) {
         if (q.type === 'tf' && q.answer_index === 1) assert.ok(!q.statement.includes('___'), `seed ${seed}: "${q.statement}"`);

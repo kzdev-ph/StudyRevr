@@ -7,6 +7,7 @@ import {
   cardLeaks,
   contentWords,
   falseStatementProblems,
+  hintTail,
   isNegative,
   language,
   lessonWords,
@@ -14,6 +15,7 @@ import {
   optionSetProblems,
   sameForm,
   questionLeaks,
+  REWORDED,
   stem,
   termInText,
   wrongOptionProblems,
@@ -303,6 +305,12 @@ describe('rule l: questions that ask by place in a list', () => {
       'What is the third method of sampling?',
       'Which is the 2nd type of survey?',
       'What is the first way to collect data?',
+      'What is the first learning objective regarding human populations?',
+      'What is the second learning objective related to societies?',
+      'What is the third learning objective regarding a community?',
+      'What is the last topic of the lesson?',
+      'Which outcome is listed first?',
+      'What is the second section about?',
     ]) assert.ok(asksByPosition(q), q);
   });
 
@@ -316,5 +324,49 @@ describe('rule l: questions that ask by place in a list', () => {
     assert.deepEqual(rules(cardLeaks(concept)), ['l']);
     assert.ok(CARD_LEAK_RULES.includes('l'));
     assert.deepEqual(rules(cardLeaks({ kind: 'concept', front: 'What does a self-introduction build?', back: 'Confidence.' })), []);
+  });
+});
+
+describe('rule m: a hint tail that repeats the answer', () => {
+  it('finds the answer’s words after "regarding" / "related to"', () => {
+    assert.deepEqual(hintTail('Which purpose is regarding trust?', 'Build relationships and trust.'), ['trust']);
+    assert.deepEqual(hintTail('What is the first aim related to societies?', 'Describe how societies adapt.'), ['societies']);
+    assert.equal(hintTail('What builds trust?', 'Honesty.'), null);
+    assert.equal(hintTail('Which aim is regarding a community?', 'Plan an event.'), null);
+    assert.equal(hintTail('', 'x'), null);
+  });
+  it('makes a concept card break rule m, and is a flashcard rule', () => {
+    const c = { kind: 'concept', front: 'What does a self-introduction do regarding relationships?', back: 'Builds relationships and trust.' };
+    assert.ok(rules(cardLeaks(c)).includes('m'), JSON.stringify(cardLeaks(c)));
+    assert.ok(CARD_LEAK_RULES.includes('m'));
+    assert.ok(!rules(cardLeaks({ kind: 'concept', front: 'What does a self-introduction build?', back: 'Confidence.' })).includes('m'));
+  });
+});
+
+describe('REWORDED: a wrong option that restates the right answer', () => {
+  const right = 'Makes studies easier to replicate';
+  const reworded = 'Makes studies cheaper to replicate';
+  it('is dropped as a second right answer, but only above the threshold', () => {
+    assert.ok(REWORDED < 0.7);
+    assert.ok(rules(wrongOptionProblems(reworded, right, { lengths: false })).includes('f'));
+    assert.deepEqual(rules(wrongOptionProblems('Reduces the sample size needed', right, { lengths: false })), []);
+  });
+  it('leaves two enumerations alone: the same list with one item swapped is a different claim', () => {
+    const list = 'transportation, technology, health, education, and decision-making';
+    assert.deepEqual(rules(wrongOptionProblems('transportation, technology, health, education, and financial systems', list, { lengths: false })), []);
+    assert.deepEqual(rules(falseStatementProblems('transportation, technology, health, education, and financial systems', list, { reworded: true })), []);
+    // a phrase with two commas is not an enumeration
+    assert.ok(rules(wrongOptionProblems('used to promote a product, service, or event', 'used to advertise a product, service, or event', { lengths: false })).includes('f'));
+  });
+  it('leaves Filipino options alone: the stemmer is too coarse for a word-overlap test of meaning', () => {
+    const fil = card(FIL_LESSON, 15);
+    assert.deepEqual(rules(wrongOptionProblems(FIL_LESSON.distractors[15][0], fil.back, { lengths: false })), []);
+  });
+  it('can be switched off for list siblings, whose items share words by design', () => {
+    assert.deepEqual(rules(wrongOptionProblems(reworded, right, { lengths: false, reworded: false })), []);
+  });
+  it('applies to a false Yes/No statement only when asked', () => {
+    assert.deepEqual(rules(falseStatementProblems(reworded, right)), []);
+    assert.deepEqual(rules(falseStatementProblems(reworded, right, { reworded: true })), ['e']);
   });
 });

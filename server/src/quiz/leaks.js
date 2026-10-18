@@ -223,6 +223,12 @@ const plain = (s) => words(s).join(' ');
 export const ANSWER_COVERAGE = 0.8; // share of the answer's content words that, found in the question, give it away
 export const RESTATES = 0.8; // front / back content-word overlap at which a flashcard's back only restates its front
 export const NEAR_DUPLICATE = 0.7; // content-word overlap at which two options say the same thing
+// overlap with the right answer at which a wrong option is the same claim reworded. English only: the Filipino stemmer
+// cuts "nagkaroon" to "roon", so two options in the same sentence frame would share words that are not a claim
+export const REWORDED = 0.36;
+// Two enumerations (4 or more items, so 3 or more commas) share items by design: "transportation, technology, health,
+// education, and decision-making" beside the same list with one item swapped is a different claim, not a reworded one.
+const enumerations = (a, b) => [a, b].every((s) => (String(s).match(/,/g) ?? []).length >= 3);
 export const ECHO_WORDS = 2; // question words only the right option repeats (besides the topic) that point at it
 const LENGTH_RATIO = [0.6, 1.6]; // a wrong option's words / the right one's ...
 const LENGTH_SLACK = 4; // ... or within this many words of it
@@ -244,18 +250,19 @@ export function answerInQuestion(question, answer) {
 // what the item is. Only the unmistakable shapes: "first impression", "first aid" or "the first step of the method"
 // ask about content and are not matched.
 const PLACE = 'first|second|third|fourth|fifth|sixth|last|final';
-const LIST_NOUNS = 'item|bullet|entry|aim|purpose|goal|objective|component|characteristic|feature|benefit|reason|key element|way|method|type|kind|approach|technique|example';
+const LIST_NOUNS = 'item|bullet|entry|aim|purpose|goal|objective|outcome|topic|lesson|section|component|characteristic|feature|benefit|reason|key element|way|method|type|kind|approach|technique|example';
 // "a second way ...", "another third reason": an ordinal after an article asks for the item at that place. "first" is
 // left out here ("a first impression", "a first draft" are ordinary phrases); step and stage are not nouns of this
 // pattern, since a process lesson may teach its order.
 const LATER_PLACE = 'second|third|fourth|fifth|sixth|2nd|3rd|[4-6]th';
-const LATER_NOUNS = 'way|method|type|kind|form|approach|technique|reason|example|benefit|aim|purpose|goal|feature|characteristic|item';
+const LATER_NOUNS = 'way|method|type|kind|form|approach|technique|reason|example|benefit|aim|purpose|goal|objective|outcome|topic|feature|characteristic|item';
 const POSITION_PATTERNS = [
   new RegExp(`\\b(?:a|an|another|one more)\\s+(?:${LATER_PLACE})\\s+(?:${LATER_NOUNS})s?\\b`, 'i'),
   new RegExp(`\\b(?:the|which|what)\\s+(?:2nd|3rd|[4-6]th)\\s+(?:${LIST_NOUNS})s?\\b`, 'i'),
   new RegExp(`\\b(?:listed|mentioned|named|presented|shown|given)\\s+(?:${PLACE})\\b`, 'i'),
   new RegExp(`\\b(?:${PLACE})[- ](?:listed|mentioned|named)\\b`, 'i'),
-  new RegExp(`\\b(?:the|which|what)\\s+(?:${PLACE})\\s+(?:${LIST_NOUNS})s?\\b`, 'i'),
+  // one word may stand between: "the first learning objective", "the third main purpose" (not "the first step")
+  new RegExp(`\\b(?:the|which|what)\\s+(?:${PLACE})\\s+(?:[a-z-]+\\s+)?(?:${LIST_NOUNS})s?\\b`, 'i'),
   new RegExp(`\\b(?:${PLACE})\\s+(?:one\\s+)?(?:in|on)\\s+the\\s+(?:list|slide)\\b`, 'i'),
   /\b(?:item|bullet|entry)\s+(?:no\.?\s*|number\s*|#)?\d+\b/i,
 ];
@@ -289,8 +296,10 @@ export function maskTerm(text, term) {
 
 // What is wrong with one wrong option next to the right answer (rules c and f). `lessonWords`: lessonWords(lesson
 // text), for the off-topic check (skipped without it). `lengths: false` for term names, which differ in length
-// on their own. -> [{ rule, detail }]
-export function wrongOptionProblems(wrong, correct, { lessonWords = null, lengths = true, otherAnswers = [] } = {}) {
+// on their own. `reworded: false` for the other items of a list in the lesson, which share the list's words on purpose;
+// otherwise an option sharing REWORDED of its words with the right answer is the same claim in other words.
+// -> [{ rule, detail }]
+export function wrongOptionProblems(wrong, correct, { lessonWords = null, lengths = true, otherAnswers = [], reworded = true } = {}) {
   const problems = [];
   if (isNegative(wrong) && !isNegative(correct)) problems.push({ rule: 'c', detail: 'tone: a negative or reversed statement next to a positive right answer' });
   if (lengths) {
@@ -303,7 +312,9 @@ export function wrongOptionProblems(wrong, correct, { lessonWords = null, length
   const lw = language(wrong);
   if (lc && lw && lc !== lw) problems.push({ rule: 'f', detail: 'another language' });
   const own = wordStems(wrong);
-  if (jaccard(own, wordStems(correct)) >= NEAR_DUPLICATE) problems.push({ rule: 'f', detail: 'the right answer’s own words: reworded (a second right answer) or reversed' });
+  const overlap = jaccard(own, wordStems(correct));
+  if (overlap >= NEAR_DUPLICATE) problems.push({ rule: 'f', detail: 'the right answer’s own words: reworded (a second right answer) or reversed' });
+  else if (reworded && lc !== 'fil' && lw !== 'fil' && !enumerations(wrong, correct) && overlap >= REWORDED) problems.push({ rule: 'f', detail: 'the right answer’s own words: nearly the same claim reworded (a second right answer)' });
   // another card's answer reads as the answer to that other question, so a student can match it away
   if (otherAnswers.some((a) => jaccard(own, wordStems(a)) >= NEAR_DUPLICATE)) problems.push({ rule: 'f', detail: 'another card’s answer: it answers a different question' });
   if (lessonWords && own.length >= 2 && !own.some((w) => lessonHolds(lessonWords, w))) problems.push({ rule: 'f', detail: 'about nothing in the lesson' });
@@ -350,14 +361,16 @@ export function optionSetProblems(question, correct, wrong, { lessonWords = null
   return problems;
 }
 
-// A false Yes/No statement that is false from its wording alone (rule e). -> [{ rule, detail }]
-export function falseStatementProblems(statement, answer) {
+// A false Yes/No statement that is false from its wording alone (rule e). `reworded: true` (a concept card's own wrong
+// answers, not list items) also refuses one sharing REWORDED of its words with the answer. -> [{ rule, detail }]
+export function falseStatementProblems(statement, answer, { reworded = false } = {}) {
   const problems = [];
   if (isNegative(statement) && !isNegative(answer)) problems.push({ rule: 'e', detail: 'a negative or reversed statement' });
   const la = language(answer);
   const ls = language(statement);
   if (la && ls && la !== ls) problems.push({ rule: 'e', detail: 'another language' });
-  if (jaccard(wordStems(statement), wordStems(answer)) >= NEAR_DUPLICATE) problems.push({ rule: 'e', detail: 'the right answer’s own words: reworded (so it may be true) or reversed' });
+  const threshold = reworded && la !== 'fil' && ls !== 'fil' && !enumerations(statement, answer) ? REWORDED : NEAR_DUPLICATE;
+  if (jaccard(wordStems(statement), wordStems(answer)) >= threshold) problems.push({ rule: 'e', detail: 'the right answer’s own words: reworded (so it may be true) or reversed' });
   return problems;
 }
 
@@ -377,7 +390,7 @@ export function questionLeaks(q, { lessonWords = null } = {}) {
       if (given) problems.push({ rule: 'a', detail: given });
       problems.push(...optionSetProblems(q.question, correct, wrong, { lessonWords }));
     }
-    for (const w of wrong) problems.push(...wrongOptionProblems(w, correct, { lessonWords, lengths: q.kind !== 'term' }).map((p) => ({ ...p, detail: `${p.detail}: "${w}"` })));
+    for (const w of wrong) problems.push(...wrongOptionProblems(w, correct, { lessonWords, lengths: q.kind !== 'term', reworded: q.kind !== 'term' }).map((p) => ({ ...p, detail: `${p.detail}: "${w}"` })));
     return problems;
   }
   const truth = q.answer_index === 0;
@@ -395,8 +408,19 @@ export function questionLeaks(q, { lessonWords = null } = {}) {
   return problems;
 }
 
+// Rule m: a question that ends in a hint tail, "…help researchers do regarding decisions?", where a word of the tail
+// is a word of the answer ("Make informed decisions"). The tail only points at the answer: the question should ask
+// by the item's meaning. -> the shared words, or null.
+const HINT_TAIL = /\b(?:regarding|related to|concerning|in terms of|with regard to|in relation to)\s+(.+?)[?.\s]*$/i;
+export function hintTail(question, answer) {
+  const tail = HINT_TAIL.exec(String(question ?? ''))?.[1];
+  if (!tail) return null;
+  const found = shared(wordStems(tail), wordStems(answer), exact);
+  return found.length ? names(found) : null;
+}
+
 // The rules that make a flashcard give its answer away during flashcard study (h is only reported: see above).
-export const CARD_LEAK_RULES = ['g', 'i', 'j', 'k', 'l'];
+export const CARD_LEAK_RULES = ['g', 'i', 'j', 'k', 'l', 'm'];
 
 // Rules g-k for one flashcard. `others`: the lesson's other cards, for rule j. -> [{ rule, detail }]
 export function cardLeaks(card, others = []) {
@@ -415,6 +439,8 @@ export function cardLeaks(card, others = []) {
     if (/^(?:is|are|does|do|did|can|could|was|were|will|would|should|has|have|had)$/.test(ws[0] ?? '') || /\b(?:o hindi|or not)\b/.test(joined) || yesNoBa)
       problems.push({ rule: 'i', detail: 'a yes/no or either/or question' });
     if (asksByPosition(card.front)) problems.push({ rule: 'l', detail: 'asks by place in the list' });
+    const hint = hintTail(card.front, card.back);
+    if (hint) problems.push({ rule: 'm', detail: `a hint tail repeats the answer (${hint.join(', ')})` });
   }
   const front = wordStems(card.front);
   for (const other of others) {

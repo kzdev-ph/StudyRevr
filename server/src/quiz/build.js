@@ -1,6 +1,7 @@
+import { comparable } from '../pipeline/evidence.js';
 import { termKey } from '../pipeline/terms.js';
 import { answerInQuestion, cardLeaks, falseStatementProblems, lessonWords as lessonWordsOf, maskTerm, optionSetProblems, sharesWord, termInText, wrongOptionProblems } from './leaks.js';
-import { listGroups, sameItem, siblingItems } from './list-items.js';
+import { listGroups, onlyInObjectives, sameItem, sameShape, siblingItems, withoutObjectives } from './list-items.js';
 import { familyIndex, relatedTerms } from './related.js';
 import { describe, optionFlags, reviewFor } from './review-flags.js';
 
@@ -97,6 +98,11 @@ export function quizCandidates(cards, { distractors = new Map(), extraTerms = []
   // checked again after blanking: a definition that still shows its term is neither asked nor used as a false statement
   const stillShows = new Map(termCards.map((c) => [c.id, termInText(c.front, masked.get(c.id))]));
   const groups = listGroups(lessonText);
+  // a card whose quote is only in the learning objectives / outline / agenda slides is never asked (rule o)
+  const fullKey = lessonText ? comparable(lessonText) : '';
+  const bodyKey = lessonText ? comparable(withoutObjectives(lessonText)) : '';
+  const fromObjectives = (c) => Boolean(lessonText) && onlyInObjectives(comparable(c.evidence ?? ''), fullKey, bodyKey);
+  const OBJECTIVE_PROBLEM = { rule: 'o', detail: 'the card comes from the learning objectives, outline or agenda, not from what the lesson teaches' };
 
   return cards.map((card) => {
     const review = reviewFor(reviews, card);
@@ -116,6 +122,7 @@ export function quizCandidates(cards, { distractors = new Map(), extraTerms = []
 
     if (card.kind === 'term') {
       const visible = stillShows.get(card.id);
+      if (fromObjectives(card)) return { card, shown: shown(card), mcWrong: [], mcClean: [], falsePool: [], falseClean: [], reviewable: [], mcCode: [], excluded, problems: [OBJECTIVE_PROBLEM] };
       // a definition that is only its own term is "___" once blanked: nothing to ask
       if (!hasText(shown(card))) return { card, shown: shown(card), mcWrong: [], mcClean: [], falsePool: [], falseClean: [], reviewable: [], mcCode: [], excluded, problems: [{ rule: 'd', detail: 'the definition is only the term, blank once the term is hidden' }] };
       if (visible) return { card, shown: shown(card), mcWrong: [], mcClean: [], falsePool: [], falseClean: [], reviewable: [], mcCode: [], excluded, problems: [{ rule: 'd', detail: `the term still shows after blanking (${visible.join(', ')})` }] };
@@ -142,43 +149,46 @@ export function quizCandidates(cards, { distractors = new Map(), extraTerms = []
       const reviewable = [...new Set([...mcWrong, ...falseCode])];
       if (reviewProblems.length) return { card, shown: shown(card), mcWrong, mcClean: [], falsePool, falseClean: [], reviewable, mcCode: mcWrong, excluded, problems: reviewProblems };
       const mcClean = setFlagged ? [] : mcWrong.filter(passesReview);
-      const falseClean = trueFlagged ? [] : falseCode.filter(passesReview);
+      // a definition that had to be blanked is never asked as Yes/No: the gap would be the only mark of the true one
+      const falseClean = trueFlagged || blanked(card) ? [] : falseCode.filter(passesReview);
       return { card, shown: shown(card), mcWrong, mcClean, falsePool, falseClean, reviewable, mcCode: mcWrong, excluded, problems: [] };
     }
 
     const problems = [];
     const given = answerInQuestion(card.front, card.back);
     if (given) problems.push({ rule: 'a', detail: given });
-    problems.push(...cardLeaks(card).filter((p) => p.rule === 'k' || p.rule === 'l'));
+    problems.push(...cardLeaks(card).filter((p) => p.rule === 'k' || p.rule === 'l' || p.rule === 'm'));
+    if (fromObjectives(card)) problems.push(OBJECTIVE_PROBLEM);
 
     // a list item's wrong options are the other items of its list (list-items.js), not saved AI ones; those items are
     // other cards' answers too, which is accepted here as for term cards (they don't answer this question)
     const siblings = siblingItems(groups, card.back);
     const saved = siblings ? usableWrong(siblings, card.back, Infinity) : usableWrong(distractors.get(card.id), card.back);
     const otherAnswers = conceptCards.filter((c) => c.id !== card.id && !(siblings && siblings.some((s) => sameItem(s, c.back)))).map((c) => c.back);
-    const savedClean = saved.filter((w) => !wrongOptionProblems(w, card.back, { lessonWords, otherAnswers }).length);
+    const savedClean = saved.filter((w) => !wrongOptionProblems(w, card.back, { lessonWords, otherAnswers, reworded: !siblings }).length);
     const reviewedClean = savedClean.filter(passesReview);
     // with more than 3 siblings: the first 3 that make a set where the right answer doesn't stand out
     const set = pickSet(card, reviewedClean, lessonWords);
     problems.push(...set.problems, ...reviewProblems);
     const mcClean = !given && !setFlagged && !problems.length && set.wrong.length >= WRONG_PER_QUESTION ? set.wrong : [];
 
-    // without saved wrong answers, other concept answers on the same subject; one about something else is plainly "No"
+    // without saved wrong answers, other concept answers on the same subject; one about something else is plainly "No".
+    // Only a card's own saved wrong answers are tested for being its answer reworded: another card's answer is another claim
     const others = usableWrong(
-      conceptCards.filter((c) => c.id !== card.id).map((c) => c.back),
+      conceptCards.filter((c) => c.id !== card.id && !fromObjectives(c)).map((c) => c.back),
       card.back,
       Infinity,
-    );
+    ).filter((s) => sameShape(card.back, s));
     const falsePool = saved.length ? saved : others;
     const onTopic = (s) => sharesWord(s, card.front);
-    const plausible = (s) => !falseStatementProblems(s, card.back).length;
-    const cardOk = !problems.some((p) => p.rule === 'a' || p.rule === 'k');
+    const plausible = (s) => !falseStatementProblems(s, card.back, { reworded: !siblings && saved.length > 0 }).length;
+    const cardOk = !problems.some((p) => p.rule === 'a' || p.rule === 'k' || p.rule === 'm' || p.rule === 'o');
     const savedFalse = saved.filter((s) => plausible(s) && !wrongOptionProblems(s, card.back, { lengths: false, otherAnswers }).some((p) => p.detail.startsWith('another card')));
     const falseCode = !cardOk ? [] : saved.length ? savedFalse : others.filter((s) => plausible(s) && onTopic(s));
     const reviewable = cardOk ? [...new Set([...savedClean, ...falseCode])] : [];
     const flagged = new Set(excluded.map((x) => x.text));
     const falseClean = reviewProblems.length || trueFlagged ? [] : falseCode.filter((s) => (flagged.has(s) ? false : passesReview(s)));
-    return { card, shown: card.back, mcWrong: saved, mcClean, falsePool, falseClean, reviewable, mcCode: cardOk ? savedClean : [], excluded, problems };
+    return { card, shown: card.back, mcWrong: saved, mcClean, falsePool, falseClean, reviewable, mcCode: cardOk ? savedClean : [], excluded, problems, sibling: Boolean(siblings) };
   });
 }
 

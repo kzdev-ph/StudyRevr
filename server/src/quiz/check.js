@@ -10,7 +10,7 @@ import { CARD_LEAK_RULES, cardLeaks, falseStatementProblems, lessonWords as less
 // skips and why (rules a-f). Shared by the admin leak list and `npm run quiz:check`, and built on the quiz builder's
 // own quizCandidates, so the report always matches what a quiz really asks.
 
-const conceptRules = ['a', 'k'];
+const conceptRules = ['a', 'k', 'm', 'o'];
 
 export function lessonLeakReport(db, lessonId) {
   const lesson = db.prepare('SELECT id, title, status, raw_text FROM lessons WHERE id = ?').get(lessonId);
@@ -40,7 +40,7 @@ export function lessonLeakReport(db, lessonId) {
       mc.possible += 1;
       if (p.mcClean.length >= 3) mc.clean += 1;
       else {
-        const options = p.mcWrong.flatMap((w) => wrongOptionProblems(w, card.back, { lessonWords, otherAnswers }).map((x) => ({ ...x, detail: `${x.detail}: "${w}"` })));
+        const options = p.mcWrong.flatMap((w) => wrongOptionProblems(w, card.back, { lessonWords, otherAnswers, reworded: !p.sibling }).map((x) => ({ ...x, detail: `${x.detail}: "${w}"` })));
         mc.skipped.push({ card_id: card.id, question: card.front, answer: card.back, wrong: p.mcWrong, reasons: [...p.problems, ...options, ...p.excluded.map(excludedReason)] });
       }
     }
@@ -56,7 +56,7 @@ export function lessonLeakReport(db, lessonId) {
       const reasons = [
         ...cardProblems,
         ...(named ? [{ rule: 'e', detail: `the statement holds the asked term (${named.join(', ')})` }] : []),
-        ...falseStatementProblems(statement, p.shown),
+        ...falseStatementProblems(statement, p.shown, { reworded: card.kind !== 'term' && !p.sibling && p.mcWrong.length > 0 }),
         ...p.excluded.filter((x) => x.text === statement || (x.text === null && x.detail.startsWith('Yes/No'))).map(excludedReason),
         ...p.problems.filter((x) => x.rule === 'ai'),
       ];

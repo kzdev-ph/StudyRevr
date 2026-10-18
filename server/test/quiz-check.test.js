@@ -48,10 +48,10 @@ describe('npm run quiz:check', () => {
     assert.equal(code, 0);
     assert.match(out, /Lesson \d+: Photosynthesis basics \(ready\)/);
     assert.match(out, /Lesson \d+: Pag-unlad ng Wika \(ready\)/);
-    assert.equal(out.match(/Clean questions available: 6 of 10/g).length, 2);
+    assert.equal(out.match(/Clean questions available: 5 of 10/g).length, 2);
     assert.match(out, /Flashcards that give their answer away \(g, i, j, k\): 1 {2}\[g 1\]/, 'English: card 7 (g)');
     assert.match(out, /Info: term definitions that name their term \(h; the quiz blanks it\): #\d+/, 'English: card 3 (h), information only');
-    assert.match(out, /Multiple choice: 4 possible, 2 clean, 2 skipped {2}\[c 2\]/, 'English: cards 5 (tone) and 6 (length)');
+    assert.match(out, /Multiple choice: 4 possible, 2 clean, 2 skipped {2}\[c 2, f 1\]/, 'English: cards 5 (tone; one option also restates the answer) and 6 (length)');
     assert.match(out, /Term definitions shown with the term blanked \(d\)/);
     assert.match(out, /#\d+ "Why do leaves look green\?" .*tone/);
   });
@@ -76,7 +76,7 @@ describe('npm run quiz:check', () => {
     db.close();
     const { code, out } = quizCheck(['--db', dbPath]);
     assert.equal(code, 0);
-    assert.equal(out.match(/Clean questions available: 6 of 10/g).length, 2);
+    assert.equal(out.match(/Clean questions available: 5 of 10/g).length, 2);
   });
 
   it('explains bad arguments, a missing file and an unknown lesson', () => {
@@ -97,6 +97,6 @@ describe('npm run quiz:check', () => {
       child.on('close', (code) => resolve({ code, text }));
     });
     assert.equal(out.code, 0);
-    assert.match(out.text, /Clean questions available: 6 of 10/);
+    assert.match(out.text, /Clean questions available: 5 of 10/);
   });
 });

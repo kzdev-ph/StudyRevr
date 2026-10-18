@@ -4,6 +4,7 @@ import { mapLimit } from '../ai/pool.js';
 import { flashcardsPrompt } from '../ai/prompts.js';
 import { cardLeaks, wordStems } from '../quiz/leaks.js';
 import { checkEvidence, comparable } from './evidence.js';
+import { isObjectiveBlock, onlyInObjectives, withoutObjectives } from '../quiz/list-items.js';
 import { singular } from './terms.js';
 
 // Flashcards for one lesson: "term -> definition" cards made straight from the (already grounded) key terms, plus
@@ -35,6 +36,7 @@ export function listItems(lessonText) {
   const items = [];
   const seen = new Set();
   for (const block of String(lessonText ?? '').split(/\n{2,}/)) {
+    if (isObjectiveBlock(block)) continue; // objectives / outline / agenda say what the lesson will cover, not what it teaches
     for (const line of block.split('\n')) {
       if (line.trim() === NOTES_LABEL) break;
       const text = LIST_ITEM.exec(line.trim())?.[1]?.trim();
@@ -48,6 +50,8 @@ export function listItems(lessonText) {
   }
   return items;
 }
+
+const OBJECTIVE_ONLY = 'its quote is only in the learning objectives / outline, not in what the lesson teaches';
 
 const COVERED = 0.6; // share of an item's content words a card must hold to count as asking about it
 
@@ -76,12 +80,13 @@ export function shortDefinition(definition) {
 }
 
 // Key terms -> term cards. The term's evidence is checked again against the whole lesson (`sourceKey`).
-export function termCards(keyTerms, { sourceKey, onDrop = () => {} }) {
+export function termCards(keyTerms, { sourceKey, bodyKey = null, onDrop = () => {} }) {
   const cards = [];
   for (const t of keyTerms) {
     const back = shortDefinition(t.definition);
     const check = checkEvidence({ term: t.term, evidence: t.evidence, sourceKey });
     if (!check.ok) onDrop({ front: t.term, reason: check.reason });
+    else if (bodyKey && onlyInObjectives(comparable(check.evidence), sourceKey, bodyKey)) onDrop({ front: t.term, reason: OBJECTIVE_ONLY });
     else if (wordList(back).length > MAX_ANSWER_WORDS) onDrop({ front: t.term, reason: 'answer too long to recall' });
     else cards.push({ kind: 'term', front: t.term, back, evidence: check.evidence });
   }
@@ -167,7 +172,7 @@ function reviewFor(chunk, sections, single) {
 }
 
 // The first of rules g, i, k (gives its answer away) and l (asks by place in the list) a concept card breaks, or undefined.
-const givesAnswerAway = (card) => cardLeaks({ kind: 'concept', ...card }).find((p) => ['g', 'i', 'k', 'l'].includes(p.rule));
+const givesAnswerAway = (card) => cardLeaks({ kind: 'concept', ...card }).find((p) => ['g', 'i', 'k', 'l', 'm'].includes(p.rule));
 
 const partLabel = (i, n) => `the flashcards${n > 1 ? ` (part ${i + 1} of ${n})` : ''}`;
 
@@ -199,7 +204,7 @@ export async function generateConceptCards({ ai, chunks, sections = [], keyTerms
       maxTokens: Math.min(8000, 600 + targetCards * 160),
       label: partLabel(i, chunks.length),
     });
-    const cards = checkConceptCards(out.cards, comparable(chunk.text), onDrop);
+    const cards = checkConceptCards(out.cards, comparable(chunk.text), onDrop, comparable(withoutObjectives(chunk.text)));
     if (!ctx.stopped()) onProgress({ done: ++done, total: chunks.length });
     return cards;
   });
@@ -208,7 +213,7 @@ export async function generateConceptCards({ ai, chunks, sections = [], keyTerms
 
 // An AI reply's cards through the length, leak and evidence checks (evidence against `sourceKey`, the comparable text
 // the call was given). A list item's quote may be short ("Builds confidence."), so 2 explaining words are enough.
-function checkConceptCards(replyCards, sourceKey, onDrop) {
+function checkConceptCards(replyCards, sourceKey, onDrop, bodyKey = null) {
   const cards = [];
   for (const c of replyCards) {
     const reject = (reason) => onDrop({ front: c.question, reason });
@@ -218,8 +223,9 @@ function checkConceptCards(replyCards, sourceKey, onDrop) {
     else if (leak) reject(leak.rule === 'l' ? `${leak.detail} (l)` : `gives its answer away (${leak.rule}: ${leak.detail})`);
     else {
       const check = checkEvidence({ term: c.question, evidence: c.evidence, sourceKey, minExplaining: 2 });
-      if (check.ok) cards.push({ kind: 'concept', front: c.question, back: c.answer, evidence: check.evidence });
-      else reject(check.reason);
+      if (!check.ok) reject(check.reason);
+      else if (bodyKey && onlyInObjectives(comparable(check.evidence), sourceKey, bodyKey)) reject(OBJECTIVE_ONLY);
+      else cards.push({ kind: 'concept', front: c.question, back: c.answer, evidence: check.evidence });
     }
   }
   return cards;
@@ -266,7 +272,7 @@ export async function coverItems({ ai, items, lessonText, keyTerms = [], onDrop 
     maxTokens: Math.min(8000, 600 + items.length * 160),
     label: 'the flashcards for list items without a card',
   });
-  return checkConceptCards(out.cards, comparable(lessonText), onDrop);
+  return checkConceptCards(out.cards, comparable(lessonText), onDrop, comparable(withoutObjectives(lessonText)));
 }
 
 // Spreads the term cards evenly through the concept cards (both lists keep their order), so new cards come in a mix.
@@ -287,7 +293,7 @@ export function interleave(terms, concepts) {
 // work. After the per-chunk calls, list items no card asks about get ONE more call (coverItems).
 export async function generateFlashcards({ ai, chunks, lessonText, keyTerms = [], sections = [], wordCount, maxCards = 30, concurrency = 1, onProgress = () => {}, onDrop = () => {} }) {
   const items = listItems(lessonText);
-  const terms = termCards(keyTerms, { sourceKey: comparable(lessonText), onDrop });
+  const terms = termCards(keyTerms, { sourceKey: comparable(lessonText), bodyKey: comparable(withoutObjectives(lessonText)), onDrop });
   const target = targetCardCount(wordCount, maxCards, { terms: terms.length, items: items.length });
   const termShare = Math.min(terms.length, Math.max(Math.ceil(target / 2), target - items.length));
   const termNames = terms.map((t) => t.front);
