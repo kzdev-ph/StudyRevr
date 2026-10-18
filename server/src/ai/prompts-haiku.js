@@ -47,7 +47,7 @@ const QUOTE_RULE = `
 // #751 #753 #754 #756: "What does a survey method's response rate ask?" — a lesson line written as a question
 // ("Response rate — How likely are participants to respond?") was turned into "what does X ask".
 const NO_ASK = `
-- Every question is a clear, complete question a student can answer without guessing what is meant. Never "What does X ask?", "What does X ask researchers to check?" or any question where a thing, not a person, does the asking. When the lesson writes an item as a question ("Response time — How fast does the service reply?"), give the question in your words and ask which item it is, naming where it belongs: "When choosing a delivery service, which consideration is about how fast the service replies?" -> "Response time". Never "what does response time look at?" (a thing does the looking), and never "which consideration is about response time?" answered with its description.`;
+- Every question is a clear, complete question a student can answer without guessing what is meant. Never "What does X ask?", "What does X ask researchers to check?" or any question where a thing, not a person, does the asking. When the lesson writes an item as a question ("Response time — How fast does the service reply?"), keep the description as the answer and let a person do the asking, naming where it belongs: "When choosing a delivery service, what do customers ask about response time?" -> "How fast the service replies". Never "what does response time look at?" (a thing does the looking), and never "which consideration is about response time?" answered with its description.`;
 
 const sections = (s) => {
   let t = after(
