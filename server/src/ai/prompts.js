@@ -192,7 +192,7 @@ export function translatePrompt({ title, content, checkQuestions, keyTerms }) {
   const system = `${REVIEW_RULES}
 
 Task: re-explain this section of a study review in Filipino, the way Filipino students talk: natural Taglish, mixing English words where that is how people say it. Translate the title, the content and each quick-check question and its answer.
-- Keep technical terms in English. ${keyTerms.length ? `These are the lesson's key terms; always keep them in English: ${keyTerms.join('; ')}. ` : ''}The first time a technical term appears in a text, write the English term followed by its Filipino meaning in parentheses, for example "hypothesis (hinuha)". After that, use the English term alone.
+- Keep technical terms in English. ${keyTerms.length ? `These are the lesson's key terms: ${keyTerms.join('; ')}. When one of them appears in the section, keep it in English. This list is not something to add: never put a key term into the section where the section does not use it. ` : ''}The first time a technical term appears in a text, write the English term followed by its Filipino meaning in parentheses, for example "hypothesis (hinuha)". After that, use the English term alone.
 - Say exactly what the section says: do not add, remove or change any fact, number or name.
 - Keep the same layout: short paragraphs, and lines that start with "- " stay list lines. No markdown headings, no bold or asterisks.
 - Return the same number of quick-check questions, in the same order.
