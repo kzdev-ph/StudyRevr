@@ -155,7 +155,8 @@ describe('lesson visibility', () => {
         assert.equal(JSON.stringify(quiz.body).includes('Private upload'), sees, `quiz list as ${who}`);
       }
       const none = await t.call('GET', '/api/lessons', as.none);
-      assert.equal(none.body.lessons.some((l) => l.id === c.lesson), false, 'GET /lessons with no headers');
+      assert.equal(none.status, 401, 'GET /lessons with no headers');
+      assert.equal(none.body.error.code, 'participant_required');
     });
 
     it("the All lessons deck never offers another student's private card", async () => {
@@ -229,10 +230,13 @@ describe('lesson visibility', () => {
       assert.equal(res.body.error.code, 'lesson_shared');
     });
 
-    it('someone with no code can read it from the list and by id', async () => {
-      const list = await t.call('GET', '/api/lessons', as.none);
+    it('another student can read it from the list and by id; someone with no code reads nothing', async () => {
+      const list = await t.call('GET', '/api/lessons', as.other);
       assert.ok(list.body.lessons.some((l) => l.id === c.lesson));
-      assert.equal((await t.call('GET', `/api/lessons/${c.lesson}`, as.none)).status, 200);
+      assert.equal((await t.call('GET', `/api/lessons/${c.lesson}`, as.other)).status, 200);
+      for (const path of ['/api/lessons', `/api/lessons/${c.lesson}`, `/api/lessons/${c.lesson}/status`]) {
+        assert.equal((await t.call('GET', path, as.none)).status, 401, `${path} with no code`);
+      }
     });
   });
 

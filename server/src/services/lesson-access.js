@@ -17,10 +17,16 @@ export const UPLOAD_FAILED_MESSAGE = 'The AI couldn’t prepare this lesson righ
 export const CARDS_FAILED_MESSAGE = 'The AI couldn’t make the cards right now. Your teacher can try again.';
 export const PREPARE_FAILED_MESSAGE = 'Preparing the simpler and Taglish versions didn’t finish.';
 
-// `message` as the caller may read it: a student's own upload that failed for a reason other than its file is the plain
-// line; admin and the file's own problems (kind 'content') keep the real text. `row` needs origin and error_kind.
-export const safeError = (message, row, viewer) =>
-  message && !viewer.admin && row?.origin === 'student' && row.error_kind !== 'content' ? UPLOAD_FAILED_MESSAGE : message;
+// The same for a teacher's lesson that failed (students can't retry it)
+export const LESSON_FAILED_MESSAGE = 'This lesson couldn’t be prepared. Your teacher can try again.';
+
+// `message` as the caller may read it: for a student, a lesson (their own upload or the teacher's) that failed for a
+// reason other than its file is the plain line; admin and the file's own problems (kind 'content') keep the real text.
+// `row` needs origin and error_kind.
+export const safeError = (message, row, viewer) => {
+  if (!message || viewer.admin || row?.error_kind === 'content') return message;
+  return row?.origin === 'student' ? UPLOAD_FAILED_MESSAGE : LESSON_FAILED_MESSAGE;
+};
 
 // SQL condition for lessons visible to `viewer` ({ admin, participant }), written over the table alias `alias`. The
 // participant id is a number from our own table, so it is written in as a literal.

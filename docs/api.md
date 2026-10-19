@@ -6,6 +6,7 @@ Moved verbatim from CLAUDE.md (full original: docs/CLAUDE-full.md). CLAUDE.md ke
 - `POST /api/lessons` upload + start job
 - `GET /api/lessons` / `GET /api/lessons/:id` / `DELETE /api/lessons/:id` (all filtered by visibility, see Student uploads; a student may delete only their own unstudied private upload)
 - `GET /api/lessons/:id/status`
+- `GET /api/lessons`, `/api/lessons/:id` and `/api/lessons/:id/status` need `X-Participant` unless the PIN is sent (401 `participant_required`). A failed lesson's error, for a student, is a plain line unless it is about the file (`error_kind` `content`): `UPLOAD_FAILED_MESSAGE` for uploads, `LESSON_FAILED_MESSAGE` for the teacher's (`safeError`, `services/lesson-access.js`).
 - `POST /api/sections/:id/simplify` / `POST /api/sections/:id/translate`
 - `PUT /api/lessons/:id/review-progress`
 - `GET /api/lessons/:id/flashcards/due` / `POST /api/flashcards/:id/review`

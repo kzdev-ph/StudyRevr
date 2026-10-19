@@ -1,6 +1,7 @@
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeCode, parseCodeList } from '../src/participants/codes.js';
+import { LESSON_FAILED_MESSAGE } from '../src/services/lesson-access.js';
 import { addCodes, seedLesson, startStudyApp, TEST_PIN } from './helpers.js';
 
 const NOON = '2026-10-05T04:00:00.000Z'; // 12:00 Monday in Manila
@@ -139,6 +140,37 @@ describe('participants API', () => {
     assert.equal(t.db.prepare('SELECT COUNT(*) n FROM events WHERE participant_id = (SELECT id FROM participants WHERE code = ?)').get('P02').n, 0);
   });
 
+  it('after 5 unknown codes from one address, the code check waits a minute (like the admin PIN)', async () => {
+    t = await startStudyApp({ now: NOON });
+    addCodes(t.db, 'P01');
+    for (let i = 1; i <= 5; i++) assert.equal((await t.call('GET', `/api/participants/P${90 + i}`)).status, 404, `guess ${i}`);
+    const locked = await t.call('GET', '/api/participants/P01');
+    assert.equal(locked.status, 429, 'locked: even a right code waits');
+    assert.equal(locked.body.error.code, 'participant_locked');
+    t.now = '2026-10-05T04:01:01.000Z';
+    assert.equal((await t.call('GET', '/api/participants/P01')).status, 200, 'a minute later it works');
+    // a right code clears the count
+    for (let i = 1; i <= 4; i++) await t.call('GET', `/api/participants/P${90 + i}`);
+    assert.equal((await t.call('GET', '/api/participants/P01')).status, 200);
+    assert.equal((await t.call('GET', '/api/participants/P99')).status, 404, 'the count started again');
+  });
+
+  it("a teacher's lesson that failed shows students a plain line, never the provider's message", async () => {
+    t = await startStudyApp({ now: NOON });
+    addCodes(t.db, 'P01');
+    const { lessonId } = seedLesson(t.db);
+    const secret = 'Google said: quota exceeded for project 1234';
+    t.db.prepare("UPDATE lessons SET status = 'failed', error = ?, error_kind = 'other' WHERE id = ?").run(secret, lessonId);
+    const list = await t.call('GET', '/api/lessons', { as: 'P01' });
+    assert.equal(list.body.lessons.find((l) => l.id === lessonId).error, LESSON_FAILED_MESSAGE);
+    assert.equal((await t.call('GET', `/api/lessons/${lessonId}`, { as: 'P01' })).body.lesson.error, LESSON_FAILED_MESSAGE);
+    assert.equal((await t.call('GET', `/api/lessons/${lessonId}/status`, { as: 'P01' })).body.lesson.error, LESSON_FAILED_MESSAGE);
+    assert.equal((await t.call('GET', `/api/lessons/${lessonId}`, { as: 'P00', pin: TEST_PIN })).body.lesson.error, secret, 'admin sees the real message');
+    // a problem with the file itself is still shown
+    t.db.prepare("UPDATE lessons SET error = 'This file has no text.', error_kind = 'content' WHERE id = ?").run(lessonId);
+    assert.equal((await t.call('GET', `/api/lessons/${lessonId}/status`, { as: 'P01' })).body.lesson.error, 'This file has no text.');
+  });
+
   it('review progress is per participant', async () => {
     t = await startStudyApp({ now: NOON });
     addCodes(t.db, 'P01', 'P02');
@@ -146,6 +178,6 @@ describe('participants API', () => {
     await t.call('PUT', `/api/lessons/${lessonId}/review-progress`, { as: 'P01', body: { last_section: 1, completed_sections: [0] } });
     assert.equal((await t.call('GET', `/api/lessons/${lessonId}`, { as: 'P01' })).body.review_progress.last_section, 1);
     assert.equal((await t.call('GET', `/api/lessons/${lessonId}`, { as: 'P02' })).body.review_progress, null);
-    assert.equal((await t.call('GET', `/api/lessons/${lessonId}`)).body.review_progress, null);
+    assert.equal((await t.call('GET', `/api/lessons/${lessonId}`)).status, 401, 'no code: no lesson');
   });
 });

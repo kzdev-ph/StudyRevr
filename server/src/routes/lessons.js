@@ -115,6 +115,13 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin, { ac
     return row ? { ...row, completed_sections: JSON.parse(row.completed_sections) } : null;
   };
 
+  // The caller of a lesson read: admin (with the PIN), or else a listed participant (401 without X-Participant).
+  const readerOf = (req) => {
+    const viewer = access.viewerOf(req);
+    if (!viewer.admin && !viewer.participant) requireParticipant(db, req);
+    return viewer;
+  };
+
   const lessonRow = (id) => db.prepare('SELECT id, title, status, origin, owner_participant_id, shared_at, error_kind FROM lessons WHERE id = ?').get(id);
   const parseId = (req) => {
     const parsed = idParam.safeParse(req.params);
@@ -253,14 +260,14 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin, { ac
   };
   // ?counts=1 (admin's list) goes through the PIN check, lockout included
   router.get('/', (req, res, next) => {
-    if (req.query.counts !== '1') return listLessons(res, false, access.viewerOf(req));
+    if (req.query.counts !== '1') return listLessons(res, false, readerOf(req));
     return requireAdmin(req, res, (err) => (err ? next(err) : listLessons(res, true, { admin: true, participant: null })));
   });
 
   // review_progress is the participant's own, or null when no participant is sent (the admin's lesson list). A student's
   // private upload is a 404 to every other student.
   router.get('/:id', (req, res) => {
-    const viewer = access.viewerOf(req);
+    const viewer = readerOf(req);
     const row = access.visibleLesson(viewer, parseId(req), `l.*, ${OWNER_CODE}`);
     const { source_kind, source_numbers, source_total, raw_text: rawText, ...rest } = row;
     const lesson = { ...shape({ ...rest, raw_text: rawText }, viewer) };
@@ -317,7 +324,7 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin, { ac
   });
 
   router.get('/:id/status', (req, res) => {
-    const viewer = access.viewerOf(req);
+    const viewer = readerOf(req);
     const id = parseId(req);
     access.visibleLesson(viewer, id);
     const status = getJobStatus(db, id);

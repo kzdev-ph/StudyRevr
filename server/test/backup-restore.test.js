@@ -151,7 +151,8 @@ describe('backup and restore', () => {
     const db = openDb(live);
     const app = await startApp(db);
     try {
-      const { lessons } = await (await fetch(`${app.base}/api/lessons`)).json();
+      addCodes(db, 'P02'); // a student who isn't the owner: lesson reads need a code
+      const { lessons } = await (await fetch(`${app.base}/api/lessons`, { headers: { 'x-participant': 'P02' } })).json();
       assert.deepEqual(lessons.map((l) => l.title).sort(), ['Backed up lesson', 'Shared upload'], 'the private upload is still private after a restore');
       // the uploads came back with their origin, owner and sharing, and P01 still sees their own
       const rows = db.prepare('SELECT l.title, l.origin, p.code AS owner, l.shared_at FROM lessons l LEFT JOIN participants p ON p.id = l.owner_participant_id ORDER BY l.title').all();
