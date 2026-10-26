@@ -136,6 +136,14 @@
   gap: 8px 12px;
   padding: 0 0 12px;
 }
+/* student: "Flashcards" and "Mock quiz" under a ready lesson, each at least 44px tall and wide */
+.lesson__study {
+  gap: 4px 24px;
+  padding: 0 0 8px;
+}
+.lesson__study .link-btn {
+  min-width: 44px;
+}
 .lesson__extra-text {
   flex: 1 1 14rem;
   display: flex;

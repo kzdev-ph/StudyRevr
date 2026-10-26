@@ -332,7 +332,7 @@ describe('prompts', () => {
     assert.match(system, /domain-specific concepts/);
     assert.match(system, /plain examples or list items/);
     assert.match(system, /evaluative or descriptive phrases[^]*wide reach/);
-    assert.match(system, /say what the term IS[^]*Never just list examples/);
+    assert.match(system, /says what the term IS[^]*Never just list examples/);
     assert.match(system, /only names or titles a term[^]*never define a term from your own knowledge/);
     assert.match(system, /\(at most 12\)/);
     assert.match(system, /"evidence": one sentence or phrase copied EXACTLY[^]*never use a title or heading/);

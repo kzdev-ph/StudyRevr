@@ -77,8 +77,8 @@ Plain words that a Grade 11 student understands at once. Add nothing the review 
 const keyTerms = (s) => {
   let t = swap(
     s,
-    '- "definition": 1 or 2 plain sentences that say what the term IS (its meaning, what it does or how it works), using only what the lesson says.',
-    `- "definition": 1 or 2 plain sentences that say what the term IS (its meaning, what it does or how it works), using only what the lesson says. Start with what the lesson says about this term itself ("Collects samples once to describe the present state of a lake."), never with a category phrase ("A type of study that…", "A method that…"): the category fits the lesson's other terms too. The definition must fit this term only, so a student can tell it apart from every other term of the lesson.`,
+    '- "definition": one short plain sentence (at most 20 words) that says what the term IS (its meaning, what it does or how it works), using only what the lesson says.',
+    `- "definition": one short plain sentence (at most 20 words) that says what the term IS (its meaning, what it does or how it works), using only what the lesson says. Start with what the lesson says about this term itself ("Collects samples once to describe the present state of a lake."), never with a category phrase ("A type of study that…", "A method that…"): the category fits the lesson's other terms too. The definition must fit this term only, so a student can tell it apart from every other term of the lesson.`,
   );
   t = after(
     t,

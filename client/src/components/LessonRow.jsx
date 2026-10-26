@@ -169,6 +169,16 @@ export default function LessonRow({ lesson, admin = false, onDelete, onDeleteOwn
           <TrashIcon size={20} />
         </button>
       )}
+      {!admin && lesson.status === 'ready' && (
+        <nav className="lesson__extra lesson__study" aria-label={`Study ${prettyTitle(lesson.title)}`}>
+          <a className="link-btn" href={paths.study(lesson.id)}>
+            Flashcards
+          </a>
+          <a className="link-btn" href={paths.quiz(lesson.id)}>
+            Mock quiz
+          </a>
+        </nav>
+      )}
       {(failedMine || failedAdmin) && (
         <div className="lesson__extra lesson__extra--note" aria-live="polite">
           <p className="lesson__extra-text">{lesson.error ?? 'Something went wrong while preparing this lesson.'}</p>

@@ -42,6 +42,8 @@ export function applyTheme(choice = read()) {
 
 export const getThemeChoice = read;
 
+const listeners = new Set();
+
 export function setThemeChoice(choice) {
   try {
     window.localStorage.setItem(KEY, choice);
@@ -49,4 +51,29 @@ export function setThemeChoice(choice) {
     // storage blocked: the choice still applies for this visit
   }
   applyTheme(choice);
+  listeners.forEach((fn) => fn());
+}
+
+const darkQuery = () => (typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null);
+
+// What is on screen right now: light, dark, ama or ama-dark ("Match my device" resolves by the system).
+export function shownTheme() {
+  const choice = read();
+  if (choice !== 'system') return choice;
+  return darkQuery()?.matches ? 'dark' : 'light';
+}
+
+// The header's one-tap switch: the other of the light/dark pair, keeping the AMA colours if they are on.
+const FLIP = { light: 'dark', dark: 'light', ama: 'ama-dark', 'ama-dark': 'ama' };
+export const flippedTheme = () => FLIP[shownTheme()];
+
+// For useSyncExternalStore: re-render when the choice changes (here or in Settings) or the device's scheme does.
+export function subscribeTheme(fn) {
+  listeners.add(fn);
+  const mq = darkQuery();
+  mq?.addEventListener?.('change', fn);
+  return () => {
+    listeners.delete(fn);
+    mq?.removeEventListener?.('change', fn);
+  };
 }

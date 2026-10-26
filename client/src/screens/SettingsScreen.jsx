@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import MyAiSettings from '../components/MyAiSettings.jsx';
 import { api } from '../lib/api.js';
 import { getMotionChoice, setMotionChoice } from '../lib/motion.js';
 import { switchParticipant, useParticipant } from '../lib/participant.js';
-import { getThemeChoice, setThemeChoice } from '../lib/theme.js';
+import { getThemeChoice, setThemeChoice, subscribeTheme } from '../lib/theme.js';
 
 const CHOICES = [
   { id: 'system', label: 'Match my device' },
@@ -20,13 +20,12 @@ const MOTION = [
 ];
 
 export default function SettingsScreen() {
-  const [theme, setTheme] = useState(getThemeChoice);
+  const theme = useSyncExternalStore(subscribeTheme, getThemeChoice, () => 'ama'); // also moves when the header switch is tapped
   const [motion, setMotion] = useState(getMotionChoice);
   const participant = useParticipant();
   const choose = (id) => {
     if (id === theme) return;
     setThemeChoice(id);
-    setTheme(id);
     api.logSettingEvent('theme', id);
   };
 
