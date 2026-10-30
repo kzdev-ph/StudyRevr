@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import AdminAccounts from '../components/AdminAccounts.jsx';
 import AdminAiSettings from '../components/AdminAiSettings.jsx';
 import AdminBackup from '../components/AdminBackup.jsx';
 import AdminPin from '../components/AdminPin.jsx';
@@ -10,7 +11,7 @@ import { useFocusWhen } from '../hooks/useFocusWhen.js';
 import { lockAdmin, useAdminPin } from '../lib/admin.js';
 import { api } from '../lib/api.js';
 import { pct } from '../lib/stats.js';
-import { useParticipant } from '../lib/participant.js';
+import { useSignedIn } from '../lib/auth.js';
 import { paths } from '../lib/router.js';
 
 const POLL_MS = 3000;
@@ -153,13 +154,10 @@ function LessonsSection() {
   );
 }
 
-// Participant codes and the per-participant summary (the full columns are in summary.csv).
+// The per-participant summary (the full columns are in summary.csv).
 function ParticipantsSection() {
   const [data, setData] = useState(null);
-  const [codes, setCodes] = useState('');
-  const [message, setMessage] = useState(null);
   const [problem, setProblem] = useState(null);
-  const [adding, setAdding] = useState(false);
 
   const load = useCallback(async (signal) => {
     try {
@@ -174,54 +172,13 @@ function ParticipantsSection() {
     return () => controller.abort();
   }, [load]);
 
-  const add = async (event) => {
-    event.preventDefault();
-    setAdding(true);
-    setProblem(null);
-    setMessage(null);
-    try {
-      const { added, existing } = await api.addParticipants(codes);
-      const parts = [];
-      if (added.length) parts.push(`Added ${added.join(', ')}.`);
-      if (existing.length) parts.push(`Already on the list: ${existing.join(', ')}.`);
-      setMessage(parts.join(' '));
-      setCodes('');
-      await load();
-    } catch (err) {
-      setProblem(err.message);
-    } finally {
-      setAdding(false);
-    }
-  };
-
   return (
     <section className="admin-section" aria-labelledby="admin-participants">
       <h2 id="admin-participants" className="admin-section__title">
-        Participants
+        Study summary
       </h2>
-      <form className="admin-add" onSubmit={add}>
-        <label className="field">
-          <span className="field__label">Add participants</span>
-          <input
-            className="field__input"
-            value={codes}
-            onChange={(e) => setCodes(e.target.value)}
-            placeholder="P01-P10, P12"
-            autoComplete="off"
-            autoCapitalize="characters"
-            spellCheck={false}
-            aria-describedby="admin-add-note"
-          />
-        </label>
-        <button type="submit" className="btn btn--primary" disabled={adding || !codes.trim()}>
-          {adding ? 'Adding…' : 'Add'}
-        </button>
-      </form>
-      <p id="admin-add-note" className="muted">
-        One or more codes, or a range. Students can only use codes on this list. To withdraw someone, run npm run participant:delete -- P07 on the host.
-      </p>
-      <p aria-live="polite" className="muted">
-        {message}
+      <p className="muted">
+        Each account has a study ID (P01…); students never see it. To withdraw someone: npm run participant:delete -- &lt;email or study ID&gt;.
       </p>
       {problem && <Notice onDismiss={() => setProblem(null)}>{problem}</Notice>}
       {data && (
@@ -324,9 +281,9 @@ function ExportSection() {
 // The researcher's area, behind the admin PIN (checked by the server on every request).
 export default function AdminScreen() {
   const pin = useAdminPin();
-  const participant = useParticipant();
+  const signedIn = useSignedIn();
   const heading = useFocusWhen(Boolean(pin)); // after the PIN is accepted the form is gone; focus moves to the page
-  const back = participant ? (
+  const back = signedIn ? (
     <a className="back" href={paths.tab('settings')}>
       <ChevronLeft size={18} /> Settings
     </a>
@@ -359,6 +316,7 @@ export default function AdminScreen() {
         </button>
       </div>
       <LessonsSection />
+      <AdminAccounts />
       <ParticipantsSection />
       <ExportSection />
       <AdminAiSettings />

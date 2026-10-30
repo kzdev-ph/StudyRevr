@@ -7,7 +7,10 @@ import { studyDate } from '../stats/days.js';
 // stores what it is told, with two checks: active time never shrinks, and never exceeds the time since the start.
 
 export const ACTIVITIES = ['reading', 'flashcards', 'quiz'];
-export const END_REASONS = ['left', 'idle', 'background', 'switched'];
+// What the app may send as an end reason ('switched' stays in the column's CHECK for old rows only).
+export const END_REASONS = ['left', 'idle', 'background', 'signed_out'];
+// Only the server ends a session for these (another device signed in, or the admin signed the student out).
+export const SERVER_END_REASONS = ['signed_out_elsewhere', 'signed_out_by_admin'];
 // A session the app stopped reporting (tab killed, phone off) counts as ended at its last report after this long.
 export const STALE_MS = 5 * 60_000;
 
@@ -17,6 +20,11 @@ export function getSession(db, id, participantId) {
   const row = db.prepare(`SELECT ${COLUMNS} FROM study_sessions WHERE id = ?`).get(id);
   if (!row || row.participant_id !== participantId) throw new HttpError(404, 'Study session not found.');
   return row;
+}
+
+// What a student is sent: the row without participant_id (it would give away the P-code). Server code keeps the full row.
+export function publicSession({ participant_id: _owner, ...session }) {
+  return session;
 }
 
 export function startSession(db, { participantId, lessonId = null, activity, now, config }) {
@@ -57,6 +65,15 @@ export function updateSession(db, { id, participantId, activeMs, endReason = nul
     );
     return getSession(db, id, participantId);
   })();
+}
+
+// Closes a participant's open sessions at their last report, for a sign-out the app could not report itself. Sessions
+// older than STALE_MS stay open and keep reading as 'unclosed'.
+export function endOpenSessions(db, { participantId, reason, now }) {
+  const cutoff = new Date(now.getTime() - STALE_MS).toISOString();
+  return db
+    .prepare('UPDATE study_sessions SET ended_at = last_active_at, end_reason = ? WHERE participant_id = ? AND ended_at IS NULL AND last_active_at >= ?')
+    .run(reason, participantId, cutoff).changes;
 }
 
 // How a session reads in stats and the export: open and still reporting, closed, or 'unclosed' (no report for

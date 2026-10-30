@@ -8,9 +8,10 @@ import { toCsv } from './csv.js';
 import { CODEBOOK } from './codebook.js';
 import { EXPORT_TITLE } from './titles.js';
 
-// The research export: one CSV per kind of record plus a per-participant summary. Rows carry participant codes only
-// (no names exist anywhere). Only study tables are read: never `settings`, so no API key or PIN can end up in a
-// file. P00 (the researcher's test data) is left out unless includeP00.
+// The research export: one CSV per kind of record plus a per-participant summary. Rows carry study IDs only
+// (P01, P02, ...). The database holds each student's email and a password hash for signing in; the export never includes
+// them (`accounts` and `auth_sessions` are never read). Only study tables are read: never `settings`, so no API key or
+// PIN can end up in a file. P00 (the researcher's test data) is left out unless includeP00.
 
 const RATING = { 1: 'again', 2: 'hard', 3: 'good', 4: 'easy' };
 const STATE = { 0: 'new', 1: 'learning', 2: 'review', 3: 'relearning' };

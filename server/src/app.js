@@ -6,11 +6,12 @@ import { errorHandler, notFound } from './middleware/errors.js';
 import { createAiClient, describeAttempt } from './ai/client.js';
 import { createPipelineRunner } from './pipeline/runner.js';
 import { adminRouter } from './routes/admin.js';
+import { adminAccountsRouter } from './routes/admin-accounts.js';
+import { authRouter } from './routes/auth.js';
 import { flashcardsRouter } from './routes/flashcards.js';
 import { lessonsRouter } from './routes/lessons.js';
 import { myAiRouter } from './routes/my-ai.js';
 import { myUploadsRouter } from './routes/my-uploads.js';
-import { participantsRouter } from './routes/participants.js';
 import { quizRouter } from './routes/quiz.js';
 import { sectionsRouter } from './routes/sections.js';
 import { sessionsRouter } from './routes/sessions.js';
@@ -39,6 +40,7 @@ export function createApp(db, config, { ai, runner, clock = () => new Date(), ra
   });
 
   const app = express();
+  app.set('clock', clock); // read by middleware/participant.js for last-seen updates
   app.disable('x-powered-by');
   app.use(express.json({ limit: '1mb' }));
 
@@ -58,7 +60,8 @@ export function createApp(db, config, { ai, runner, clock = () => new Date(), ra
 
   app.get('/api/health', (_req, res) => res.json({ ok: true, admin: Boolean(config.adminPin) }));
   mount('/api/admin', adminRouter({ db, ai, runner, clock, requireAdmin }));
-  mount('/api', participantsRouter({ db, clock: () => clock().getTime() }));
+  mount('/api/admin', adminAccountsRouter({ db, clock, requireAdmin }));
+  mount('/api', authRouter({ db, clock }));
   mount('/api', sessionsRouter({ db, clock, access }));
   mount('/api', statsRouter({ db, clock }));
   mount('/api', flashcardsRouter({ db, runner, clock, requireAdmin, access }));

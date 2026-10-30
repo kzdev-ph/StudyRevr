@@ -1,5 +1,5 @@
 import { getAdminPin, lockAdmin } from './admin.js';
-import { getParticipant, setParticipant } from './participant.js';
+import { getToken, markMustChange, signedOutByServer } from './auth.js';
 
 export class ApiError extends Error {
   constructor(message, status = 0, code = null) {
@@ -11,35 +11,38 @@ export class ApiError extends Error {
 
 const UNREACHABLE = "Can't reach the StudyRevr server. Make sure it is running, then try again.";
 
-// Every request says which participant is studying (X-Participant). Only admin calls (`admin: true`) carry the PIN, so
-// a student using a tab where admin was unlocked is still just a student: no private uploads, no owner codes, no
-// teacher uploads. `as` sends a given participant code instead of the current one (a session's last report after
-// Switch participant).
-function headersFor(body, { admin = false, as = null } = {}) {
+// Every student request says who is studying with the login token (Authorization: Bearer). Only admin calls
+// (`admin: true`) carry the PIN, and they carry no token: a student using a tab where admin was unlocked is still just
+// a student: no private uploads, no owner codes, no teacher uploads. `as` sends a given token instead of the current
+// one (a study session's last report, sent while signing out).
+function headersFor(body, { admin = false, token = null } = {}) {
   const headers = {};
   if (body !== undefined) headers['content-type'] = 'application/json';
-  const code = as ?? getParticipant();
-  if (code) headers['x-participant'] = code;
+  if (token) headers.authorization = `Bearer ${token}`;
   const pin = admin ? getAdminPin() : null;
   if (pin) headers['x-admin-pin'] = pin;
   return headers;
 }
 
-// What the server's 401s mean for the app: an unknown or missing code goes back to the code screen; a refused PIN
-// locks admin again.
-function onRefused(code) {
-  if (code === 'participant_unknown' || code === 'participant_required') setParticipant(null);
+// What the server's 401s and 403s mean for the app: a login that is unknown, ended or missing goes back to sign-in
+// (with the reason); a temporary password has to be replaced first; a refused PIN locks admin again. `token`: the one
+// the refused request carried.
+const SIGNED_OUT = ['auth_required', 'session_unknown', 'signed_out_elsewhere', 'signed_out_by_admin', 'password_reset'];
+function onRefused(code, token) {
+  if (SIGNED_OUT.includes(code)) signedOutByServer(code, token);
+  if (code === 'password_change_required') markMustChange();
   if (code === 'admin_pin') lockAdmin();
 }
 
 async function request(path, { method = 'GET', body, form, signal, admin = false, keepalive = false, as = null } = {}) {
+  const token = admin ? null : as ?? getToken();
   let res;
   try {
     res = await fetch(`/api${path}`, {
       method,
       signal,
       keepalive,
-      headers: headersFor(form ? undefined : body, { admin, as }),
+      headers: headersFor(form ? undefined : body, { admin, token }),
       body: form ?? (body === undefined ? undefined : JSON.stringify(body)),
     });
   } catch (err) {
@@ -52,7 +55,7 @@ async function request(path, { method = 'GET', body, form, signal, admin = false
     const message = data?.error?.message;
     // The dev proxy answers 500/502/503/504 with no JSON body when the Express server is down.
     if (!message && res.status >= 500) throw new ApiError(UNREACHABLE, res.status);
-    if (res.status === 401 && !as) onRefused(data?.error?.code);
+    if (!as && (res.status === 401 || res.status === 403)) onRefused(data?.error?.code, token);
     throw new ApiError(message ?? `The server answered with an error (${res.status}).`, res.status, data?.error?.code ?? null);
   }
   return data;
@@ -69,7 +72,7 @@ async function download(path, filename) {
   }
   if (!res.ok) {
     const data = await res.json().catch(() => null);
-    if (res.status === 401) onRefused(data?.error?.code);
+    if (res.status === 401) onRefused(data?.error?.code, null);
     throw new ApiError(data?.error?.message ?? `The server answered with an error (${res.status}).`, res.status);
   }
   const name = filename ?? /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? 'download';
@@ -132,9 +135,17 @@ export const api = {
     request(`/quiz/attempts/${attemptId}/answers`, { method: 'POST', body: { position, choice, time_ms: timeMs } }),
   finishQuiz: (attemptId, totalMs) => request(`/quiz/attempts/${attemptId}/finish`, { method: 'POST', body: { total_ms: totalMs } }),
 
-  // participants, sessions, events, stats
-  checkParticipant: (code) => request(`/participants/${encodeURIComponent(code)}`),
-  // `as`: the participant the session belongs to, so its last report still goes out under that code after a switch
+  // accounts: { email, password } -> { token, account }; login can say `takeover: true` after a 409 active_elsewhere
+  signup: ({ email, password }) => request('/auth/signup', { method: 'POST', body: { email, password } }),
+  login: ({ email, password, takeover }) => request('/auth/login', { method: 'POST', body: { email, password, ...(takeover ? { takeover: true } : {}) } }),
+  logout: () => request('/auth/logout', { method: 'POST' }),
+  // who is signed in, and the presence ping: { account }
+  me: (signal) => request('/auth/me', { signal }),
+  // { current, next } -> { token, account } (the old token no longer works)
+  changePassword: ({ current, next }) => request('/auth/password', { method: 'POST', body: { current, next } }),
+
+  // sessions, events, stats
+  // `as`: the token the session belongs to, so its last report still goes out under it while signing out
   startSession: (lessonId, activity, as) => request('/sessions', { method: 'POST', body: { lesson_id: lessonId, activity }, keepalive: true, as }),
   // { active_ms, end_reason?, ended_ago_ms? }
   reportSession: (id, report, as) => quietly(request(`/sessions/${id}`, { method: 'POST', body: report, keepalive: true, as })),
@@ -163,7 +174,11 @@ export const api = {
       },
     ),
   adminParticipants: (signal) => request('/admin/participants', { signal, admin: true }),
-  addParticipants: (codes) => request('/admin/participants', { method: 'POST', body: { codes }, admin: true }),
+  // accounts: the list (email, study ID, status), a temporary password -> { temporary_password }, sign out everywhere, P00's test login
+  adminAccounts: (signal) => request('/admin/accounts', { signal, admin: true }),
+  resetPassword: (code) => request(`/admin/accounts/${encodeURIComponent(code)}/reset-password`, { method: 'POST', body: {}, admin: true }),
+  signOutAccount: (code) => request(`/admin/accounts/${encodeURIComponent(code)}/sign-out`, { method: 'POST', body: {}, admin: true }),
+  setTestLogin: (email, password) => request('/admin/accounts/test-login', { method: 'PUT', body: { email, password }, admin: true }),
   adminStats: (code, signal) => request(`/admin/participants/${encodeURIComponent(code)}/stats`, { signal, admin: true }),
   // admin settings: new cards per day, the student-key switch, and the AI provider (the app's Default)
   appSettings: (signal) => request('/settings', { signal, admin: true }),

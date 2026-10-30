@@ -2,7 +2,7 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeCode, parseCodeList } from '../src/participants/codes.js';
 import { LESSON_FAILED_MESSAGE } from '../src/services/lesson-access.js';
-import { addCodes, seedLesson, startStudyApp, TEST_PIN } from './helpers.js';
+import { addCodes, liveRoutes, seedLesson, startStudyApp, TEST_PIN } from './helpers.js';
 
 const NOON = '2026-10-05T04:00:00.000Z'; // 12:00 Monday in Manila
 
@@ -27,36 +27,57 @@ describe('participants API', () => {
   let t;
   afterEach(() => t?.close());
 
-  it('only admin can add codes; a student cannot create one', async () => {
+  it('there is no public way to list or create codes, and the admin add-codes route is gone', async () => {
     t = await startStudyApp({ now: NOON });
-    // there is no public way to list or create codes
     assert.equal((await t.call('GET', '/api/participants')).status, 404);
     assert.equal((await t.call('POST', '/api/participants', { body: { code: 'P01' } })).status, 404);
-    assert.equal((await t.call('POST', '/api/admin/participants', { body: { codes: 'P01' } })).status, 401);
-    assert.equal((await t.call('POST', '/api/admin/participants', { pin: 'wrong', body: { codes: 'P01' } })).status, 401);
+    assert.equal((await t.call('POST', '/api/admin/participants', { pin: TEST_PIN, body: { codes: 'P01' } })).status, 404);
     // using an unknown code on a study route doesn't create it either
     await t.call('GET', '/api/flashcards/decks', { as: 'P01' });
     assert.equal(t.db.prepare("SELECT COUNT(*) n FROM participants WHERE code = 'P01'").get().n, 0);
-
-    const added = await t.call('POST', '/api/admin/participants', { pin: TEST_PIN, body: { codes: 'P01-P03, p2' } });
-    assert.equal(added.status, 201);
-    assert.deepEqual(added.body, { added: ['P01', 'P02', 'P03'], existing: [] });
-    const again = await t.call('POST', '/api/admin/participants', { pin: TEST_PIN, body: { codes: 'P03 P04' } });
-    assert.deepEqual(again.body, { added: ['P04'], existing: ['P03'] });
-    assert.equal((await t.call('POST', '/api/admin/participants', { pin: TEST_PIN, body: { codes: 'Maria' } })).status, 400);
   });
 
-  it('the code check accepts listed codes and rejects unknown ones', async () => {
+  it('a valid token works on a study route', async () => {
     t = await startStudyApp({ now: NOON });
     addCodes(t.db, 'P01');
-    assert.deepEqual((await t.call('GET', '/api/participants/p1')).body, { participant: { code: 'P01' } });
-    const unknown = await t.call('GET', '/api/participants/P02');
-    assert.equal(unknown.status, 404);
-    assert.equal(unknown.body.error.message, "That code isn't on the list. Check with your teacher.");
-    assert.equal((await t.call('GET', '/api/participants/hello')).status, 400);
+    const res = await t.call('GET', '/api/stats', { as: 'P01' });
+    assert.equal(res.status, 200);
+    assert.equal('participant' in res.body, false, 'a student never gets their study ID back');
+    assert.equal((await t.call('GET', '/api/participants/P01')).status, 404, 'the code-check route is gone');
   });
 
-  it('every study route needs a listed code', async () => {
+  it('X-Participant alone is 401 auth_required on every study route', async () => {
+    t = await startStudyApp({ now: NOON });
+    addCodes(t.db, 'P01');
+    const { lessonId, cards } = seedLesson(t.db);
+    const routes = [
+      ['GET', '/api/flashcards/decks'],
+      ['GET', '/api/flashcards/due'],
+      ['GET', `/api/lessons/${lessonId}/flashcards/due`],
+      ['POST', `/api/flashcards/${cards[0]}/review`, { rating: 3 }],
+      ['GET', '/api/quiz'],
+      ['POST', `/api/lessons/${lessonId}/quiz/attempts`, {}],
+      ['GET', `/api/lessons/${lessonId}/review-progress`],
+      ['GET', '/api/lessons'],
+      ['GET', `/api/lessons/${lessonId}`],
+      ['POST', '/api/sessions', { lesson_id: lessonId, activity: 'reading' }],
+      ['POST', '/api/events', { type: 'stats_view' }],
+      ['GET', '/api/stats'],
+      ['GET', '/api/my-ai'],
+    ];
+    for (const [method, path, body] of routes) {
+      const res = await globalThis.fetch(`${t.base}${path}`, {
+        method,
+        headers: { 'x-participant': 'P01', ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      assert.equal(res.status, 401, `${method} ${path} with only X-Participant`);
+      assert.equal((await res.json()).error.code, 'auth_required');
+    }
+    assert.equal(t.db.prepare('SELECT COUNT(*) n FROM study_sessions').get().n, 0);
+  });
+
+  it('every study route needs a signed-in account', async () => {
     t = await startStudyApp({ now: NOON });
     const { lessonId, cards } = seedLesson(t.db);
     const routes = [
@@ -78,11 +99,45 @@ describe('participants API', () => {
     ];
     for (const [method, path, body] of routes) {
       const none = await t.call(method, path, { body });
-      assert.equal(none.status, 401, `${method} ${path} without a code`);
-      assert.equal(none.body.error.code, 'participant_required');
+      assert.equal(none.status, 401, `${method} ${path} without a token`);
+      assert.equal(none.body.error.code, 'auth_required');
       const unknown = await t.call(method, path, { as: 'P42', body });
-      assert.equal(unknown.status, 401, `${method} ${path} with an unknown code`);
-      assert.equal(unknown.body.error.code, 'participant_unknown');
+      assert.equal(unknown.status, 401, `${method} ${path} with an unknown token`);
+      assert.equal(unknown.body.error.code, 'session_unknown');
+    }
+  });
+
+  // Walks the routes Express really serves, so a route added later is covered without anyone listing it here.
+  it('every live route except health, signup, login and the PIN-guarded ones refuses a request with no sign-in', async () => {
+    t = await startStudyApp({ now: NOON });
+    addCodes(t.db, 'P01');
+    const { lessonId } = seedLesson(t.db); // a lesson that exists, so a route can't answer 404 before it asks who is calling
+    const { routes } = liveRoutes(t.app);
+    const open = new Set(['GET /api/health', 'POST /api/auth/signup', 'POST /api/auth/login']);
+    const guarded = (full) => ['/api/admin', '/api/settings'].some((p) => full === p || full.startsWith(`${p}/`));
+    // lesson routes behind the admin PIN instead of a sign-in: still refused, but with admin_pin
+    const pinRoutes = new Set(['POST /api/lessons/:id/flashcards/generate', 'POST /api/lessons/:id/quiz-options', 'POST /api/lessons/:id/section-versions', 'POST /api/lessons/:id/share']);
+    const studyRoutes = routes.map((r) => r.split(' ')).filter(([method, full]) => !open.has(`${method} ${full}`) && !guarded(full));
+    assert.ok(studyRoutes.length >= 15, `only ${studyRoutes.length} study routes found`);
+    for (const [method, full] of studyRoutes) {
+      const path = full.replace(/:\w+/g, String(lessonId));
+      const send = async (headers) => {
+        const res = await globalThis.fetch(`${t.base}${path}`, {
+          method: method === 'ALL' ? 'GET' : method,
+          headers: { 'content-type': 'application/json', ...headers },
+          body: ['GET', 'HEAD', 'DELETE'].includes(method) ? undefined : '{}',
+        });
+        return { status: res.status, code: (await res.json().catch(() => null))?.error?.code };
+      };
+      for (const [label, headers, code] of [
+        ['no auth', {}, 'auth_required'],
+        ['only X-Participant', { 'x-participant': 'P01' }, 'auth_required'],
+        ['an unknown Bearer token', { authorization: 'Bearer no-such-token' }, 'session_unknown'],
+      ]) {
+        const expected = pinRoutes.has(`${method} ${full}`) ? 'admin_pin' : code;
+        const res = await send(headers);
+        assert.deepEqual([res.status, res.code], [401, expected], `${method} ${path} with ${label}`);
+      }
     }
   });
 
@@ -140,21 +195,6 @@ describe('participants API', () => {
     assert.equal(t.db.prepare('SELECT COUNT(*) n FROM events WHERE participant_id = (SELECT id FROM participants WHERE code = ?)').get('P02').n, 0);
   });
 
-  it('after 5 unknown codes from one address, the code check waits a minute (like the admin PIN)', async () => {
-    t = await startStudyApp({ now: NOON });
-    addCodes(t.db, 'P01');
-    for (let i = 1; i <= 5; i++) assert.equal((await t.call('GET', `/api/participants/P${90 + i}`)).status, 404, `guess ${i}`);
-    const locked = await t.call('GET', '/api/participants/P01');
-    assert.equal(locked.status, 429, 'locked: even a right code waits');
-    assert.equal(locked.body.error.code, 'participant_locked');
-    t.now = '2026-10-05T04:01:01.000Z';
-    assert.equal((await t.call('GET', '/api/participants/P01')).status, 200, 'a minute later it works');
-    // a right code clears the count
-    for (let i = 1; i <= 4; i++) await t.call('GET', `/api/participants/P${90 + i}`);
-    assert.equal((await t.call('GET', '/api/participants/P01')).status, 200);
-    assert.equal((await t.call('GET', '/api/participants/P99')).status, 404, 'the count started again');
-  });
-
   it("a teacher's lesson that failed shows students a plain line, never the provider's message", async () => {
     t = await startStudyApp({ now: NOON });
     addCodes(t.db, 'P01');
@@ -178,6 +218,6 @@ describe('participants API', () => {
     await t.call('PUT', `/api/lessons/${lessonId}/review-progress`, { as: 'P01', body: { last_section: 1, completed_sections: [0] } });
     assert.equal((await t.call('GET', `/api/lessons/${lessonId}`, { as: 'P01' })).body.review_progress.last_section, 1);
     assert.equal((await t.call('GET', `/api/lessons/${lessonId}`, { as: 'P02' })).body.review_progress, null);
-    assert.equal((await t.call('GET', `/api/lessons/${lessonId}`)).status, 401, 'no code: no lesson');
+    assert.equal((await t.call('GET', `/api/lessons/${lessonId}`)).status, 401, 'no token: no lesson');
   });
 });

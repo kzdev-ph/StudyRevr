@@ -6,7 +6,8 @@ import Database from 'better-sqlite3';
 
 // "Download backup" (admin) and `npm run restore`. A backup is a copy of the whole SQLite database made with SQLite's
 // online backup API (safe while the app runs), with every secret removed: the admin's saved API keys
-// (settings ai_api_key:*) and the students' own keys (participant_ai_keys). The admin PIN lives only in .env and is
+// (settings ai_api_key:*) and the students' own keys (participant_ai_keys), and every sign-in session (auth_sessions).
+// Accounts are kept, so a backup still holds each student's email and password hash: it is identifying data. The admin PIN lives only in .env and is
 // never in the database. After deleting, the copy is rewritten (secure_delete + VACUUM) so the keys can't be read back
 // from free pages, and it is left as one self-contained file (no -wal).
 
@@ -31,6 +32,10 @@ export function stripSecrets(file) {
     copy.prepare(`DELETE FROM settings WHERE ${SECRET_SETTINGS}`).run();
     const hasKeys = copy.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'participant_ai_keys'").get();
     if (hasKeys) copy.prepare('DELETE FROM participant_ai_keys').run();
+    // Sign-in sessions go too, so an old token can't open an account after a restore. `accounts` stay, so a restore
+    // keeps the students' logins: that makes a backup identifying data (emails linked to study IDs, password hashes).
+    const hasSessions = copy.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'auth_sessions'").get();
+    if (hasSessions) copy.prepare('DELETE FROM auth_sessions').run();
     copy.exec('VACUUM');
   } finally {
     copy.close();

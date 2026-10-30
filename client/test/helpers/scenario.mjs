@@ -13,10 +13,10 @@ const { act } = React;
 const { createRoot } = await import('react-dom/client');
 const { default: StudyScreen } = await import('../../src/screens/StudyScreen.jsx');
 const { default: QuizRunScreen } = await import('../../src/screens/QuizRunScreen.jsx');
-const { setParticipant } = await import('../../src/lib/participant.js');
+const { setToken } = await import('../../src/lib/auth.js');
 const { setMotionChoice, motionReduced } = await import('../../src/lib/motion.js');
 
-setParticipant('P01');
+setToken('t');
 const motion = process.env.MOTION ?? 'system';
 setMotionChoice(motion);
 const mode = process.env.MODE ?? 'natural';

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createAiClient } from '../src/ai/client.js';
+import { createAuthSession, tokenHash } from '../src/auth/sessions.js';
 
 // Shared by the AI tests. Nothing here touches the network: every "provider" is a scripted fetch.
 export const KEY = 'AIza-SECRET-KEY-123';
@@ -55,10 +56,49 @@ export const cleanCheckReview = (user) => ({ sections: [...user.matchAll(/^\[(\d
 export const keepAllCandidates = (user) => ({ terms: [...user.matchAll(/^\[(\d+)\] /gm)].map((m) => ({ id: Number(m[1]) })) });
 
 // Phase 6: the API tests from earlier phases act as participant P00 (made by migration 008) with the admin PIN, so
-// their requests pass the participant and admin checks unchanged. Each such file shadows `fetch` with studyFetch and
-// adds `adminPin: TEST_PIN` to its app config. Tests of the checks themselves use the real fetch.
+// their requests pass the participant and admin checks unchanged. Each such file shadows `fetch` with studyFetch, adds
+// `adminPin: TEST_PIN` to its app config and calls seedTestLogin(db) on the database it gives createApp (that makes the
+// login whose Bearer token is TEST_TOKEN). Tests of the checks themselves use the real fetch.
+// Accounts: `t.call({ as: 'P01' })` signs in with a Bearer token made by tokenFor.
 export const TEST_PIN = 'test-pin-2468';
-export const STUDY_HEADERS = { 'x-participant': 'P00', 'x-admin-pin': TEST_PIN };
+export const TEST_TOKEN = 'test-token-p00';
+export const STUDY_HEADERS = { authorization: `Bearer ${TEST_TOKEN}`, 'x-admin-pin': TEST_PIN };
+
+// A login for participant P00 whose token is TEST_TOKEN (an account, if P00 has none, and its live session).
+export function seedTestLogin(db, now = new Date('2026-10-05T04:00:00.000Z')) {
+  const at = now.toISOString();
+  const participant = db.prepare("SELECT id FROM participants WHERE code = 'P00'").get();
+  let account = db.prepare('SELECT id FROM accounts WHERE participant_id = ?').get(participant.id);
+  account ??= { id: Number(db.prepare("INSERT INTO accounts (participant_id, email, password_hash, created_at) VALUES (?, 'p00@test.invalid', 'test', ?)").run(participant.id, at).lastInsertRowid) };
+  const live = db.prepare('SELECT id FROM auth_sessions WHERE account_id = ? AND revoked_at IS NULL').get(account.id);
+  if (live) db.prepare('UPDATE auth_sessions SET token_hash = ? WHERE id = ?').run(tokenHash(TEST_TOKEN), live.id);
+  else db.prepare('INSERT INTO auth_sessions (account_id, token_hash, created_at, last_seen_at) VALUES (?, ?, ?, ?)').run(account.id, tokenHash(TEST_TOKEN), at, at);
+  return account.id;
+}
+
+// The Bearer token for a participant code, made on first use and kept per database. A code with no participant gets a
+// token that matches nothing.
+const tokens = new WeakMap(); // db -> Map(code -> token)
+export function tokenFor(db, code, now = new Date()) {
+  const key = String(code).trim().toUpperCase();
+  const known = tokens.get(db)?.get(key);
+  // A kept token is only good while its login session is live: after a revoke (sign-out, sign-in elsewhere, admin) a
+  // test acting as this code gets a fresh login, not the dead token.
+  if (known) {
+    const row = db.prepare('SELECT revoked_at FROM auth_sessions WHERE token_hash = ?').get(tokenHash(known));
+    if (row && !row.revoked_at) return known;
+  }
+  const participant = db.prepare('SELECT id FROM participants WHERE code = ?').get(key);
+  if (!participant) return 'no-such-token';
+  let account = db.prepare('SELECT id FROM accounts WHERE participant_id = ?').get(participant.id);
+  account ??= { id: Number(db.prepare("INSERT INTO accounts (participant_id, email, password_hash, created_at) VALUES (?, ?, 'test', ?)").run(participant.id, `${key.toLowerCase()}@test.invalid`, now.toISOString()).lastInsertRowid) };
+  // one live login per account: one made by the route under test (a token we never saw) gives way to the fresh one
+  db.prepare("UPDATE auth_sessions SET revoked_at = ?, revoked_reason = 'signed_out_elsewhere' WHERE account_id = ? AND revoked_at IS NULL").run(now.toISOString(), account.id);
+  const token = createAuthSession(db, account.id, now);
+  if (!tokens.has(db)) tokens.set(db, new Map());
+  tokens.get(db).set(key, token);
+  return token;
+}
 export const studyFetch = (url, init = {}) => globalThis.fetch(url, { ...init, headers: { ...STUDY_HEADERS, ...init.headers } });
 
 // A running app on an in-memory database for the Phase 6 tests, with a settable clock.
@@ -81,7 +121,7 @@ export async function startStudyApp({ now = '2026-10-05T04:00:00.000Z', adminPin
   t.app = app; // for tests that read the live router stack (lesson-access.test.js)
   t.call = async (method, path, { as, pin, body, raw = false } = {}) => {
     const headers = {};
-    if (as) headers['x-participant'] = as;
+    if (as) headers.authorization = `Bearer ${tokenFor(db, as, new Date(t.now))}`;
     if (pin) headers['x-admin-pin'] = pin;
     if (body !== undefined) headers['content-type'] = 'application/json';
     const res = await globalThis.fetch(`${base}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });

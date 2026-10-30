@@ -7,7 +7,7 @@ import { HttpError } from '../middleware/errors.js';
 import { requireParticipant } from '../middleware/participant.js';
 import { taglishShown } from '../services/settings.js';
 import { taglishOff } from './sections.js';
-import { ACTIVITIES, END_REASONS, startSession, updateSession } from '../sessions/store.js';
+import { ACTIVITIES, END_REASONS, publicSession, startSession, updateSession } from '../sessions/store.js';
 
 const id = z.coerce.number().int().positive();
 const startBody = z.object({ lesson_id: id.nullable(), activity: z.enum(ACTIVITIES) });
@@ -29,7 +29,7 @@ const eventBody = z
     message: 'section events need lesson_id and section_index',
   });
 
-// Study sessions and self-monitoring events, both for the participant in X-Participant. Mounted at /api.
+// Study sessions and self-monitoring events, both for the signed-in participant. Mounted at /api.
 export function sessionsRouter({ db, access, clock = () => new Date() }) {
   const router = Router();
   const config = () => loadSchedulerConfig(db);
@@ -40,7 +40,7 @@ export function sessionsRouter({ db, access, clock = () => new Date() }) {
     const body = startBody.safeParse(req.body ?? {});
     if (!body.success) throw new HttpError(400, 'Send lesson_id (a lesson id, or null for All lessons) and activity (reading, flashcards or quiz).');
     if (body.data.lesson_id !== null) access.visibleLesson(viewer, body.data.lesson_id);
-    res.status(201).json({ session: startSession(db, { participantId, lessonId: body.data.lesson_id, activity: body.data.activity, now: clock(), config: config() }) });
+    res.status(201).json({ session: publicSession(startSession(db, { participantId, lessonId: body.data.lesson_id, activity: body.data.activity, now: clock(), config: config() })) });
   });
 
   router.post('/sessions/:id', (req, res) => {
@@ -48,9 +48,9 @@ export function sessionsRouter({ db, access, clock = () => new Date() }) {
     const sessionId = id.safeParse(req.params.id);
     if (!sessionId.success) throw new HttpError(400, 'Session id must be a positive number.');
     const body = updateBody.safeParse(req.body ?? {});
-    if (!body.success) throw new HttpError(400, 'Send active_ms, and to end the session end_reason (left, idle, background or switched).');
+    if (!body.success) throw new HttpError(400, `Send active_ms, and to end the session end_reason (${END_REASONS.slice(0, -1).join(', ')} or ${END_REASONS.at(-1)}).`);
     const { active_ms: activeMs, end_reason: endReason, ended_ago_ms: endedAgoMs } = body.data;
-    res.json({ session: updateSession(db, { id: sessionId.data, participantId, activeMs, endReason, endedAgoMs, now: clock() }) });
+    res.json({ session: publicSession(updateSession(db, { id: sessionId.data, participantId, activeMs, endReason, endedAgoMs, now: clock() })) });
   });
 
   router.post('/events', (req, res) => {

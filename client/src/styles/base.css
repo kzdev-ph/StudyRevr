@@ -180,6 +180,16 @@ button {
   background: var(--danger);
   color: var(--paper);
 }
+/* a destructive button is an outline in every theme: --danger edge and text, filled only on hover, press and keyboard focus */
+.btn--danger.btn--destroy {
+  border: 1px solid var(--danger);
+  background: transparent;
+  color: var(--danger);
+}
+.btn--danger.btn--destroy:not(:disabled):is(:hover, :active, :focus-visible) {
+  background: var(--danger);
+  color: var(--paper);
+}
 /* AMA and AMA Dark: the primary button is maroon, so a destructive one must not look like it: an outline with a trash icon
    and the word (--danger edge and text for admin's delete; ink for a student's own), never a solid fill */
 :root:is([data-theme='ama'], [data-theme='ama-dark']) .btn--destroy {
@@ -202,6 +212,10 @@ button {
   background: currentColor;
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 7h14M9.5 7V5.5c0-.3.2-.5.5-.5h4c.3 0 .5.2.5.5V7M7 7l.8 11.2c0 .5.5.8 1 .8h6.4c.5 0 1-.3 1-.8L17 7'/%3E%3C/svg%3E") center / contain no-repeat;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 7h14M9.5 7V5.5c0-.3.2-.5.5-.5h4c.3 0 .5.2.5.5V7M7 7l.8 11.2c0 .5.5.8 1 .8h6.4c.5 0 1-.3 1-.8L17 7'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+/* a destructive-styled button that deletes nothing (Reset password, Sign out) carries no trash icon: the word says it */
+:root .btn--destroy.btn--plain::before {
+  content: none;
 }
 .btn--ok {
   background: var(--ok-wash);

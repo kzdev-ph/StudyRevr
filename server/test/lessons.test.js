@@ -6,7 +6,7 @@ import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { createApp } from '../src/app.js';
 import { reflowPdfPages, stripRepeatedLines } from '../src/services/pdf.js';
 import { openDb, runMigrations } from '../src/db/index.js';
-import { studyFetch, TEST_PIN } from './helpers.js';
+import { seedTestLogin, studyFetch, TEST_PIN } from './helpers.js';
 
 const fetch = studyFetch; // as participant P00, with the admin PIN (see helpers.js)
 
@@ -103,6 +103,7 @@ describe('lessons API', () => {
   before(async () => {
     db = openDb(':memory:');
     runMigrations(db);
+    seedTestLogin(db);
     const app = createApp(db, { maxUploadBytes: MAX_UPLOAD, adminPin: TEST_PIN }, { runner: { enqueue() {} } });
     await new Promise((resolve) => {
       server = app.listen(0, '127.0.0.1', resolve);

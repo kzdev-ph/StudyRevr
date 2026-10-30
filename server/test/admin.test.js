@@ -6,7 +6,10 @@ import { addCodes, seedLesson, startStudyApp, TEST_PIN } from './helpers.js';
 const adminRoutes = (lessonId) => [
   ['POST', '/api/admin/unlock'],
   ['GET', '/api/admin/participants'],
-  ['POST', '/api/admin/participants', { codes: 'P05' }],
+  ['GET', '/api/admin/accounts'],
+  ['POST', '/api/admin/accounts/P01/reset-password', {}],
+  ['POST', '/api/admin/accounts/P01/sign-out', {}],
+  ['PUT', '/api/admin/accounts/test-login', { email: 'me@example.com', password: 'a long password' }],
   ['GET', '/api/admin/participants/P01/stats'],
   ['GET', '/api/admin/export.zip'],
   ['GET', '/api/admin/export/summary.csv'],
@@ -38,9 +41,9 @@ describe('admin PIN', () => {
         assert.equal(res.body.error.code, 'admin_pin');
       }
     }
-    // nothing changed: the lesson is still there, no code was added, no setting saved
+    // nothing changed: the lesson is still there, no admin action logged, no setting saved
     assert.equal(t.db.prepare('SELECT COUNT(*) n FROM lessons').get().n, 1);
-    assert.equal(t.db.prepare("SELECT COUNT(*) n FROM participants WHERE code = 'P05'").get().n, 0);
+    assert.equal(t.db.prepare('SELECT COUNT(*) n FROM admin_events').get().n, 0);
     assert.equal(t.db.prepare("SELECT COUNT(*) n FROM settings WHERE key = 'ai_provider'").get().n, 0);
   });
 

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { getAdminPin, lockAdmin, setAdminPin } from '../src/lib/admin.js';
 import { api } from '../src/lib/api.js';
-import { getParticipant, setParticipant, switchParticipant } from '../src/lib/participant.js';
+import { getToken, setToken, signOut, takeSignedOutNotice } from '../src/lib/auth.js';
 
 // The admin PIN is sent only by calls made for admin. A student on a tab where admin was unlocked must still be just a
 // student: no private uploads of others, no owner codes, no teacher uploads. Every `api` function is listed here, so a
@@ -11,7 +11,7 @@ import { getParticipant, setParticipant, switchParticipant } from '../src/lib/pa
 // always admin: they send the PIN
 const ADMIN = [
   'listLessonsWithCounts', 'shareLesson', 'makeQuizOptions', 'reviewQuiz', 'lessonLeaks', 'regenerateCard', 'prepareVersions', 'makeFlashcards',
-  'adminParticipants', 'addParticipants', 'adminStats', 'appSettings', 'saveAppSettings', 'aiSettings', 'saveAiSettings', 'aiModels',
+  'adminParticipants', 'adminAccounts', 'resetPassword', 'signOutAccount', 'setTestLogin', 'adminStats', 'appSettings', 'saveAppSettings', 'aiSettings', 'saveAiSettings', 'aiModels',
   'testAi', 'aiProblems', 'deleteStudentKeys', 'downloadBackup', 'lastBackup', 'downloadExport',
 ];
 // admin only when called with { admin: true } (the student's own use of the same route sends none)
@@ -19,7 +19,7 @@ const EITHER = ['getLesson', 'uploadLesson', 'retryLesson', 'deleteLesson'];
 // student calls: never the PIN
 const STUDENT = [
   'listLessons', 'getStatus', 'myUploads', 'simplifySection', 'translateSection', 'saveProgress', 'listDecks', 'getDue', 'answerCard',
-  'undoAnswer', 'listQuizzes', 'startQuiz', 'answerQuestion', 'finishQuiz', 'checkParticipant', 'startSession', 'reportSession', 'logEvent',
+  'undoAnswer', 'listQuizzes', 'startQuiz', 'answerQuestion', 'finishQuiz', 'signup', 'login', 'logout', 'me', 'changePassword', 'startSession', 'reportSession', 'logEvent',
   'logSettingEvent', 'getStats', 'myAi', 'myAiModels', 'saveMyKey', 'removeMyKey',
 ];
 // sends the PIN it is given (to check it), not the stored one
@@ -30,7 +30,7 @@ let seen;
 
 beforeEach(() => {
   seen = [];
-  setParticipant('P01');
+  setToken('t1');
   setAdminPin('1234');
   globalThis.fetch = async (url, init = {}) => {
     seen.push({ url: String(url), headers: init.headers ?? {} });
@@ -40,7 +40,8 @@ beforeEach(() => {
 afterEach(() => {
   globalThis.fetch = realFetch;
   lockAdmin();
-  setParticipant(null);
+  setToken(null);
+  takeSignedOutNotice();
 });
 
 // downloads give up after the request (there is no page to save a file into); the headers are already recorded
@@ -64,7 +65,8 @@ describe('the admin PIN header', () => {
     for (const name of STUDENT) {
       const headers = await call(name, ...args(name));
       assert.equal(headers['x-admin-pin'], undefined, name);
-      assert.equal(headers['x-participant'], 'P01', `${name} still says who is studying`);
+      assert.equal(headers.authorization, 'Bearer t1', `${name} still says who is studying`);
+      assert.equal(headers['x-participant'], undefined, name);
     }
   });
   it('is sent by the shared routes only when the call is for admin', async () => {
@@ -75,11 +77,17 @@ describe('the admin PIN header', () => {
       assert.equal((await call(name, ...forAdmin))['x-admin-pin'], '1234', `${name} for admin`);
     }
   });
+  it('is sent with no login token', async () => {
+    for (const name of ADMIN) assert.equal((await call(name, ...args(name))).authorization, undefined, name);
+    const forAdmin = await call('getLesson', 7, undefined, { admin: true });
+    assert.equal(forAdmin.authorization, undefined);
+    assert.equal(forAdmin['x-participant'], undefined);
+  });
   it('is not stored with the student: a student request after unlocking carries none', async () => {
     assert.equal(getAdminPin(), '1234');
     const headers = await call('listLessons');
     assert.equal(headers['x-admin-pin'], undefined);
-    assert.equal(headers['x-participant'], 'P01');
+    assert.equal(headers.authorization, 'Bearer t1');
   });
   it('classifies every api function', () => {
     const listed = [...ADMIN, ...EITHER, ...STUDENT, ...OWN_PIN].sort();
@@ -88,18 +96,51 @@ describe('the admin PIN header', () => {
   });
 });
 
-describe('Switch participant', () => {
-  it('locks admin again and forgets the code', () => {
+describe('Sign out', () => {
+  it('locks admin again and forgets the token', async () => {
     assert.equal(getAdminPin(), '1234');
-    switchParticipant();
+    await signOut();
     assert.equal(getAdminPin(), null);
-    assert.equal(getParticipant(), null);
+    assert.equal(getToken(), null);
   });
-  it('leaves a later student request without the PIN', async () => {
-    switchParticipant();
-    setParticipant('P02');
+  it('leaves a later student request with the new token and without the PIN', async () => {
+    await signOut();
+    setToken('t2');
     const headers = await call('listLessons');
     assert.equal(headers['x-admin-pin'], undefined);
-    assert.equal(headers['x-participant'], 'P02');
+    assert.equal(headers.authorization, 'Bearer t2');
+  });
+  it('tells the server, with the token, before it forgets it', async () => {
+    await signOut();
+    assert.equal(seen.length, 1);
+    assert.match(seen[0].url, /\/auth\/logout$/);
+    assert.equal(seen[0].headers.authorization, 'Bearer t1');
+  });
+});
+
+describe('a refused login token', () => {
+  const refuse = (status, code) => {
+    globalThis.fetch = async () => ({ ok: false, status, json: async () => ({ error: { message: 'No.', code } }), headers: { get: () => null } });
+  };
+  it('sends the student back to sign-in with the reason', async () => {
+    refuse(401, 'signed_out_elsewhere');
+    await assert.rejects(api.listLessons());
+    assert.equal(getToken(), null);
+    assert.equal(getAdminPin(), null, 'admin is locked with it');
+    assert.match(takeSignedOutNotice(), /another device/);
+    assert.equal(takeSignedOutNotice(), null, 'the notice shows once');
+  });
+  it('ignores a late answer about a token that is no longer the current one', async () => {
+    globalThis.fetch = async () => {
+      setToken('t2'); // signed in again while the request was on its way
+      return { ok: false, status: 401, json: async () => ({ error: { message: 'No.', code: 'session_unknown' } }), headers: { get: () => null } };
+    };
+    await assert.rejects(api.listLessons());
+    assert.equal(getToken(), 't2');
+  });
+  it('is not an end for a wrong password at sign-in', async () => {
+    refuse(401, 'login_failed');
+    await assert.rejects(api.login({ email: 'a@b.co', password: 'x' }), { code: 'login_failed' });
+    assert.equal(getToken(), 't1');
   });
 });

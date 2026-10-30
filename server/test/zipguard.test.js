@@ -6,7 +6,7 @@ import { createApp } from '../src/app.js';
 import { openDb, runMigrations } from '../src/db/index.js';
 import { extractText } from '../src/services/extract.js';
 import { assertEntrySizes, assertSafeZip, MAX_UNCOMPRESSED_BYTES } from '../src/services/zipguard.js';
-import { studyFetch, TEST_PIN } from './helpers.js';
+import { seedTestLogin, studyFetch, TEST_PIN } from './helpers.js';
 
 const fetch = studyFetch; // as participant P00, with the admin PIN (see helpers.js)
 
@@ -194,6 +194,7 @@ describe('zip-bomb guard in the upload pipeline', () => {
   before(async () => {
     db = openDb(':memory:');
     runMigrations(db);
+    seedTestLogin(db);
     const app = createApp(db, { maxUploadBytes: 5 * 1024 * 1024, adminPin: TEST_PIN }, { runner: { enqueue() {} } });
     await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
     base = `http://127.0.0.1:${server.address().port}`;

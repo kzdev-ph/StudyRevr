@@ -1,6 +1,6 @@
-/* Participant code screen, the participant chip in the header, and form fields shared with admin. */
+/* Sign-in screens, the account chip in the header, and form fields shared with admin. */
 
-/* the code screen: a journal's first page on the desk, with the researcher's way in written quietly below it */
+/* the sign-in screen: a journal's first page on the desk, with the researcher's way in written quietly below it */
 .gate {
   display: grid;
   place-items: center;
@@ -68,6 +68,24 @@
 .field__input[aria-invalid='true'] {
   border-color: var(--ink);
 }
+/* a password box with its Show / Hide button beside it */
+.field__row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+.field__reveal {
+  flex: none;
+  min-width: 64px;
+  min-height: 48px;
+}
+/* the links under the sign-in card (Create an account, Forgot your password) */
+.gate__links {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
 
 .header__end {
   display: flex;
@@ -77,11 +95,17 @@
 .participant-chip {
   display: inline-flex;
   align-items: center;
+  min-width: 0;
   min-height: 44px;
   padding: 0 4px;
 }
-/* the code, written and underlined like a name on a notebook's cover */
+/* the name before the "@", written and underlined like a name on a notebook's cover; a long one is cut with an ellipsis */
 .participant-chip span {
+  display: block;
+  max-width: min(9rem, 36vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   padding: 0 1px;
   border-bottom: 1.5px solid currentColor;
   color: var(--ink-2);
@@ -116,5 +140,6 @@
   gap: 2px;
 }
 .setting-row__title {
+  overflow-wrap: anywhere; /* a long email */
   font-weight: 650;
 }

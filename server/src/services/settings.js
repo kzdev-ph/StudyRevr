@@ -124,10 +124,13 @@ export function saveAiSettings(db, input, envAi = {}) {
 //   allow_student_uploads     students may upload their own lessons (default off)
 //   student_uploads_per_day   uploads per student per study day (default 2)
 //   show_taglish              students see the Filipino/Taglish button (default off; admin's Prepare still makes the versions)
+//   session_timeout_seconds  how long a signed-in device may be silent before another device can sign in without asking (30 to 1800, default 60)
+//   allow_signups             anyone may create an account (default on; off closes sign-up)
 //   lesson_thinking           'minimal' | 'low' | 'medium' | 'high': how hard lesson processing asks the model to think (reasoning_effort;
 //                             'minimal' sends nothing, the old 'off'; default 'low' (migration 016); live Explain simpler /
 //                             Filipino-Taglish never think)
 export const DEFAULT_UPLOADS_PER_DAY = 2;
+export const DEFAULT_SESSION_TIMEOUT_S = 60;
 export const LESSON_THINKING = ['minimal', 'low', 'medium', 'high'];
 export const DEFAULT_LESSON_THINKING = 'low'; // measured: see CLAUDE.md, Thinking for lesson processing
 export function lessonThinking(db) {
@@ -142,6 +145,8 @@ export const appSettingsBody = z.strictObject({
   student_uploads_per_day: z.number().int().min(0).max(20).optional(),
   lesson_thinking: z.enum(LESSON_THINKING).optional(),
   show_taglish: z.boolean().optional(),
+  session_timeout_seconds: z.number().int().min(30).max(1800).optional(),
+  allow_signups: z.boolean().optional(),
 });
 
 // Uploads each student may make per study day (0 is allowed: nobody can).
@@ -149,6 +154,14 @@ export function uploadsPerDay(db) {
   const n = Number(getSetting(db, 'student_uploads_per_day'));
   return getSetting(db, 'student_uploads_per_day') !== '' && Number.isInteger(n) && n >= 0 ? n : DEFAULT_UPLOADS_PER_DAY;
 }
+
+// Seconds without a request after which a signed-in device no longer blocks a sign-in from another device.
+export function sessionTimeoutSeconds(db) {
+  const n = Number(getSetting(db, 'session_timeout_seconds'));
+  return Number.isInteger(n) && n >= 30 && n <= 1800 ? n : DEFAULT_SESSION_TIMEOUT_S;
+}
+
+export const signupsAllowed = (db) => getBoolSetting(db, 'allow_signups', true);
 
 export const studentUploadsAllowed = (db) => getBoolSetting(db, 'allow_student_uploads', false);
 
@@ -164,6 +177,8 @@ export function describeAppSettings(db, { newPerDay }) {
     student_uploads_per_day: uploadsPerDay(db),
     lesson_thinking: lessonThinking(db),
     show_taglish: taglishShown(db),
+    session_timeout_seconds: sessionTimeoutSeconds(db),
+    allow_signups: signupsAllowed(db),
   };
 }
 
@@ -184,6 +199,8 @@ export function saveAppSettings(db, input, current = null) {
     put('student_uploads_per_day', input.student_uploads_per_day, before.student_uploads_per_day);
     put('lesson_thinking', input.lesson_thinking, before.lesson_thinking);
     put('show_taglish', input.show_taglish, before.show_taglish);
+    put('session_timeout_seconds', input.session_timeout_seconds, before.session_timeout_seconds);
+    put('allow_signups', input.allow_signups, before.allow_signups);
   })();
   return changed;
 }

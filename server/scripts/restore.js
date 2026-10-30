@@ -121,6 +121,8 @@ async function main(args, { input = process.stdin, output = process.stdout } = {
   try {
     const applied = runMigrations(db);
     if (applied.length) console.log(`Brought the backup up to date: ${applied.join(', ')}`);
+    // a file that was not made with "Download backup" may still hold live sign-in tokens: nobody comes back signed in
+    db.prepare('DELETE FROM auth_sessions').run();
   } finally {
     db.close();
   }
@@ -130,6 +132,7 @@ async function main(args, { input = process.stdin, output = process.stdout } = {
   console.log('  - Enter the AI API key again in Admin > AI and study settings (backups hold no keys), or keep it in .env.');
   console.log('  - Check that ADMIN_PIN is set in .env (the PIN is never in a backup).');
   console.log('  - Students who used their own AI key need to add it again in Settings.');
+  console.log('  - Students keep their email and password but must sign in again (sign-in sessions are not restored).');
   console.log('  - Delete the pre-restore-*.db copy next to the database once everything checks out: it holds API keys.');
   return 0;
 }

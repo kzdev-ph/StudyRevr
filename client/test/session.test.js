@@ -144,9 +144,37 @@ describe('session tracker', () => {
     assert.deepEqual(ends(), [{ id: 1, active_ms: MIN, end_reason: 'background', ended_ago_ms: 20 * MIN }]);
     assert.equal(sessions.length, 2);
     await clock.advance(2 * MIN);
-    tracker.close('switched');
+    tracker.close('signed_out');
     await flush();
-    assert.deepEqual(ends()[1], { id: 2, active_ms: 2 * MIN, end_reason: 'switched', ended_ago_ms: 0 });
+    assert.deepEqual(ends()[1], { id: 2, active_ms: 2 * MIN, end_reason: 'signed_out', ended_ago_ms: 0 });
+  });
+
+  it('close() resolves only after the last report has gone out (a sign-out waits for it)', async () => {
+    let sent = false;
+    let release;
+    const { clock, tracker } = setup({
+      report: (id, body) =>
+        body.end_reason
+          ? new Promise((resolve) => {
+              release = () => {
+                sent = true;
+                resolve();
+              };
+            })
+          : undefined,
+    });
+    tracker.open();
+    await clock.advance(MIN);
+    let closed = false;
+    const done = tracker.close('signed_out').then(() => {
+      closed = true;
+    });
+    await flush();
+    assert.equal(closed, false, 'the report is still on its way');
+    release();
+    await done;
+    assert.equal(sent, true);
+    assert.equal(await tracker.close('signed_out'), undefined, 'closing again has nothing to wait for');
   });
 
   it('closing while in the background ends at the moment it went away', async () => {

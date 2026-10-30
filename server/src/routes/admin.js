@@ -5,7 +5,7 @@ import { EXPORT_FILES, exportCsv, exportZip } from '../export/research.js';
 import { loadSchedulerConfig } from '../flashcards/config.js';
 import { HttpError } from '../middleware/errors.js';
 import { lastBackup, logAdminEvent, makeBackup, removeTemp } from '../services/backup.js';
-import { addParticipants, findParticipant, parseCodeList, UNKNOWN_CODE } from '../participants/codes.js';
+import { findParticipant, UNKNOWN_CODE } from '../participants/codes.js';
 import { defaultAiProblems } from '../services/ai-problems.js';
 import { lessonLeakReport } from '../quiz/check.js';
 import { getJobStatus, queueJob } from '../pipeline/jobs.js';
@@ -15,7 +15,6 @@ import { itemsToReview, resetReviews, reviewItems } from '../services/quiz-revie
 import { deleteAllStudentKeys } from '../services/student-ai.js';
 import { participantStats, summaryTable } from '../stats/participant.js';
 
-const addBody = z.object({ codes: z.string().max(2000) });
 const id = z.coerce.number().int().positive();
 const parseId = (value, what) => {
   const parsed = id.safeParse(value);
@@ -37,13 +36,6 @@ export function adminRouter({ db, ai, runner, clock = () => new Date(), requireA
   router.get('/participants', (req, res) => {
     const { columns, lessons, rows } = summaryTable(db, { ...opts(req), includeP00: true });
     res.json({ columns, lessons, participants: rows });
-  });
-
-  // Adds codes: { codes: "P01-P10, P12" }. Codes that already exist are skipped.
-  router.post('/participants', (req, res) => {
-    const body = addBody.safeParse(req.body ?? {});
-    if (!body.success) throw new HttpError(400, 'Send codes, e.g. "P01-P10" or "P01, P02".');
-    res.status(201).json(addParticipants(db, parseCodeList(body.data.codes), clock()));
   });
 
   router.get('/participants/:code/stats', (req, res) => {

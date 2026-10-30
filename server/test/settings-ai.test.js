@@ -6,7 +6,7 @@ import { createApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
 import { openDb, runMigrations } from '../src/db/index.js';
 import { resolveAiConfig } from '../src/services/settings.js';
-import { completion, failure, KEY, scriptedFetch, studyFetch, TEST_PIN } from './helpers.js';
+import { completion, failure, KEY, scriptedFetch, seedTestLogin, studyFetch, TEST_PIN } from './helpers.js';
 
 const fetch = studyFetch; // as participant P00, with the admin PIN (see helpers.js)
 
@@ -27,6 +27,7 @@ describe('AI settings routes', () => {
       sleep: async () => {},
       random: () => 0,
     });
+    seedTestLogin(db);
     const app = createApp(db, config, { ai: client, runner: { enqueue() {} } });
     await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
     base = `http://127.0.0.1:${server.address().port}`;

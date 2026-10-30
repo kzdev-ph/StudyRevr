@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { api } from '../lib/api.js';
-import { getParticipant, onBeforeSwitch } from '../lib/participant.js';
+import { getToken, onBeforeSignOut } from '../lib/auth.js';
 import { createSessionTracker } from '../lib/session.js';
 
 const INTERACTIONS = ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll'];
@@ -12,7 +12,7 @@ export function useStudySession(lessonId, activity, { enabled = true } = {}) {
   const tracker = useRef(null);
 
   useEffect(() => {
-    const who = getParticipant();
+    const who = getToken();
     if (!enabled || !who) return undefined;
     const t = createSessionTracker({
       start: async () => (await api.startSession(lessonId, activity, who)).session.id,
@@ -29,13 +29,13 @@ export function useStudySession(lessonId, activity, { enabled = true } = {}) {
     for (const type of INTERACTIONS) window.addEventListener(type, onInteract, opts);
     document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('pagehide', onPageHide);
-    const offSwitch = onBeforeSwitch(() => t.close('switched'));
+    const offSignOut = onBeforeSignOut(() => t.close('signed_out'));
 
     return () => {
       for (const type of INTERACTIONS) window.removeEventListener(type, onInteract, opts);
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('pagehide', onPageHide);
-      offSwitch();
+      offSignOut();
       t.close('left');
     };
   }, [lessonId, activity, enabled]);

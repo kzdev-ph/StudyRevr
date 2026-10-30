@@ -37,7 +37,7 @@ export function visibleSql(viewer, alias = 'l') {
 }
 
 // What the caller is: { admin, participant }. `admin` is true only with the right PIN (a wrong one is the usual 401 and
-// counts toward the lockout); `participant` is the code in X-Participant, or null when none was sent (a wrong code is 401).
+// counts toward the lockout); `participant` is the signed-in participant, or null when no token was sent (a bad token is 401).
 export function createAccess({ db, requireAdmin }) {
   const viewerOf = (req) => {
     const admin = requireAdmin.isAdmin(req);

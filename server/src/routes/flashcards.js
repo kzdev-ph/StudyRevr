@@ -24,7 +24,7 @@ const parseId = (value, what) => {
 };
 
 // Flashcards: decks, studying (one card at a time, chosen by the scheduler), undo, and making cards for a lesson
-// that has none. Mounted at /api. Studying is per participant (X-Participant); making cards is admin only.
+// that has none. Mounted at /api. Studying is per participant (the signed-in account); making cards is admin only.
 // `clock()` is the current time (tests pass a fake one).
 export function flashcardsRouter({ db, runner, clock = () => new Date(), requireAdmin, access }) {
   const router = Router();

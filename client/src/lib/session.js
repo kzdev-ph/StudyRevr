@@ -7,14 +7,14 @@
 //   - in the background (another app, screen off) the clock pauses and the time so far is sent at once. Back within
 //     IDLE_MS, the same session carries on; after longer, it ended when the app went away ('background') and a new
 //     one starts;
-//   - closing the screen ends it ('left'); switching participant ends it ('switched').
+//   - closing the screen ends it ('left'); signing out ends it ('signed_out').
 // The server is told every HEARTBEAT_MS too, so little is lost if the browser is killed.
 
 export const IDLE_MS = 5 * 60_000;
 export const HEARTBEAT_MS = 30_000;
 
 // start()   -> Promise of the new session's id (POST /api/sessions)
-// report(id, { active_ms, end_reason?, ended_ago_ms? })   (POST /api/sessions/:id)
+// report(id, { active_ms, end_reason?, ended_ago_ms? })   (POST /api/sessions/:id); may return a promise
 export function createSessionTracker({ start, report, now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout, idleMs = IDLE_MS, heartbeatMs = HEARTBEAT_MS, visible = true }) {
   let current = null; // { id: Promise<id|null>, activeMs, since (ms the clock started running, or null) }
   let lastInteraction = now();
@@ -27,9 +27,8 @@ export function createSessionTracker({ start, report, now = Date.now, setTimer =
   const running = () => current && current.since !== null;
   const activeNow = (until = now()) => (current ? current.activeMs + (running() ? Math.max(0, until - current.since) : 0) : 0);
 
-  const send = (session, body) => {
-    session.id.then((id) => id && report(id, body));
-  };
+  // -> a promise that settles once the report has gone out (a sign-out waits for the last one)
+  const send = (session, body) => session.id.then((id) => id && report(id, body));
 
   const stopTimers = () => {
     clearTimer(idleTimer);
@@ -81,14 +80,14 @@ export function createSessionTracker({ start, report, now = Date.now, setTimer =
 
   // Ends the current session; `at` is when it really ended (the last interaction, or when the app went away).
   function end(reason, at = now()) {
-    if (!current) return;
+    if (!current) return Promise.resolve();
     const t = now();
     const session = current;
     const active = activeNow(Math.min(at, t));
     current = null;
     stopTimers();
     finishedMs += active;
-    send(session, { active_ms: active, end_reason: reason, ended_ago_ms: Math.max(0, t - at) });
+    return send(session, { active_ms: active, end_reason: reason, ended_ago_ms: Math.max(0, t - at) });
   }
 
   return {
@@ -124,11 +123,12 @@ export function createSessionTracker({ start, report, now = Date.now, setTimer =
       lastInteraction = t;
       schedule();
     },
-    // the screen closed ('left') or the participant switched ('switched')
+    // the screen closed ('left') or the student signed out ('signed_out'). -> a promise of the last report
     close(reason = 'left') {
-      if (closed) return;
-      end(reason, hiddenAt ?? now());
+      if (closed) return Promise.resolve();
+      const sent = end(reason, hiddenAt ?? now());
       closed = true;
+      return sent;
     },
     // active time of every session this tracker has run, the open one included (the flashcard recap)
     totalActiveMs: () => finishedMs + activeNow(),

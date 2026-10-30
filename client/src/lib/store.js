@@ -26,6 +26,10 @@ export function storedValue(key, storage) {
       listeners.add(fn);
       return () => listeners.delete(fn);
     },
+    // the stored value changed somewhere else (another tab's `storage` event): tell the subscribers to read it again
+    notify() {
+      for (const fn of listeners) fn();
+    },
   };
 }
 

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import MyAiSettings from '../components/MyAiSettings.jsx';
 import { api } from '../lib/api.js';
 import { getMotionChoice, setMotionChoice } from '../lib/motion.js';
-import { switchParticipant, useParticipant } from '../lib/participant.js';
+import { signOut, useAccount } from '../lib/auth.js';
 import { getThemeChoice, setThemeChoice } from '../lib/theme.js';
 
 const CHOICES = [
@@ -22,7 +22,12 @@ const MOTION = [
 export default function SettingsScreen() {
   const [theme, setTheme] = useState(getThemeChoice);
   const [motion, setMotion] = useState(getMotionChoice);
-  const participant = useParticipant();
+  const account = useAccount();
+  const [leaving, setLeaving] = useState(false);
+  const leave = async () => {
+    setLeaving(true);
+    await signOut();
+  };
   const choose = (id) => {
     if (id === theme) return;
     setThemeChoice(id);
@@ -42,11 +47,11 @@ export default function SettingsScreen() {
       <h1 className="screen-title">Settings</h1>
       <div className="setting-row">
         <p className="setting-row__text">
-          <span className="setting-row__title">Participant {participant}</span>
-          <span className="muted">Everything you study is saved under this code.</span>
+          <span className="setting-row__title">{account?.email ? `Signed in as ${account.email}` : 'Signed in'}</span>
+          <span className="muted">Everything you study is saved to this account.</span>
         </p>
-        <button type="button" className="btn btn--quiet" onClick={() => switchParticipant()}>
-          Switch participant
+        <button type="button" className="btn btn--quiet" onClick={leave} disabled={leaving}>
+          {leaving ? 'Signing out…' : 'Sign out'}
         </button>
       </div>
       <fieldset className="choice">

@@ -5,7 +5,7 @@ import { createApp } from '../src/app.js';
 import { openDb, runMigrations } from '../src/db/index.js';
 import { loadSchedulerConfig } from '../src/flashcards/config.js';
 import { createPipelineRunner } from '../src/pipeline/runner.js';
-import { addCodes, seedLesson, TEST_PIN } from './helpers.js';
+import { addCodes, seedLesson, TEST_PIN, tokenFor } from './helpers.js';
 
 const quiet = { warn() {}, log() {}, info() {}, error() {} };
 
@@ -48,7 +48,7 @@ describe('admin: prepare simpler and Taglish versions', () => {
   const call = async (method, path, { pin = TEST_PIN, as, body } = {}) => {
     const headers = {};
     if (pin) headers['x-admin-pin'] = pin;
-    if (as) headers['x-participant'] = as;
+    if (as) headers.authorization = `Bearer ${tokenFor(db, as)}`;
     if (body !== undefined) headers['content-type'] = 'application/json';
     const res = await fetch(`${base}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
     return { status: res.status, body: await res.json().catch(() => null) };
@@ -132,9 +132,9 @@ describe('admin settings: new cards per day and the student-key switch', () => {
   };
 
   it('reads the defaults, saves both, and the scheduler uses the new limit', async () => {
-    assert.deepEqual((await send('GET')).body, { flashcard_new_per_day: 20, allow_student_keys: false, student_keys_saved: 0, allow_student_uploads: false, student_uploads_per_day: 2, lesson_thinking: 'low', show_taglish: false });
+    assert.deepEqual((await send('GET')).body, { flashcard_new_per_day: 20, allow_student_keys: false, student_keys_saved: 0, allow_student_uploads: false, student_uploads_per_day: 2, lesson_thinking: 'low', show_taglish: false, session_timeout_seconds: 60, allow_signups: true });
     const saved = await send('PUT', { flashcard_new_per_day: 12, allow_student_keys: true });
-    assert.deepEqual(saved.body, { flashcard_new_per_day: 12, allow_student_keys: true, student_keys_saved: 0, allow_student_uploads: false, student_uploads_per_day: 2, lesson_thinking: 'low', show_taglish: false });
+    assert.deepEqual(saved.body, { flashcard_new_per_day: 12, allow_student_keys: true, student_keys_saved: 0, allow_student_uploads: false, student_uploads_per_day: 2, lesson_thinking: 'low', show_taglish: false, session_timeout_seconds: 60, allow_signups: true });
     assert.equal(loadSchedulerConfig(db).newPerDay, 12);
   });
 

@@ -23,7 +23,7 @@ const parse = (schema, body, hint) => {
 };
 
 // A student's AI choice for Explain simpler and Filipino/Taglish (gear → Settings): the admin Default, or their own
-// key, which is tested before it is saved. Per participant (X-Participant). Only while admin allows it
+// key, which is tested before it is saved. Per participant (the signed-in account). Only while admin allows it
 // (allow_student_keys); removing a saved key always works. The key is never sent back: only its last 4 characters.
 export function myAiRouter({ ai, db, config = {}, clock = () => new Date() }) {
   const router = Router();

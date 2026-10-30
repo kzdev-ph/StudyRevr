@@ -8,9 +8,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createApp } from '../src/app.js';
 import { openDb, runMigrations } from '../src/db/index.js';
+import { tokenHash } from '../src/auth/sessions.js';
 import { pidFile } from '../src/server-pid.js';
 import { backupFileName, makeBackup, removeLeftoverBackups, removeTemp } from '../src/services/backup.js';
-import { addCodes, seedLesson, TEST_PIN } from './helpers.js';
+import { addCodes, seedLesson, TEST_PIN, tokenFor } from './helpers.js';
 
 const SCRIPT = fileURLToPath(new URL('../scripts/restore.js', import.meta.url));
 const ADMIN_KEY = 'AIza-BACKUP-ADMIN-SECRET-1';
@@ -49,6 +50,7 @@ describe('backup and restore', () => {
   let dir;
   let backupFile;
   let backupName;
+  let oldToken;
 
   before(async () => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'studyrevr-backup-'));
@@ -56,6 +58,7 @@ describe('backup and restore', () => {
     const db = openDb(path.join(dir, 'source.db'));
     runMigrations(db);
     addCodes(db, 'P01');
+    oldToken = tokenFor(db, 'P01'); // an account (p01@test.invalid) with a live sign-in session
     seedLesson(db, { title: 'Backed up lesson' });
     db.prepare("INSERT INTO settings (key, value) VALUES ('ai_api_key:google', ?), ('ai_model:google', 'gemini-3.5-flash-lite')").run(ADMIN_KEY);
     const p01 = db.prepare("SELECT id FROM participants WHERE code = 'P01'").get().id;
@@ -132,6 +135,54 @@ describe('backup and restore', () => {
     }
   });
 
+  it('the backup holds no sign-in session (no token, no hash of one) but keeps the accounts', () => {
+    assert.ok(!fs.readFileSync(backupFile).toString('latin1').includes(tokenHash(oldToken)), 'the old token hash is not in the file, not even in free pages');
+    const copy = openDb(backupFile);
+    try {
+      assert.equal(copy.prepare('SELECT COUNT(*) n FROM auth_sessions').get().n, 0);
+      assert.equal(copy.prepare('SELECT email FROM accounts').get().email, 'p01@test.invalid', 'logins survive, so a backup is identifying data');
+    } finally {
+      copy.close();
+    }
+  });
+
+  it('a restored database does not accept the token of the old sign-in', async () => {
+    const live = path.join(dir, 'tokens', 'studyrevr.db');
+    fs.mkdirSync(path.dirname(live));
+    const { code, out } = await restore(backupFile, live, 'RESTORE');
+    assert.equal(code, 0, out);
+    assert.match(out, /sign in again/);
+    const db = openDb(live);
+    const app = await startApp(db);
+    try {
+      assert.equal((await fetch(`${app.base}/api/auth/me`, { headers: { authorization: `Bearer ${oldToken}` } })).status, 401);
+    } finally {
+      await app.close();
+      db.close();
+    }
+  });
+
+  it('restore also drops sessions of a file that still has them (not made with Download backup)', async () => {
+    const raw = path.join(dir, 'raw-with-sessions.db');
+    const src = openDb(raw);
+    runMigrations(src);
+    addCodes(src, 'P01');
+    const token = tokenFor(src, 'P01');
+    src.close();
+    const live = path.join(dir, 'raw-live', 'studyrevr.db');
+    fs.mkdirSync(path.dirname(live));
+    const { code, out } = await restore(raw, live, 'RESTORE');
+    assert.equal(code, 0, out);
+    const db = openDb(live);
+    try {
+      assert.equal(db.prepare('SELECT COUNT(*) n FROM auth_sessions').get().n, 0);
+      assert.equal(db.prepare('SELECT COUNT(*) n FROM accounts').get().n, 1);
+      assert.ok(token);
+    } finally {
+      db.close();
+    }
+  });
+
   it('npm run restore puts the backup in place, keeps a copy of the old database, and the app works on it', async () => {
     const live = path.join(dir, 'live', 'studyrevr.db');
     fs.mkdirSync(path.dirname(live));
@@ -152,7 +203,7 @@ describe('backup and restore', () => {
     const app = await startApp(db);
     try {
       addCodes(db, 'P02'); // a student who isn't the owner: lesson reads need a code
-      const { lessons } = await (await fetch(`${app.base}/api/lessons`, { headers: { 'x-participant': 'P02' } })).json();
+      const { lessons } = await (await fetch(`${app.base}/api/lessons`, { headers: { authorization: `Bearer ${tokenFor(db, 'P02')}` } })).json();
       assert.deepEqual(lessons.map((l) => l.title).sort(), ['Backed up lesson', 'Shared upload'], 'the private upload is still private after a restore');
       // the uploads came back with their origin, owner and sharing, and P01 still sees their own
       const rows = db.prepare('SELECT l.title, l.origin, p.code AS owner, l.shared_at FROM lessons l LEFT JOIN participants p ON p.id = l.owner_participant_id ORDER BY l.title').all();
@@ -161,11 +212,11 @@ describe('backup and restore', () => {
         { title: 'Private upload', origin: 'student', owner: 'P01', shared_at: null },
         { title: 'Shared upload', origin: 'student', owner: 'P01', shared_at: '2026-10-05T05:00:00.000Z' },
       ]);
-      const mine = await (await fetch(`${app.base}/api/lessons`, { headers: { 'x-participant': 'P01' } })).json();
+      const mine = await (await fetch(`${app.base}/api/lessons`, { headers: { authorization: `Bearer ${tokenFor(db, 'P01')}` } })).json();
       assert.deepEqual(mine.lessons.map((l) => [l.title, l.mine]).sort(), [['Backed up lesson', false], ['Private upload', true], ['Shared upload', true]]);
       assert.equal(db.prepare('SELECT COUNT(*) AS n FROM lesson_events').get().n, 1, 'the log of uploads came back');
-      const participant = await fetch(`${app.base}/api/participants/P01`);
-      assert.equal(participant.status, 200, 'participant codes came back');
+      const me = await fetch(`${app.base}/api/auth/me`, { headers: { authorization: `Bearer ${tokenFor(db, 'P01')}` } });
+      assert.equal(me.status, 200, 'participant codes came back (P01 can sign in with a token)');
       assert.equal(db.prepare("SELECT COUNT(*) n FROM settings WHERE key LIKE 'ai_api_key:%'").get().n, 0);
     } finally {
       await app.close();

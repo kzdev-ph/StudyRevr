@@ -190,6 +190,7 @@ function StudySettings() {
   const [settings, setSettings] = useState(null);
   const [perDay, setPerDay] = useState('');
   const [uploadsPerDay, setUploadsPerDay] = useState('');
+  const [timeoutS, setTimeoutS] = useState('');
   const [message, setMessage] = useState('');
   const [problem, setProblem] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -202,6 +203,7 @@ function StudySettings() {
         setSettings(data);
         setPerDay(String(data.flashcard_new_per_day));
         setUploadsPerDay(String(data.student_uploads_per_day));
+        setTimeoutS(String(data.session_timeout_seconds));
       })
       .catch((err) => err.name !== 'AbortError' && setProblem(err.message));
     return () => controller.abort();
@@ -241,6 +243,9 @@ function StudySettings() {
 
   const u = Number(uploadsPerDay);
   const uploadsValid = uploadsPerDay.trim() !== '' && Number.isInteger(u) && u >= 0 && u <= 20;
+
+  const ts = Number(timeoutS);
+  const timeoutValid = timeoutS.trim() !== '' && Number.isInteger(ts) && ts >= 30 && ts <= 1800;
 
   if (!settings) return problem ? <Notice>{problem}</Notice> : null;
   return (
@@ -312,6 +317,67 @@ function StudySettings() {
       <p id="admin-taglish-note" className="muted">
         Off by default. While it is off students see only English, and Prepare still makes the Taglish versions for later.
       </p>
+      <div className="field-group" role="group" aria-labelledby="admin-signups-title">
+        <h4 id="admin-signups-title" className="admin-sub">
+          Sign-ups
+        </h4>
+        <label className="check-row">
+          <input
+            type="checkbox"
+            role="switch"
+            checked={settings.allow_signups}
+            disabled={busy}
+            onChange={(e) =>
+              save(
+                { allow_signups: e.target.checked },
+                e.target.checked ? 'New sign-ups are open.' : 'New sign-ups are closed. Students with an account can still sign in.',
+              )
+            }
+            aria-describedby="admin-signups-note admin-signups-detail"
+          />
+          Allow new sign-ups
+        </label>
+        <p id="admin-signups-note" className="muted">
+          Turn this off after enrolment so nobody else can create an account.
+        </p>
+        <p id="admin-signups-detail" className="muted">
+          Every sign-up uses up a study number (P01 to P999) that is never reused. Behind a proxy, all students share one address for the sign-up limit. Someone who
+          knows an email can keep that account locked for a while; Reset password in Accounts lifts it.
+        </p>
+      </div>
+      <div className="field-group" role="group" aria-labelledby="admin-timeout-title">
+        <h4 id="admin-timeout-title" className="admin-sub">
+          New-device prompt
+        </h4>
+        <form
+          className="admin-add"
+          onSubmit={(e) => {
+            e.preventDefault();
+            save({ session_timeout_seconds: ts }, `Saved. A device counts as active for ${ts} seconds.`);
+          }}
+        >
+          <label className="field">
+            <span className="field__label">Seconds before a signed-in device counts as gone</span>
+            <input
+              className="field__input"
+              type="number"
+              inputMode="numeric"
+              min={30}
+              max={1800}
+              value={timeoutS}
+              onChange={(e) => setTimeoutS(e.target.value)}
+              aria-invalid={!timeoutValid}
+              aria-describedby="admin-timeout-note"
+            />
+          </label>
+          <button type="submit" className="btn btn--primary" disabled={busy || !timeoutValid || ts === settings.session_timeout_seconds}>
+            Save
+          </button>
+        </form>
+        <p id="admin-timeout-note" className="muted">
+          If the account was active on another device within this time, a new sign-in asks first. 30 to 1800 seconds. Default 60.
+        </p>
+      </div>
       <p className="muted">
         {settings.student_keys_saved
           ? `${settings.student_keys_saved} student key${settings.student_keys_saved === 1 ? ' is' : 's are'} saved on this computer.`

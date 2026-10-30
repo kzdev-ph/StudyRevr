@@ -122,6 +122,62 @@ describe('npm run participant:delete', () => {
     assert.ok(!fs.readFileSync(dbPath).includes(Buffer.from('P01 Private Secret Title')));
   });
 
+  describe('by email', () => {
+    const EMAIL = 'maria.santos.withdraw@example.test';
+    const sessionCount = (db, email) => db.prepare('SELECT COUNT(*) n FROM auth_sessions WHERE account_id IN (SELECT id FROM accounts WHERE email = ?)').get(email).n;
+
+    beforeEach(() => {
+      const db = openDb(dbPath);
+      db.prepare("UPDATE accounts SET email = ? WHERE participant_id = (SELECT id FROM participants WHERE code = 'P01')").run(EMAIL);
+      db.close();
+    });
+
+    it('shows the email, deletes the account and its sessions, and the email is gone from the file', async () => {
+      let db = openDb(dbPath);
+      assert.equal(sessionCount(db, EMAIL), 1);
+      db.close();
+      assert.ok(fs.readFileSync(dbPath).includes(Buffer.from(EMAIL)), 'the scan can see the email before (so the check below means something)');
+
+      const p02 = counts('P02');
+      const res = await run(dbPath, ['  Maria.Santos.Withdraw@Example.test '], 'P01\n');
+      assert.equal(res.code, 0, res.out);
+      assert.match(res.out, /1 +account \(email and password\)/);
+      assert.match(res.out, /1 +sign-in sessions/);
+      assert.ok(res.out.includes(`P01 (${EMAIL})`), 'the email is shown when asking to confirm');
+      assert.match(res.out, /Deleted P01/);
+      assert.equal(counts('P01').participant, 0);
+      assert.deepEqual(counts('P02'), p02);
+
+      db = openDb(dbPath);
+      assert.equal(db.prepare('SELECT COUNT(*) n FROM accounts').get().n, 1, 'only the other participant keeps an account');
+      assert.equal(db.prepare('SELECT COUNT(*) n FROM auth_sessions').get().n, 1);
+      db.close();
+      for (const suffix of ['', '-wal']) {
+        if (fs.existsSync(dbPath + suffix)) assert.ok(!fs.readFileSync(dbPath + suffix).includes(Buffer.from(EMAIL)), `email left in ${suffix || 'db file'}`);
+      }
+    });
+
+    it('deleting by study ID removes the account too', async () => {
+      assert.equal((await run(dbPath, ['P01', '--yes'])).code, 0);
+      const db = openDb(dbPath);
+      assert.equal(db.prepare('SELECT COUNT(*) n FROM accounts WHERE email = ?').get(EMAIL).n, 0);
+      db.close();
+      assert.ok(!fs.readFileSync(dbPath).includes(Buffer.from(EMAIL)));
+    });
+
+    it('cancelling by email deletes nothing; an unknown email is an error', async () => {
+      const cancelled = await run(dbPath, [EMAIL], 'no\n');
+      assert.equal(cancelled.code, 1);
+      assert.match(cancelled.out, /Cancelled/);
+      assert.equal(counts('P01').participant, 1);
+      const unknown = await run(dbPath, ['nobody@example.test', '--yes']);
+      assert.equal(unknown.code, 1);
+      assert.match(unknown.out, /not an account/);
+      assert.equal(counts('P01').participant, 1);
+      assert.equal(counts('P02').participant, 1);
+    });
+  });
+
   it('--yes skips the question; an unknown or bad code is an error', async () => {
     assert.equal((await run(dbPath, ['P02', '--yes'])).code, 0);
     assert.equal(counts('P02').participant, 0);

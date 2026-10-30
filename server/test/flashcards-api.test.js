@@ -5,7 +5,7 @@ import { createApp } from '../src/app.js';
 import { openDb, runMigrations } from '../src/db/index.js';
 import { getJobStatus } from '../src/pipeline/jobs.js';
 import { createPipelineRunner } from '../src/pipeline/runner.js';
-import { cleanReview, studyFetch, TEST_PIN } from './helpers.js';
+import { cleanReview, seedTestLogin, studyFetch, TEST_PIN } from './helpers.js';
 
 const fetch = studyFetch; // as participant P00, with the admin PIN (see helpers.js)
 
@@ -33,6 +33,7 @@ describe('flashcards API', () => {
       },
     };
     runner = createPipelineRunner({ db, ai, log: quiet });
+    seedTestLogin(db);
     const app = createApp(db, { maxUploadBytes: 1024 * 1024, adminPin: TEST_PIN }, { ai, runner, clock: () => new Date(now) });
     await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
     base = `http://127.0.0.1:${server.address().port}`;

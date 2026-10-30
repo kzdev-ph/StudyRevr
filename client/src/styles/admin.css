@@ -61,6 +61,81 @@
   gap: 10px;
 }
 
+/* the Accounts table reads left to right (the shared data-table right-aligns numbers) */
+.accounts-table td,
+.accounts-table th {
+  text-align: left;
+}
+.accounts-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+/* long emails wrap; the in-row confirm sentence wraps too (the shared data-table keeps cells on one line) */
+.accounts-table td.accounts-email {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.accounts-table td.accounts-cell {
+  min-width: 14rem;
+  white-space: normal;
+}
+/* a phone shows each account as a card: study ID and status on top, the email under them, then the actions */
+@media (max-width: 30rem) {
+  .accounts-table,
+  .accounts-table tbody,
+  .accounts-table tr,
+  .accounts-table tbody th,
+  .accounts-table tbody td {
+    display: block;
+  }
+  .accounts-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .accounts-table tbody tr {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 6px 12px;
+    padding: 12px;
+    border-bottom: 1px solid var(--line);
+  }
+  .accounts-table tbody tr:last-child {
+    border-bottom: 0;
+  }
+  .accounts-table tbody th,
+  .accounts-table tbody td {
+    padding: 0;
+    border-bottom: 0;
+  }
+  .accounts-table tbody th {
+    grid-column: 1;
+  }
+  .accounts-table tbody td.accounts-status {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .accounts-table tbody td.accounts-email,
+  .accounts-table tbody td.accounts-cell {
+    grid-column: 1 / -1;
+  }
+  .accounts-table td.accounts-cell {
+    min-width: 0;
+  }
+  .accounts-actions .btn {
+    flex: 1 1 auto;
+  }
+}
+.accounts-temp {
+  font-size: 1.125rem;
+  letter-spacing: 0.04em;
+  user-select: all;
+}
+
 /* the PIN form stays a short column on a wide page */
 .admin-pin {
   max-width: 26rem;

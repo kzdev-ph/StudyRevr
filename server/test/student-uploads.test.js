@@ -8,7 +8,7 @@ import { createPipelineRunner } from '../src/pipeline/runner.js';
 import http from 'node:http';
 import { CARDS_FAILED_MESSAGE, PREPARE_FAILED_MESSAGE, UPLOAD_FAILED_MESSAGE } from '../src/services/lesson-access.js';
 import { BURST_MAX, QUEUE_LIMIT, createUploadGuard } from '../src/services/student-upload.js';
-import { addCodes, cleanReview, keepAllCandidates, quoteFromPrompt, seedLesson, startStudyApp, TEST_PIN } from './helpers.js';
+import { addCodes, cleanReview, keepAllCandidates, quoteFromPrompt, seedLesson, startStudyApp, TEST_PIN, tokenFor } from './helpers.js';
 
 // Phase 7B: students upload their own lessons (off by default). The switch, the limits, the content checks, the events,
 // the failure text, the delete and share rules, and one processing job at a time.
@@ -43,7 +43,7 @@ describe('student uploads', () => {
     const form = new FormData();
     form.append('file', new Blob([buffer], { type: mime }), filename);
     const headers = {};
-    if (who.as) headers['x-participant'] = who.as;
+    if (who.as) headers.authorization = `Bearer ${tokenFor(t.db, who.as, new Date(t.now))}`;
     if (who.pin) headers['x-admin-pin'] = who.pin;
     const res = await globalThis.fetch(`${t.base}/api/lessons`, { method: 'POST', headers, body: form });
     return { status: res.status, body: await res.json().catch(() => null) };
@@ -237,7 +237,7 @@ describe('student uploads', () => {
     const rawPost = ({ headers, write, abortAfterMs }) =>
       new Promise((resolve, reject) => {
         const url = new URL(t.base);
-        const req = http.request({ host: url.hostname, port: url.port, path: '/api/lessons', method: 'POST', headers: { 'x-participant': 'P01', ...headers } }, (res) => {
+        const req = http.request({ host: url.hostname, port: url.port, path: '/api/lessons', method: 'POST', headers: { authorization: `Bearer ${tokenFor(t.db, 'P01', new Date(t.now))}`, ...headers } }, (res) => {
           let text = '';
           res.on('data', (c) => { text += c; });
           res.on('end', () => resolve({ status: res.statusCode, connection: res.headers.connection, body: text ? JSON.parse(text) : null }));
@@ -259,7 +259,7 @@ describe('student uploads', () => {
     });
 
     it('is refused for the teacher too (no event: it is not a student)', async () => {
-      const res = await rawPost({ headers: { 'x-admin-pin': TEST_PIN, 'x-participant': 'P00', 'content-type': 'multipart/form-data; boundary=xx', 'content-length': String(50 * 1024 * 1024) } });
+      const res = await rawPost({ headers: { 'x-admin-pin': TEST_PIN, authorization: `Bearer ${tokenFor(t.db, 'P00', new Date(t.now))}`, 'content-type': 'multipart/form-data; boundary=xx', 'content-length': String(50 * 1024 * 1024) } });
       assert.equal(res.status, 413);
       assert.deepEqual(events('P00'), []);
     });
@@ -268,21 +268,21 @@ describe('student uploads', () => {
       const form = new FormData();
       form.append('file', new Blob([await goodDocx()], { type: DOCX_MIME }), 'plants.docx');
       for (const k of ['title', 'extra', 'more']) form.append(k, 'x');
-      const res = await globalThis.fetch(`${t.base}/api/lessons`, { method: 'POST', headers: { 'x-participant': 'P01' }, body: form });
+      const res = await globalThis.fetch(`${t.base}/api/lessons`, { method: 'POST', headers: { authorization: `Bearer ${tokenFor(t.db, 'P01', new Date(t.now))}` }, body: form });
       assert.equal(res.status, 400);
       assert.equal(t.db.prepare('SELECT COUNT(*) AS n FROM lessons').get().n, 0);
       // the same form with the one allowed title works
       const ok = new FormData();
       ok.append('file', new Blob([await goodDocx()], { type: DOCX_MIME }), 'plants.docx');
       ok.append('title', 'Plants');
-      assert.equal((await globalThis.fetch(`${t.base}/api/lessons`, { method: 'POST', headers: { 'x-participant': 'P01' }, body: ok })).status, 201);
+      assert.equal((await globalThis.fetch(`${t.base}/api/lessons`, { method: 'POST', headers: { authorization: `Bearer ${tokenFor(t.db, 'P01', new Date(t.now))}` }, body: ok })).status, 201);
     });
 
     it('a title field over its size limit is refused', async () => {
       const form = new FormData();
       form.append('title', 'x'.repeat(2000));
       form.append('file', new Blob([await goodDocx()], { type: DOCX_MIME }), 'plants.docx');
-      const res = await globalThis.fetch(`${t.base}/api/lessons`, { method: 'POST', headers: { 'x-participant': 'P01' }, body: form });
+      const res = await globalThis.fetch(`${t.base}/api/lessons`, { method: 'POST', headers: { authorization: `Bearer ${tokenFor(t.db, 'P01', new Date(t.now))}` }, body: form });
       assert.ok([400, 413].includes(res.status), String(res.status));
       assert.equal(t.db.prepare('SELECT COUNT(*) AS n FROM lessons').get().n, 0);
     });

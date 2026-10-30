@@ -31,7 +31,7 @@ const lessonCards = (db, lessonId) =>
 const buildOptions = quizBuildOptions;
 
 // Mock quiz: questions built from the lesson's flashcards, graded and logged one answer at a time. Mounted at /api.
-// Attempts are per participant (X-Participant): each sees and answers only their own.
+// Attempts are per participant (the signed-in account): each sees and answers only their own.
 // `clock()` is the current time and `random` the shuffle source (tests pass fixed ones); `tuning()` gives the AI
 // concurrency for the wrong-answers batches.
 export function quizRouter({ db, ai, access, clock = () => new Date(), random = Math.random, tuning = () => ({ concurrency: 1 }), log = console }) {

@@ -115,7 +115,7 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin, { ac
     return row ? { ...row, completed_sections: JSON.parse(row.completed_sections) } : null;
   };
 
-  // The caller of a lesson read: admin (with the PIN), or else a listed participant (401 without X-Participant).
+  // The caller of a lesson read: admin (with the PIN), or else a signed-in participant (401 without a Bearer token).
   const readerOf = (req) => {
     const viewer = access.viewerOf(req);
     if (!viewer.admin && !viewer.participant) requireParticipant(db, req);

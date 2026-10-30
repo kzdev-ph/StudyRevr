@@ -4,8 +4,8 @@ export const CODEBOOK = ({ now, includeP00, lessons }) => `StudyRevr research ex
 Made ${now.toISOString()} (UTC). ${includeP00 ? 'Includes P00 (researcher test data).' : 'P00 (researcher test data) is left out.'}
 
 General
-- Participants appear by code only (P01, P02, ...). No names, settings or API keys (the researcher's or students')
-  are exported.
+- Participants appear by study ID only (P01, P02, ...). The database holds each student's email and a password hash
+  for signing in; the export never includes them, nor settings or API keys (the researcher's or students').
 - Timestamps (*_at) are UTC, ISO 8601. study_date is the study day in Asia/Manila; a study day starts at 04:00,
   so 01:30 on Tuesday belongs to Monday. Flashcard scheduling uses the same boundary.
 - Times: *_ms are milliseconds, *_min minutes. Percentages are 0-100.
@@ -111,8 +111,10 @@ lesson_events.csv - what happened to students' uploads, one row per event
 sessions.csv - one row per study session
   activity      reading (Review tab) | flashcards | quiz;  lesson_id blank = the "All lessons" flashcard deck
   end_reason    left (closed the screen) | idle (5 min without interaction) | background (away more than 5 min) |
-                switched (switched participant) | unclosed (the app stopped reporting, e.g. the browser was closed;
-                ended_at is its last report) | open (still running)
+                signed_out (signed out on this device) | signed_out_elsewhere (the account signed in on another device) |
+                signed_out_by_admin (the researcher signed the account out or reset its password) |
+                switched (legacy: switched participant) | unclosed (the app stopped reporting, e.g. the browser was
+                closed; ended_at is its last report) | open (still running)
   active_ms / active_min   active time (see General)
 
 flashcard_reviews.csv - one row per flashcard answer
@@ -135,10 +137,9 @@ quiz_attempts.csv - one row per quiz attempt, including ones left part-way
 
 quiz_answers.csv - one row per question of each attempt above
   type mc (multiple choice) | tf (true/false); kind term | concept (the flashcard it came from)
-  true/false questions are shown to students as a Yes/No question: the thing judged is the heading (the term for a
-  term card, with "Suggested meaning:" and the definition under it, then "Does this match?"; the suggested answer for
-  a concept card, with "For:" and the card's question under it, then "Is this the answer?"), but they are stored and
-  exported as true/false: choices, chosen_answer and right_answer say True or False (Yes = True, No = False).
+  true/false questions are shown to students as "True or False", then "Question:" and one statement ("<term> means
+  <definition>" for a term card; the card's question followed by the suggested answer for a concept card), then the
+  choices True and False. choices, chosen_answer and right_answer stay True or False.
   question, statement  as the student saw them. For a term card, the definition in question (multiple choice) or
                     statement (true/false) is stored masked: where a definition names its term (or a form of it),
                     the term is written as ___, so the definition doesn't give the term away. The flashcard itself

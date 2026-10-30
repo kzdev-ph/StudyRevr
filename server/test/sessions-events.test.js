@@ -69,6 +69,16 @@ describe('sessions API', () => {
     assert.equal(late.body.session.active_ms, 2 * MIN);
   });
 
+  it('replies never carry participant_id, which would give away the P-code', async () => {
+    const { res } = await begin();
+    const id = res.body.session.id;
+    const update = await t.call('POST', `/api/sessions/${id}`, { as: 'P01', body: { active_ms: 1 } });
+    for (const r of [res, update]) {
+      assert.equal('participant_id' in r.body.session, false);
+      assert.doesNotMatch(JSON.stringify(r.body), /"participant_id"/);
+    }
+  });
+
   it('a session that stops reporting reads as unclosed at its last report', () => {
     const s = { ended_at: null, end_reason: null, last_active_at: '2026-10-05T04:00:00.000Z' };
     assert.deepEqual(sessionStatus(s, new Date('2026-10-05T04:04:00.000Z')), { ended_at: null, end_reason: 'open' });

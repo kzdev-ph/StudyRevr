@@ -44,12 +44,16 @@ const NOT_LESSON_ROUTES = new Set([
   'POST /sessions/:id', // a session id of the caller's own (participant-scoped)
   'POST /setting-events',
   'GET /health',
-  'GET /participants/:code', // checks a code; says nothing about lessons
   'GET /stats', // the caller's own numbers
   'GET /my-ai',
   'POST /my-ai/models',
   'POST /my-ai/key',
   'DELETE /my-ai/key',
+  'POST /auth/signup', // makes an account; no lesson
+  'POST /auth/login',
+  'POST /auth/logout',
+  'GET /auth/me',
+  'POST /auth/password',
 ]);
 
 // Everything under these prefixes is behind the admin PIN (the last coverage test calls each route without it).
@@ -156,7 +160,7 @@ describe('lesson visibility', () => {
       }
       const none = await t.call('GET', '/api/lessons', as.none);
       assert.equal(none.status, 401, 'GET /lessons with no headers');
-      assert.equal(none.body.error.code, 'participant_required');
+      assert.equal(none.body.error.code, 'auth_required');
     });
 
     it("the All lessons deck never offers another student's private card", async () => {
@@ -289,6 +293,10 @@ describe('lesson visibility', () => {
       const { routes } = liveRoutes(t.app);
       const guarded = routes.map((r) => r.split(' ')).filter(([, full]) => PIN_PREFIXES.some((p) => full.startsWith(`/api${p}/`) || full === `/api${p}`));
       assert.ok(guarded.length >= 15, `only ${guarded.length} admin routes found`);
+      // the admin Accounts routes (routes/admin-accounts.js) are mounted through mount(), so they are walked here
+      for (const route of ['GET /api/admin/accounts', 'POST /api/admin/accounts/:code/reset-password', 'POST /api/admin/accounts/:code/sign-out', 'PUT /api/admin/accounts/test-login']) {
+        assert.ok(routes.includes(route), `${route} is missing from the live routes`);
+      }
       const fill = (full) => full.replace(':code', 'P01').replace(':file', 'summary').replace(/:\w+/g, '1');
       for (const [method, full] of guarded) {
         for (const who of [as.none, as.owner]) {

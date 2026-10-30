@@ -117,6 +117,25 @@ describe('research export', () => {
     for (const col of ['self_monitoring_simplify_taps', 'self_monitoring_translate_taps', 'planning_on_time_rate', `L${lessonId} = =Risky title`]) assert.ok(readme.includes(col), col);
   });
 
+  it('no file in the export holds an email, a password hash or an "@" (accounts stay in the database)', async () => {
+    const EMAIL = 'maria.santos.export@example.test';
+    t.db.prepare('DELETE FROM accounts WHERE participant_id = ?').run(ids.P01);
+    t.db.prepare("INSERT INTO accounts (participant_id, email, password_hash, created_at) VALUES (?, ?, 'scrypt$16384$8$1$c2FsdA$aGFzaA', '2026-10-05T04:00:00.000Z')").run(ids.P01, EMAIL);
+    const res = await t.call('GET', '/api/admin/export.zip?include_p00=1', { pin: TEST_PIN, raw: true });
+    assert.equal(res.status, 200);
+    const zip = await JSZip.loadAsync(Buffer.from(await res.arrayBuffer()));
+    assert.equal(Object.keys(zip.files).length, 12, 'every file was scanned');
+    for (const name of Object.keys(zip.files)) {
+      const text = await zip.file(name).async('string');
+      assert.ok(!text.includes('@'), `"@" in ${name}`);
+      assert.ok(!text.includes('scrypt$') && !text.includes('maria.santos'), `account data in ${name}`);
+    }
+    const readme = await zip.file('README.txt').async('string');
+    assert.match(readme, /study ID only/);
+    assert.match(readme, /password hash/);
+    for (const reason of ['signed_out (', 'signed_out_elsewhere', 'signed_out_by_admin']) assert.ok(readme.includes(reason), reason);
+  });
+
   it('setting_events.csv lists each setting change; the codebook explains it and says time_ms is not affected', async () => {
     const rows = parseCsv(await file('setting_events'));
     const day = parseCsv(await file('events')).find((r) => r.participant === 'P01').study_date;

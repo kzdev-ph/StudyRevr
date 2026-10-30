@@ -8,19 +8,21 @@ const TABS = [
   { id: 'stats', label: 'Stats', Icon: StatsIcon, to: paths.tab('stats') },
 ];
 
-// The participant chip shows who this device is studying as (tap it to switch, in Settings).
-export function Header({ settingsActive, participant }) {
+// The chip shows who is signed in: the part of the email before the "@" (tap it for the account, in Settings).
+export function Header({ settingsActive, signedIn, email }) {
   return (
     <header className="header">
       <a className="wordmark" href={paths.library()}>
         <LogoMark />
         <span>StudyRevr</span>
       </a>
-      {participant && (
+      {signedIn && (
         <div className="header__end">
-          <a className="participant-chip" href={paths.tab('settings')} aria-label={`Studying as ${participant}. Switch participant`} title="Switch participant in Settings">
-            <span>{participant}</span>
-          </a>
+          {email && (
+            <a className="participant-chip" href={paths.tab('settings')} aria-label={`Signed in as ${email}. Account settings`} title="Account settings">
+              <span>{email.split('@')[0]}</span>
+            </a>
+          )}
           <a className="icon-btn" href={paths.tab('settings')} aria-label="Settings" title="Settings" aria-current={settingsActive ? 'page' : undefined}>
             <GearIcon />
           </a>

@@ -12,7 +12,7 @@ import { runPipeline } from '../src/pipeline/run.js';
 import { queueJob } from '../src/pipeline/jobs.js';
 import { resolveAiConfig } from '../src/services/settings.js';
 import { keyProblemMessage, studentConfig } from '../src/services/student-ai.js';
-import { addCodes, completion, failure, KEY, makeClient, schema, scriptedFetch, TEST_PIN } from './helpers.js';
+import { addCodes, completion, failure, KEY, makeClient, schema, scriptedFetch, TEST_PIN, tokenFor } from './helpers.js';
 
 const quiet = { warn() {}, log() {}, info() {}, error() {} };
 const STUDENT_KEY = 'sk-student-key-9876';
@@ -189,7 +189,7 @@ describe('live rewrites through the fallback chain', () => {
     t = {
       db,
       call: async (method, path, { as = 'P01', body, pin } = {}) => {
-        const headers = as ? { 'x-participant': as } : {};
+        const headers = as ? { authorization: `Bearer ${tokenFor(db, as, new Date('2026-10-05T04:00:00.000Z'))}` } : {};
         if (pin) headers['x-admin-pin'] = pin;
         if (body !== undefined) headers['content-type'] = 'application/json';
         const res = await fetch(`${base}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
