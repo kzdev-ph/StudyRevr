@@ -10,6 +10,10 @@ import {
   KEEP_MEANING,
   keyPointsPrompt,
   keyTermsPrompt,
+  MATH_CARDS,
+  MATH_OPTIONS,
+  MATH_TERMS,
+  MATH_TEXT,
   NO_OBJECTIVES,
   NO_POSITION,
   quickCheckReviewPrompt,
@@ -18,6 +22,8 @@ import {
   regenerateCardPrompt,
   regenerateCardsPrompt,
   sectionsPrompt,
+  simplifyPrompt,
+  translatePrompt,
 } from '../src/ai/prompts.js';
 import { CHECK_FLAGS } from '../src/services/check-review.js';
 import { CARD_FLAGS, OPTION_FLAGS } from '../src/quiz/review-flags.js';
@@ -190,5 +196,56 @@ describe('prompts never build questions from learning objectives', () => {
     assert.ok(CARD_FLAGS.includes('off_topic'));
     assert.ok(CHECK_FLAGS.includes('off_topic'));
     assert.ok(OPTION_FLAGS.includes('off_topic'));
+  });
+});
+
+describe('math rules', () => {
+  const physics = [
+    'Newton second law: F = m × a',
+    'Kinetic energy: KE = ½mv² with v in m/s',
+    'A 2 kg cart pushed by 10 N accelerates at 5 m/s².',
+    'Weight: W = m × g, with g = 9.8 m/s²',
+  ].join('\n');
+  const plain = 'A self-introduction tells others who you are. It builds trust and shows your skills.';
+  const check = { n: 1, section: 'S', content: 'c', question: 'q', answer: 'a', evidence: 'e', why: 'w' };
+
+  it('a physics chunk gets the math rules in the prompts that read the lesson', () => {
+    const base = { text: physics, index: 0, total: 1 };
+    assert.ok(sectionsPrompt({ ...base, summaryLength: 'short' }).system.includes(MATH_TEXT));
+    assert.match(sectionsPrompt({ ...base, summaryLength: 'short' }).system, /Keep each worked example's steps in order/);
+    const terms = keyTermsPrompt({ ...base, maxTerms: 5 }).system;
+    assert.ok(terms.includes(MATH_TEXT) && terms.includes(MATH_TERMS));
+    const cards = flashcardsPrompt({ ...base, targetCards: 5 }).system;
+    assert.ok(cards.includes(MATH_TEXT) && cards.includes(MATH_CARDS));
+    assert.ok(regenerateCardPrompt({ card, text: physics }).system.includes(MATH_TEXT));
+    assert.ok(regenerateCardsPrompt({ cards: [{ n: 1, ...card, problems: [] }], text: physics }).system.includes(MATH_TEXT));
+    assert.ok(quickChecksPrompt({ checks: [check], text: physics }).system.includes(MATH_TEXT));
+    assert.ok(simplifyPrompt({ title: 'T', content: physics }).system.includes(MATH_TEXT));
+    assert.ok(translatePrompt({ title: 'T', content: physics, checkQuestions: [], keyTerms: [] }).system.includes(MATH_TEXT));
+  });
+
+  it('plain lesson text gets none of the math rules', () => {
+    const base = { text: plain, index: 0, total: 1 };
+    const systems = {
+      sections: sectionsPrompt({ ...base, summaryLength: 'short' }).system,
+      terms: keyTermsPrompt({ ...base, maxTerms: 5 }).system,
+      flashcards: flashcardsPrompt({ ...base, targetCards: 5 }).system,
+      regenerate: regenerateCardPrompt({ card, text: plain }).system,
+      regenerateMany: regenerateCardsPrompt({ cards: [{ n: 1, ...card, problems: [] }], text: plain }).system,
+      quickChecks: quickChecksPrompt({ checks: [check], text: plain }).system,
+      simplify: simplifyPrompt({ title: 'T', content: plain }).system,
+      translate: translatePrompt({ title: 'T', content: plain, checkQuestions: [], keyTerms: [] }).system,
+      distractors: distractorsPrompt({ cards: [{ n: 1, question: 'Q?', answer: 'Builds confidence', evidence: 'e' }] }).system,
+    };
+    for (const [name, system] of Object.entries(systems)) {
+      for (const rule of [MATH_TEXT, MATH_TERMS, MATH_CARDS, MATH_OPTIONS]) assert.ok(!system.includes(rule), name);
+    }
+  });
+
+  it('the distractor prompt adds the math option rules only when an answer is a number, formula or expression', () => {
+    const ask = (answer) => distractorsPrompt({ cards: [{ n: 1, question: 'Q?', answer, evidence: 'e' }] }).system;
+    const math = ask('10 N');
+    assert.ok(math.includes(MATH_OPTIONS) && math.includes(MATH_TEXT));
+    assert.ok(!ask('Builds confidence').includes(MATH_OPTIONS));
   });
 });

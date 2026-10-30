@@ -1,9 +1,9 @@
 import { useLayoutEffect, useRef, useState } from 'react';
-import { CheckIcon, QuizIcon, RetryIcon } from './Icons.jsx';
+import { CheckIcon, CloseIcon, RetryIcon } from './Icons.jsx';
 import { PenLoop } from './Pen.jsx';
 import { api } from '../lib/api.js';
 import { truncateAtWord } from '../lib/format.js';
-import { bestLine, formatDuration, questionText, scoreLine, yesNo } from '../lib/quiz.js';
+import { bestLine, formatDuration, questionLead, questionText, scoreLine, tfCorrection } from '../lib/quiz.js';
 import { paths } from '../lib/router.js';
 
 const EVIDENCE_MAX = 220;
@@ -39,11 +39,8 @@ function Grade({ score, total }) {
   );
 }
 
-// Yes / no (stored as True / False): "Yes", or "No" with what is actually right.
-const rightAnswer = (m) => {
-  if (m.type !== 'tf' || m.right_answer === 'True') return yesNo(m, m.right_answer);
-  return `No. ${m.kind === 'term' ? `${m.question} means: ` : 'The right answer: '}${m.answer_text}`;
-};
+// What the student put, or that nothing was put.
+const yourAnswer = (m) => (m.your_answer === null || m.your_answer === undefined ? null : m.your_answer);
 
 // The end of a quiz: the score, the questions that were missed (with the right answer and the lesson quote),
 // Retake (same questions, new order) and Back to lesson.
@@ -53,7 +50,8 @@ export default function QuizResults({ results, onRetake, busy, headingRef }) {
   return (
     <div className="stack quiz-results">
       <div className="done quiz-score">
-        {all ? <CheckIcon size={36} className="done__icon" /> : <QuizIcon size={36} className="done__icon" />}
+        {/* only a full score gets a tick; the circled number below says the rest */}
+        {all && <CheckIcon size={36} className="done__icon" />}
         <h2 className="done__title" tabIndex={-1} ref={headingRef}>
           <Grade score={attempt.score} total={attempt.total} />
           <span className="visually-hidden">{scoreLine(attempt.score, attempt.total)}</span>
@@ -87,26 +85,51 @@ export default function QuizResults({ results, onRetake, busy, headingRef }) {
             Missed {missed.length === 1 ? 'question' : `questions (${missed.length})`}
           </h2>
           <ol className="quiz-missed">
-            {missed.map((m) => (
-              <li key={m.position} className="quiz-missed__item">
-                <p className="quiz-missed__q">{questionText(m)}</p>
-                <dl className="quiz-missed__answers">
-                  <div>
-                    <dt>Your answer</dt>
-                    <dd className="quiz-missed__yours">{m.your_answer === null || m.your_answer === undefined ? 'Not answered' : yesNo(m, m.your_answer)}</dd>
-                  </div>
-                  <div>
-                    <dt>Right answer</dt>
-                    <dd className="quiz-missed__right">{rightAnswer(m)}</dd>
-                  </div>
-                </dl>
-                {m.evidence && (
-                  <p className="flashcard__evidence">
-                    <span className="flashcard__from">From the lesson:</span> “{truncateAtWord(m.evidence, EVIDENCE_MAX)}”
+            {missed.map((m) => {
+              const yours = yourAnswer(m);
+              const fix = tfCorrection(m);
+              return (
+                <li key={m.position} className="quiz-missed__item">
+                  {m.type === 'tf' && <p className="flashcard__kicker">{questionLead(m)}</p>}
+                  <p className="quiz-missed__q">
+                    {m.type === 'tf' && (
+                      <>
+                        <span className="quiz-q__for-label">Question:</span>{' '}
+                      </>
+                    )}
+                    {questionText(m)}
                   </p>
-                )}
-              </li>
-            ))}
+                  <dl className="quiz-missed__answers">
+                    <div>
+                      <dt>Your answer</dt>
+                      <dd className="quiz-missed__yours">
+                        <span className="quiz-opt__mark" aria-hidden="true">
+                          <CloseIcon size={18} />
+                        </span>
+                        {yours === null ? (
+                          'Not answered'
+                        ) : (
+                          <>
+                            <s>{yours}</s>
+                            <span className="visually-hidden">, not right</span>
+                          </>
+                        )}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Right answer</dt>
+                      <dd className="quiz-missed__right">{m.right_answer}</dd>
+                    </div>
+                  </dl>
+                  {fix && <p className="quiz-missed__fix">{fix}</p>}
+                  {m.evidence && (
+                    <p className="flashcard__evidence">
+                      <span className="flashcard__from">From the lesson:</span> “{truncateAtWord(m.evidence, EVIDENCE_MAX)}”
+                    </p>
+                  )}
+                </li>
+              );
+            })}
           </ol>
         </section>
       )}

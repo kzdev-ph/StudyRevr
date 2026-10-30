@@ -2,6 +2,10 @@
 // and prints what it generated, so you can judge quality. Uses a throw-away in-memory database.
 //
 //   npm run pipeline -- <file> [--summary=short|detailed] [--chunk-tokens=N] [--concurrency=N] [--thinking=minimal|low|medium|high]
+//                             [--show-text] [--save=<file.db>]
+//
+// --show-text prints the extracted text; --save keeps the finished database in a file. At the end it also prints the quiz leak
+// report (clean questions available) and how many LaTeX leftovers (\frac, $x$, ^{...}) the students would see.
 //
 // <file> is a path, or a (partial, case-insensitive) name of a file in test-lessons/. With no file it lists them.
 // The provider comes from .env: AI_PROVIDER (default google) plus its key (GOOGLE_API_KEY, NVIDIA_API_KEY,
@@ -17,21 +21,26 @@ import { openDb, runMigrations } from '../src/db/index.js';
 import { assertSignature, fileExtension } from '../src/middleware/upload.js';
 import { getJobStatus, queueJob } from '../src/pipeline/jobs.js';
 import { runPipeline } from '../src/pipeline/run.js';
+import { formatReport, lessonLeakReport } from '../src/quiz/check.js';
 import { extractText } from '../src/services/extract.js';
 import { resolveAiConfig } from '../src/services/settings.js';
 
 const LESSONS_DIR = path.join(ROOT_DIR, 'test-lessons');
 const SUPPORTED = new Set(['.docx', '.pptx', '.pdf']);
-const USAGE = 'Usage: npm run pipeline -- <file> [--summary=short|detailed] [--chunk-tokens=N] [--concurrency=N] [--thinking=minimal|low|medium|high]';
+const USAGE = 'Usage: npm run pipeline -- <file> [--summary=short|detailed] [--chunk-tokens=N] [--concurrency=N] [--thinking=minimal|low|medium|high] [--show-text] [--save=<file.db>]';
 
 const args = process.argv.slice(2);
 const flag = (name) => args.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
+const showText = args.includes('--show-text');
+// npm runs the script from server/, so relative paths are read from where you typed the command
+const fromHere = (p) => path.resolve(process.env.INIT_CWD ?? process.cwd(), p);
+const saveTo = flag('save') ? fromHere(flag('save')) : null;
 const target = args.find((a) => !a.startsWith('--'));
 
 const available = () => (fs.existsSync(LESSONS_DIR) ? fs.readdirSync(LESSONS_DIR).filter((f) => SUPPORTED.has(path.extname(f).toLowerCase())) : []);
 
 function findFile(name) {
-  if (fs.existsSync(name) && fs.statSync(name).isFile()) return path.resolve(name);
+  if (fs.existsSync(fromHere(name)) && fs.statSync(fromHere(name)).isFile()) return fromHere(name);
   const exact = path.join(LESSONS_DIR, name);
   if (fs.existsSync(exact)) return exact;
   const matches = available().filter((f) => f.toLowerCase().includes(name.toLowerCase()));
@@ -76,6 +85,15 @@ console.log(`# ${path.basename(file)}`);
 console.log(`Provider: ${provider.label} (${provider.baseUrl})  Model: ${provider.model}  Concurrency: ${concurrency}  Temperature: ${provider.temperature}`);
 console.log(`Request timeout: ${provider.timeoutMs / 1000}s  Request limit: ${provider.requestsPerMinute ? `${provider.requestsPerMinute}/min` : 'none'}`);
 console.log(`Extracted ${wordCount} words${pageCount ? ` from ${pageCount} pages` : ''}; ${chunks.length} chunk(s) of ~${chunks.map((c) => c.tokens).join(', ')} tokens (budget ${chunkTokens}).`);
+if (showText) console.log(`\n## Extracted text\n${text}\n## End of extracted text\n`);
+
+// --save=<file.db>: keep the finished database, also when the pipeline failed
+function saveDb() {
+  if (!saveTo) return;
+  fs.mkdirSync(path.dirname(saveTo), { recursive: true });
+  fs.writeFileSync(saveTo, db.serialize());
+  console.log(`Saved database to ${saveTo}`);
+}
 
 const lessonId = Number(
   db.prepare("INSERT INTO lessons (title, filename, raw_text, word_count, status) VALUES (?, ?, ?, ?, 'processing')").run(path.basename(file, ext), path.basename(file), text, wordCount).lastInsertRowid,
@@ -134,6 +152,7 @@ const seconds = secondsSince(started);
 const { lesson, job } = getJobStatus(db, lessonId);
 if (lesson.status !== 'ready') {
   console.log(`\nPipeline FAILED in stage "${job.stage}": ${lesson.error}`);
+  saveDb();
   process.exit(1);
 }
 
@@ -170,3 +189,20 @@ console.log(`HTTP requests made by this process (any code): ${net.stats.requests
 if (net.stats.requests !== attempts) console.log(`  MISMATCH: the AI client counted ${attempts} attempt(s); some requests bypassed it.`);
 console.log(`Event loop: longest stall ${(loopDelay.max / 1e9).toFixed(2)}s.`);
 console.log(`Structured output (response_format json_schema): sent on ${schemaSent} request(s), rejected by the provider on ${schemaRejected}.`);
+
+console.log(`\n${formatReport(lessonLeakReport(db, lessonId))}`);
+
+// Stored texts a student reads, searched for LaTeX that was never turned into plain text
+const latex = /\\[a-zA-Z]+|\$[^$\n]+\$|\^\{|_\{/;
+const stored = [
+  ...db.prepare('SELECT content, check_questions FROM sections WHERE lesson_id = ?').all(lessonId).flatMap((s) => [['sections.content', s.content], ['check_questions', s.check_questions]]),
+  ...db.prepare('SELECT text FROM key_points WHERE lesson_id = ?').all(lessonId).map((p) => ['key_points.text', p.text]),
+  ...db.prepare('SELECT term, definition FROM key_terms WHERE lesson_id = ?').all(lessonId).flatMap((t) => [['key_terms.term', t.term], ['key_terms.definition', t.definition]]),
+  ...db.prepare('SELECT front, back FROM flashcards WHERE lesson_id = ?').all(lessonId).flatMap((c) => [['flashcards.front', c.front], ['flashcards.back', c.back]]),
+  ...db.prepare('SELECT d.choices FROM quiz_distractors d JOIN flashcards f ON f.id = d.flashcard_id WHERE f.lesson_id = ?').all(lessonId).map((d) => ['quiz_distractors.choices', d.choices]),
+];
+const leftovers = stored.filter(([, value]) => latex.test(value ?? ''));
+console.log(`LaTeX leftovers: ${leftovers.length}`);
+for (const [where, value] of leftovers.slice(0, 5)) console.log(`  ${where}: ${String(value).match(latex)[0]}  in "${String(value).slice(Math.max(0, String(value).search(latex) - 30), String(value).search(latex) + 50)}"`);
+
+saveDb();

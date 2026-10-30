@@ -1,6 +1,7 @@
 /* Review: lesson header, section page, quick checks, key points and terms, "What's next". */
 
 .lesson-view {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -70,6 +71,7 @@
 
 /* progress */
 .review {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -106,6 +108,7 @@
 /* The section: written straight on the page ("3/8 sections" above says which one). From 72rem the quick check and
    the original text stand beside the reading column instead of under it. */
 .page {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -173,6 +176,7 @@
   font-size: 1.0625rem;
   line-height: 1.7;
   max-width: 40rem;
+  overflow-wrap: anywhere;
 }
 .prose ul {
   display: flex;
@@ -196,6 +200,8 @@
 
 /* the everyday example: a small index card tucked into the page */
 .example {
+  min-width: 0;
+  overflow-wrap: anywhere;
   padding: 14px 16px;
   border-radius: var(--r-lg);
   background: var(--sheet);
@@ -348,6 +354,8 @@
 
 /* quick check */
 .quickcheck {
+  min-width: 0;
+  overflow-wrap: anywhere;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -366,6 +374,9 @@
   gap: 22px;
 }
 .check {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -508,6 +519,8 @@
   counter-reset: point;
 }
 .points__item {
+  min-width: 0;
+  overflow-wrap: anywhere;
   position: relative;
   counter-increment: point;
   padding: 16px 0;
@@ -545,6 +558,8 @@
   border-top: 1px solid var(--line-strong);
 }
 .term {
+  min-width: 0;
+  overflow-wrap: anywhere;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -552,6 +567,8 @@
   border-bottom: 1px solid var(--line);
 }
 .term__name {
+  max-width: 100%;
+  overflow-wrap: anywhere;
   position: relative;
   align-self: flex-start;
   padding: 0 3px;

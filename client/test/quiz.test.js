@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { bestLine, capitalFirst, elapsed, formatDuration, lessonQuizLine, percent, questionLead, questionText, quizKeyAction, scoreLine, yesNo, yesNoAsk } from '../src/lib/quiz.js';
+import * as quiz from '../src/lib/quiz.js';
+import { bestLine, capitalFirst, elapsed, formatDuration, lessonQuizLine, lowerFirst, percent, questionLead, questionText, quizKeyAction, scoreLine, tfStatement } from '../src/lib/quiz.js';
 
 const key = (k, extra = {}) => ({ key: k, target: { tagName: 'BODY' }, ...extra });
 
@@ -29,26 +30,27 @@ describe('quiz wording', () => {
   it('says what kind of question it is', () => {
     assert.equal(questionLead({ type: 'mc', kind: 'term' }), 'Which term matches this description?');
     assert.equal(questionLead({ type: 'mc', kind: 'concept' }), 'Choose the best answer');
-    assert.equal(questionLead({ type: 'tf', kind: 'term' }), 'Yes or no?');
-    assert.equal(questionLead({ type: 'tf', kind: 'concept' }), 'Yes or no?');
+    assert.equal(questionLead({ type: 'tf', kind: 'term' }), 'True or False');
+    assert.equal(questionLead({ type: 'tf', kind: 'concept' }), 'True or False');
   });
-  it('spells a true / false question out as one Yes / No question', () => {
-    assert.equal(questionText({ type: 'tf', kind: 'term', question: 'Sample', statement: 'part of the population.' }), 'Sample. Suggested meaning: Part of the population. Does this match?');
-    assert.equal(questionText({ type: 'tf', kind: 'concept', question: 'Why sample?', statement: 'to save time' }), 'To save time. For: Why sample? Is this the answer?');
+  it('writes a true / false question as one statement', () => {
+    assert.equal(tfStatement({ type: 'tf', kind: 'term', question: 'Sampling', statement: 'Picking part of a population to study' }), 'Sampling means picking part of a population to study.');
+    assert.equal(tfStatement({ type: 'tf', kind: 'concept', question: 'Why sample?', statement: 'to save time' }), 'Why sample? To save time.');
+    assert.equal(questionText({ type: 'tf', kind: 'term', question: 'Sample', statement: 'The part of the population.' }), 'Sample means the part of the population.');
+    const tf = { type: 'tf', kind: 'concept', question: 'Why sample?', statement: 'to save time' };
+    assert.equal(questionText(tf), tfStatement(tf));
   });
-  it('puts what is judged first: the term, or the suggested answer', () => {
-    assert.deepEqual(yesNoAsk({ kind: 'term', question: 'Sample', statement: 'Part of the population.' }), {
-      heading: 'Sample',
-      label: 'Suggested meaning:',
-      context: 'Part of the population.',
-      ask: 'Does this match?',
-    });
-    assert.deepEqual(yesNoAsk({ kind: 'concept', question: 'Why sample?', statement: 'To save time.' }), {
-      heading: 'To save time.',
-      label: 'For:',
-      context: 'Why sample?',
-      ask: 'Is this the answer?',
-    });
+  it('lowers the first letter only after a common opener or an -ing word', () => {
+    assert.equal(lowerFirst('The sample.'), 'the sample.');
+    assert.equal(lowerFirst('Picking a sample.'), 'picking a sample.');
+    assert.equal(lowerFirst('DNA is a molecule.'), 'DNA is a molecule.');
+    assert.equal(lowerFirst('pH is a scale.'), 'pH is a scale.');
+    assert.equal(lowerFirst('Filipino is a language.'), 'Filipino is a language.');
+    assert.equal(lowerFirst(''), '');
+  });
+  it('no longer turns True / False into Yes / No', () => {
+    assert.equal(quiz.yesNo, undefined);
+    assert.equal(quiz.yesNoAsk, undefined);
   });
   it('capitalises the first letter for display only, leaving names like iPhone and pH alone', () => {
     assert.equal(capitalFirst('builds confidence.'), 'Builds confidence.');
@@ -58,10 +60,7 @@ describe('quiz wording', () => {
     assert.equal(capitalFirst('___ is a method'), '___ is a method');
     assert.equal(capitalFirst(''), '');
   });
-  it('shows True / False as Yes / No on true / false questions only', () => {
-    const tf = { type: 'tf' };
-    assert.deepEqual([yesNo(tf, 'True'), yesNo(tf, 'False'), yesNo(tf, 'Other')], ['Yes', 'No', 'Other']);
-    assert.equal(yesNo({ type: 'mc' }, 'True'), 'True');
+  it('leaves a multiple-choice question as it is', () => {
     assert.equal(questionText({ type: 'mc', kind: 'concept', question: 'Why sample?' }), 'Why sample?');
   });
   it('scores and durations', () => {
@@ -94,5 +93,20 @@ describe('quiz timing', () => {
     now += 4_250.4;
     assert.equal(elapsed(shown, clock()), 4250);
     assert.equal(elapsed(5_000, 4_000), 0);
+  });
+});
+
+describe('tfCorrection', () => {
+  it('says the card answer once as a plain sentence, never as a right answer', () => {
+    assert.equal(quiz.tfCorrection({ type: 'tf', kind: 'concept', right_answer: 'False', answer_text: '9 J' }), 'The answer is 9 J.');
+    assert.equal(quiz.tfCorrection({ type: 'tf', kind: 'term', question: 'Work', right_answer: 'False', answer_text: 'The force times distance' }), 'Work means the force times distance.');
+  });
+  it('says the statement is true when the right answer is True, never repeating the card answer', () => {
+    assert.equal(quiz.tfCorrection({ type: 'tf', kind: 'concept', right_answer: 'True', answer_text: '9 J' }), 'That statement is true.');
+    assert.equal(quiz.tfCorrection({ type: 'tf', kind: 'term', question: 'Work', right_answer: 'True', answer_text: 'The force times distance' }), 'That statement is true.');
+  });
+  it('is empty when the answer is unknown or the item is not true / false', () => {
+    assert.equal(quiz.tfCorrection({ type: 'tf', kind: 'concept', right_answer: 'False', answer_text: '' }), '');
+    assert.equal(quiz.tfCorrection({ type: 'mc', right_answer: 'x', answer_text: '9 J' }), '');
   });
 });

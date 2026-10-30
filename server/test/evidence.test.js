@@ -88,3 +88,18 @@ describe('trimQuote: a long quote ends where a sentence or clause ends', () => {
     assert.ok(MAX_CHECK_EVIDENCE_WORDS > MAX_EVIDENCE_WORDS);
   });
 });
+
+describe('checkEvidence: formulas', () => {
+  const formulaKey = comparable('Newton\'s second law\nF = ma\n\nArea of a circle\nA = πr²\n\nThe law of motion.');
+  const run = (term, evidence) => checkEvidence({ term, evidence, sourceKey: formulaKey });
+
+  it('a quote that holds an equation needs only one explaining word', () => {
+    assert.equal(run('Newton\'s second law', 'F = ma').ok, true);
+    assert.equal(run('Area of a circle', 'A = πr²').ok, true);
+  });
+
+  it('a short quote without an equation still fails', () => {
+    assert.equal(run('Newton\'s second law', 'The law').ok, false);
+    assert.equal(run('Area of a circle', 'The law').reason, 'evidence is only the term or a title');
+  });
+});

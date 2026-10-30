@@ -1,5 +1,6 @@
 import { getDocumentProxy } from 'unpdf';
 import { HttpError } from '../middleware/errors.js';
+import { pageText } from './pdf-scripts.js';
 import { normalizeText } from './text.js';
 
 // The most time a PDF may take to read. A page count or a content stream built to be slow could otherwise keep the server
@@ -117,7 +118,7 @@ export async function extractPdf(buffer, { budgetMs = PDF_BUDGET_MS } = {}) {
     // one page at a time (the text unpdf's extractText gives per page: items in order, a line break where pdf.js saw one)
     for (let n = 1; n <= pdf.numPages; n += 1) {
       const content = await (await pdf.getPage(n)).getTextContent();
-      text.push(content.items.filter((item) => item.str != null).map((item) => item.str + (item.hasEOL ? '\n' : '')).join(''));
+      text.push(pageText(content.items)); // superscripts and subscripts (10²³, H₂O) are written as such
       checkBudget();
       await yieldToLoop();
     }

@@ -1,4 +1,5 @@
 import { singular } from '../pipeline/terms.js';
+import { hasMathOperator, hasNumberUnit, isFormulaLike, mathKey, sameValue } from '../services/math-text.js';
 
 // Checks for quiz questions and flashcards that give their own answer away, so a student could answer them without
 // knowing the lesson. Pure and shared by the quiz builder (which skips or repairs what fails), the wrong-answers step
@@ -247,7 +248,10 @@ export function answerInQuestion(question, answer) {
   if (answerWords.length >= 2 && coverage(answerWords, questionWords) >= ANSWER_COVERAGE)
     return `the question holds most of the answer (${names(shared(answerWords, questionWords)).join(', ')})`;
   // one word: the same word or a form of it, not a word that merely contains it ("data" in "database")
-  if (answerWords.length === 1 && shared(answerWords, questionWords, exact).length) return `the question holds the answer word "${answerWords[0][0]}"`;
+  // (in a math question a lone number is no word: "10 N" for "If m = 10 kg ..., what is F?" is a worked result, not a leak;
+  // anywhere else "1898" in the question and the answer is the answer given away)
+  const mathQuestion = hasNumberUnit(answer) || hasMathOperator(question);
+  if (answerWords.length === 1 && !(mathQuestion && /^\d+$/.test(answerWords[0][0])) && shared(answerWords, questionWords, exact).length) return `the question holds the answer word "${answerWords[0][0]}"`;
   return null;
 }
 
@@ -302,6 +306,10 @@ export function maskTerm(text, term) {
   return masked.replace(/___(?:\s+___)+/g, '___');
 }
 
+// Two formulas (with an operator or math symbol; a date, a section number or a bare digit is not one) whose normal forms differ are different answers however many tokens
+// their words share: wordStems drops the signs and operators that tell them apart, so word overlap proves nothing.
+const differentMath = (a, b) => isFormulaLike(a) && isFormulaLike(b) && mathKey(a) !== mathKey(b);
+
 // What is wrong with one wrong option next to the right answer (rules c and f). `lessonWords`: lessonWords(lesson
 // text), for the off-topic check (skipped without it). `lengths: false` for term names, which differ in length
 // on their own. `reworded: false` for the other items of a list in the lesson, which share the list's words on purpose;
@@ -319,9 +327,11 @@ export function wrongOptionProblems(wrong, correct, { lessonWords = null, length
   const lc = language(correct);
   const lw = language(wrong);
   if (lc && lw && lc !== lw) problems.push({ rule: 'f', detail: 'another language' });
+  if (sameValue(wrong, correct)) problems.push({ rule: 'f', detail: 'the right answer in another form (same value)' });
   const own = wordStems(wrong);
   const overlap = jaccard(own, wordStems(correct));
-  if (overlap >= NEAR_DUPLICATE) problems.push({ rule: 'f', detail: 'the right answer’s own words: reworded (a second right answer) or reversed' });
+  if (differentMath(wrong, correct)) { /* word overlap says nothing about two different formulas */ }
+  else if (overlap >= NEAR_DUPLICATE) problems.push({ rule: 'f', detail: 'the right answer’s own words: reworded (a second right answer) or reversed' });
   else if (reworded && lc !== 'fil' && lw !== 'fil' && !enumerations(wrong, correct) && overlap >= REWORDED) problems.push({ rule: 'f', detail: 'the right answer’s own words: nearly the same claim reworded (a second right answer)' });
   // another card's answer reads as the answer to that other question, so a student can match it away
   if (otherAnswers.some((a) => jaccard(own, wordStems(a)) >= NEAR_DUPLICATE)) problems.push({ rule: 'f', detail: 'another card’s answer: it answers a different question' });
@@ -377,8 +387,9 @@ export function falseStatementProblems(statement, answer, { reworded = false } =
   const la = language(answer);
   const ls = language(statement);
   if (la && ls && la !== ls) problems.push({ rule: 'e', detail: 'another language' });
+  if (sameValue(statement, answer)) problems.push({ rule: 'e', detail: 'the right answer in another form (same value)' });
   const threshold = reworded && la !== 'fil' && ls !== 'fil' && !enumerations(statement, answer) ? REWORDED : NEAR_DUPLICATE;
-  if (jaccard(wordStems(statement), wordStems(answer)) >= threshold) problems.push({ rule: 'e', detail: 'the right answer’s own words: reworded (so it may be true) or reversed' });
+  if (!differentMath(statement, answer) && jaccard(wordStems(statement), wordStems(answer)) >= threshold) problems.push({ rule: 'e', detail: 'the right answer’s own words: reworded (so it may be true) or reversed' });
   return problems;
 }
 

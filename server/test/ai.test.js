@@ -120,6 +120,11 @@ describe('createAiClient.generateJSON', () => {
     assert.deepEqual(await makeClient(f).generateJSON({ system: 's', user: 'u', schema }), { answer: 'ok', n: 1 });
   });
 
+  it('turns LaTeX in a reply into plain text before validating', async () => {
+    const f = scriptedFetch(completion('{"answer":"$x^{2}$","n":1}'));
+    assert.deepEqual(await makeClient(f).generateJSON({ system: 's', user: 'u', schema }), { answer: 'x²', n: 1 });
+  });
+
   it('omits Authorization when there is no key (local servers)', async () => {
     const f = scriptedFetch(completion('{"answer":"ok","n":1}'));
     await makeClient(f, { ...CFG, apiKey: '' }).generateJSON({ system: 's', user: 'u', schema });

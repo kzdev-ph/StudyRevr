@@ -48,8 +48,8 @@
   --series-quiz: #0b7a76;
   --card-shadow: 0 1px 2px rgb(28 29 34 / 0.1), 0 6px 14px -8px rgb(28 29 34 / 0.25);
 
-  --font-ui: 'Hanken Grotesk Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-read: 'Literata Variable', Georgia, 'Times New Roman', serif;
+  --font-ui: 'Hanken Grotesk Variable', system-ui, -apple-system, 'Segoe UI', 'Cambria Math', 'STIX Two Math', 'Noto Sans Math', sans-serif;
+  --font-read: 'Literata Variable', Georgia, 'Times New Roman', 'Cambria Math', 'STIX Two Math', 'Noto Sans Math', serif;
 
   --gutter: 16px;
   --mw: 52px; /* the margin column; a thin neutral hairline marks its edge where it holds numbers */

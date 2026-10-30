@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { CheckIcon, CloseIcon } from './Icons.jsx';
 import { PenLoop, PenStrike, PenTick } from './Pen.jsx';
 import { truncateAtWord } from '../lib/format.js';
-import { capitalFirst, questionLead, yesNo, yesNoAsk } from '../lib/quiz.js';
+import { capitalFirst, questionLead, tfCorrection, tfStatement } from '../lib/quiz.js';
 
 const EVIDENCE_MAX = 220;
 // the marks, after the answer is saved: the student's loop round their number, then the teacher's tick or strike
@@ -25,7 +25,6 @@ function optionState(i, feedback) {
 // works at once) and a tap finishes them.
 export default function QuizQuestion({ question: q, feedback, onAnswer, busy, refocus = 0 }) {
   const tf = q.type === 'tf';
-  const ask = tf ? yesNoAsk(q) : null;
   const headingRef = useRef(null);
   const optsRef = useRef(null);
   const marks = useRef(new Set()).current;
@@ -47,24 +46,16 @@ export default function QuizQuestion({ question: q, feedback, onAnswer, busy, re
     <article className="quiz-q" aria-labelledby="quiz-q-text" aria-describedby="quiz-counter" onPointerDown={feedback ? finishMarks : undefined}>
       <p className="flashcard__kicker">{questionLead(q)}</p>
       {tf ? (
-        <>
-          <h2 id="quiz-q-text" className="quiz-q__question" tabIndex={-1} ref={headingRef}>
-            {q.kind === 'term' ? <span className="quiz-q__term">{ask.heading}</span> : ask.heading}
-          </h2>
-          <p className="quiz-q__for">
-            <span className="quiz-q__for-label">{ask.label}</span> {ask.context}
-          </p>
-          <p id="quiz-q-ask" className="quiz-q__prompt">
-            {ask.ask}
-          </p>
-        </>
+        <h2 id="quiz-q-text" className="quiz-q__question" tabIndex={-1} ref={headingRef}>
+          <span className="quiz-q__for-label">Question:</span> {tfStatement(q)}
+        </h2>
       ) : (
         <h2 id="quiz-q-text" className="quiz-q__question" tabIndex={-1} ref={headingRef}>
           {q.question}
         </h2>
       )}
 
-      <div className={`quiz-opts${tf ? ' quiz-opts--tf' : ''}`} role="group" aria-labelledby={tf ? 'quiz-q-text quiz-q-ask' : 'quiz-q-text'} ref={optsRef}>
+      <div className={`quiz-opts${tf ? ' quiz-opts--tf' : ''}`} role="group" aria-labelledby="quiz-q-text" ref={optsRef}>
         {q.choices.map((choice, i) => {
           const state = optionState(i, feedback);
           const chosen = feedback?.chosen_index === i;
@@ -83,7 +74,7 @@ export default function QuizQuestion({ question: q, feedback, onAnswer, busy, re
               </kbd>
               <span className="quiz-opt__text">
                 <span>
-                  {tf ? yesNo(q, choice) : capitalFirst(choice)}
+                  {capitalFirst(choice)}
                   {state === 'wrong' && strike && <PenStrike duration={MARK_MS} delay={MARK_DELAY_MS} track={marks} />}
                 </span>
               </span>
@@ -105,11 +96,15 @@ export default function QuizQuestion({ question: q, feedback, onAnswer, busy, re
             {feedback.correct ? <CheckIcon size={20} /> : <CloseIcon size={20} />}
             {feedback.correct ? 'Correct' : 'Not quite'}
           </p>
-          {/* a true / false answer names the right answer, unless that is the statement just shown (a correct Yes) */}
-          {(!feedback.correct || (tf && feedback.answer_text !== q.statement)) && (
+          {/* a true / false statement that was true and answered False says so; one that was false says what is true */}
+          {tf && !feedback.correct && q.choices[feedback.answer_index] === 'True' && (
+            <p className="quiz-feedback__answer">{tfCorrection({ type: 'tf', right_answer: 'True' })}</p>
+          )}
+          {(tf ? q.choices[feedback.answer_index] !== 'True' : !feedback.correct) && (
             <p className="quiz-feedback__answer">
-              {tf ? (q.kind === 'term' ? `${q.question} means: ` : 'The right answer: ') : 'The right answer: '}
+              {tf ? (q.kind === 'term' ? `${q.question} means: ` : 'The answer is ') : 'The right answer: '}
               <strong>{feedback.answer_text}</strong>
+              {tf && q.kind !== 'term' && !/[.!?]$/.test(String(feedback.answer_text).trim()) ? '.' : null}
             </p>
           )}
           {feedback.evidence && (

@@ -382,3 +382,45 @@ describe('REWORDED: a wrong option that restates the right answer', () => {
     assert.deepEqual(rules(falseStatementProblems(reworded, right, { reworded: true })), ['e']);
   });
 });
+
+describe('leak checks: numbers and formulas', () => {
+  const Q = 'If m = 10 kg and a = 1 m/s², what is F?';
+
+  it('a: a worked numeric result is not a leak, a one-word answer still is', () => {
+    assert.equal(answerInQuestion(Q, '10 N'), null);
+    assert.ok(answerInQuestion('Ten of the 12 students passed. How many passed?', 'Ten'));
+    assert.ok(answerInQuestion(Q, 'F = 10 N, where m = 10 kg'));
+  });
+
+  it('f: the right answer in another form (same value) is not a wrong option', () => {
+    assert.ok(wrongOptionProblems('10.0 N', '10 N').some((p) => p.rule === 'f' && /same value/.test(p.detail)));
+    assert.ok(wrongOptionProblems('1/2', '0.5').some((p) => /same value/.test(p.detail)));
+    assert.ok(!wrongOptionProblems('12 N', '10 N').length);
+  });
+
+  it('e: a false statement with the same value as the answer is refused', () => {
+    assert.ok(falseStatementProblems('10.0 N', '10 N').some((p) => p.rule === 'e' && /same value/.test(p.detail)));
+    assert.ok(!falseStatementProblems('12 N', '10 N').some((p) => /same value/.test(p.detail)));
+  });
+});
+
+describe('different math answers are not reworded copies', () => {
+  const right = 'x=(−b±√(b²−4ac))/2a';
+  const opts = { lengths: false };
+  it('a formula that differs in a sign, operator or divisor is a different answer', () => {
+    for (const wrong of ['x=(b±√(b²+4ac))/2a', 'x=(−b±√(b²−4ac))/4a', 'x=(b±√(b²−4ac))/2a']) {
+      assert.deepEqual(rules(wrongOptionProblems(wrong, right, opts)), [], wrong);
+      assert.deepEqual(rules(falseStatementProblems(wrong, right, { reworded: true })), [], wrong);
+    }
+  });
+  it('the same value in another form is still rule f', () => {
+    assert.ok(wrongOptionProblems('10.0 N', '10 N').some((p) => p.rule === 'f' && /same value/.test(p.detail)));
+  });
+  it('an identical formula (same normal form) is still rejected', () => {
+    assert.ok(rules(wrongOptionProblems('x = (-b ± √(b² − 4ac)) / 2a', right, opts)).includes('f'));
+    assert.ok(rules(falseStatementProblems('x = (-b ± √(b² − 4ac)) / 2a', right)).includes('e'));
+  });
+  it('a non-math rewording is still rejected', () => {
+    assert.ok(rules(wrongOptionProblems('Makes studies cheaper to replicate', 'Makes studies easier to replicate', opts)).includes('f'));
+  });
+});

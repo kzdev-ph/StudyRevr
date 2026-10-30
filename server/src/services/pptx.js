@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
 import { OfficeParser } from 'officeparser';
+import { latexToText } from './math-text.js';
 
 const NOTES_LABEL = 'Notes:';
 
@@ -27,18 +28,33 @@ const TYPED_BULLET = /^(?:[•●▪■◦‣»]\s*|[-–]\s+)/;
 // Compares lines regardless of list prefixes so the same text isn't added twice.
 const dedupeKey = (line) => line.replace(/^(?:(?:[-–•●▪■◦‣»]|\d+[.)])\s*)+/, '').trim().toLowerCase();
 
+const hasMath = (node) => (node.children ?? []).some((c) => (c.type === 'code' && c.metadata?.math) || hasMath(c));
+
+// The text of a node. An equation arrives twice from officeparser (once appended to the node's text as LaTeX, once as
+// a { type: 'code', metadata: { math } } child), so a node that holds one is rebuilt from its children, with the
+// equation as readable Unicode. Any other node keeps its own text, exactly as before.
+export function nodeText(node) {
+  if (!hasMath(node)) return node.text;
+  return node.children
+    .map((child) => {
+      if (child.type === 'code' && child.metadata?.math) return ` ${latexToText(child.text)} `;
+      return child.type === 'text' ? child.text : nodeText(child);
+    })
+    .join('');
+}
+
 // Turns a slide (or notes) AST node into one line per paragraph, list item or table row.
-function nodeLines(node, out = []) {
+export function nodeLines(node, out = []) {
   switch (node.type) {
     case 'paragraph':
     case 'heading': // title placeholders
       // a soft line break inside a paragraph arrives as "\n"; keep each side as its own line
-      out.push(...textLines(node.text));
+      out.push(...textLines(nodeText(node)));
       break;
     case 'list': {
       // every line of a bullet is a bullet of its own ("- Build trust.", "- Share your background."); an ordered
       // item keeps its number on its first line, the rest follow as plain lines
-      const lines = textLines(node.text).map((l) => l.replace(TYPED_BULLET, '')).filter(Boolean);
+      const lines = textLines(nodeText(node)).map((l) => l.replace(TYPED_BULLET, '')).filter(Boolean);
       if (!lines.length) break;
       const { listType, itemIndex = 0 } = node.metadata ?? {};
       if (listType === 'ordered') out.push(`${itemIndex + 1}. ${lines[0]}`, ...lines.slice(1));
@@ -47,7 +63,7 @@ function nodeLines(node, out = []) {
     }
     case 'table':
       for (const row of node.children ?? []) {
-        const cells = (row.children ?? []).map((cell) => clean(cell.text)).filter(Boolean);
+        const cells = (row.children ?? []).map((cell) => clean(nodeText(cell))).filter(Boolean);
         if (cells.length) out.push(cells.join(' | '));
       }
       break;

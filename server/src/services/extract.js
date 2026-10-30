@@ -1,8 +1,11 @@
+import JSZip from 'jszip';
 import mammoth from 'mammoth';
+import { OfficeParser } from 'officeparser';
 import { HttpError } from '../middleware/errors.js';
 import { splitBlocks } from '../ai/chunk.js';
+import { mathText } from './math-text.js';
 import { extractPdf } from './pdf.js';
-import { extractPptx } from './pptx.js';
+import { extractPptx, nodeLines } from './pptx.js';
 import { countWords, normalizeText } from './text.js';
 import { assertEntrySizes, assertSafeZip } from './zipguard.js';
 
@@ -21,7 +24,25 @@ export async function assertDocumentPart(buffer, ext) {
   }
 }
 
+// Word equations (OMML) are invisible to mammoth, so a document that has one is read with officeparser instead.
+const DOCX_BLOCKS = new Set(['paragraph', 'heading', 'list', 'table']);
+
+async function extractDocxWithMath(buffer) {
+  const ast = await OfficeParser.parseOffice(buffer, { fileType: 'docx', ignoreNotes: true, ignoreHeadersAndFooters: true });
+  const lines = [];
+  for (const node of ast.content) if (DOCX_BLOCKS.has(node.type)) nodeLines(node, lines);
+  return lines.join('\n\n'); // every paragraph is its own block, as with mammoth
+}
+
 async function extractDocx(buffer) {
+  const xml = await (await JSZip.loadAsync(buffer)).file('word/document.xml')?.async('string');
+  if (xml && /<m:oMath[\s>]/.test(xml)) {
+    try {
+      return await extractDocxWithMath(buffer);
+    } catch (err) {
+      console.warn('docx: could not read the equations, falling back to the plain text reader:', err.message);
+    }
+  }
   const { value } = await mammoth.extractRawText({ buffer });
   return value;
 }
@@ -55,7 +76,7 @@ export async function extractText(buffer, ext, { includeNotes = true, pdfBudgetM
     console.error(`Extraction failed (${ext}):`, err.message);
     throw new HttpError(422, UNREADABLE, { code: 'unreadable' });
   }
-  const text = normalizeText(raw || '');
+  const text = normalizeText(mathText(raw || '')); // typed LaTeX in any file type becomes readable Unicode
   const blockCount = splitBlocks(text).length;
   const kind = ext === '.pptx' ? 'slide' : ext === '.pdf' ? 'page' : 'paragraph';
   if (!found) found = { numbers: Array.from({ length: blockCount }, (_, i) => i + 1), total: blockCount };

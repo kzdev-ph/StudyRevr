@@ -1,4 +1,5 @@
 import { NOTES_LABEL } from './chunk.js';
+import { isFormulaOrQuantity, looksMathy } from '../services/math-text.js';
 
 // Every prompt that receives lesson text starts from these rules (CLAUDE.md: use only the lesson text, and explain
 // that a "Notes:" line marks the teacher's spoken explanation of that slide).
@@ -28,6 +29,19 @@ export const NO_OBJECTIVES = `Never make a question, card, key point or term fro
 // A question that ends in "regarding X" / "related to X" repeats a word of its answer to point at it ("What does the
 // data help researchers do regarding decisions?" -> "Make informed decisions"). Ask by what the item means instead.
 export const ASK_BY_MEANING = `Tell items of a list apart by what the lesson says each one means or does, in plain words ("Which key element of a self-introduction means being honest and natural?"), never by tacking on "regarding / related to / concerning / in terms of" plus a word of the answer ("…do regarding decisions?" for "Make informed decisions"): that only points at the answer.`;
+
+// Rules for lessons with formulas and worked examples. mathRules adds them only when the text looks mathy, so the
+// prompt for any other text stays exactly as it was. The model writes plain Unicode, and mathTextDeep (ai/client.js)
+// cleans whatever LaTeX still slips through before the reply is checked.
+export const MATH_TEXT = `- Math: write formulas, numbers, units and symbols exactly as the lesson text writes them, as plain text with Unicode symbols (x², v₀, √, π, ×, ÷, ±, ≤, ≥, →, °) and fractions as a/b. Never use LaTeX, dollar signs, backslash commands or markdown.`;
+export const MATH_TERMS = `- A term may be the name of a formula or quantity the lesson defines ("Kinetic energy", "Discriminant"); its definition says what it is and may end with the formula as the lesson writes it.`;
+export const MATH_CARDS = `- This lesson has formulas or worked examples. Besides concepts, make cards that ask: which formula the lesson gives for a quantity (the answer is the formula as the lesson writes it); what a symbol in a formula stands for and its unit; the next step of a method the lesson shows; and the result of a worked example the lesson itself solves (the question gives the example's values, the answer is the lesson's own result with its unit, and the evidence quote holds that result). Never make up a new problem or new numbers, and never give a result the lesson does not show.`;
+export const MATH_OPTIONS = `- When the correct answer is a number with a unit, a formula or an expression, each wrong answer is the same kind of thing in the same format (a number with the same unit; a formula with the same symbols), the result of a common mistake: a wrong operation, a missing square, root or factor, swapped quantities, a wrong unit conversion or a sign error. These wrong answers may use numbers that are not in the lesson (the one exception to rule 1), but must never equal the correct answer in another form (0.5 and 1/2 are the same answer).`;
+
+// The given rules, each on its own line after a line break, or '' when the text is not math.
+export function mathRules(text, ...rules) {
+  return looksMathy(text) ? `\n${rules.join('\n')}` : '';
+}
 
 // The key-points call reads our own generated review, not the teacher's slides, so only the general rules apply.
 const REVIEW_RULES = `You help students study from a lesson written by their teacher.
@@ -74,6 +88,11 @@ export function sectionsPrompt({ text, parts, kind = 'slide', index, total, summ
   const shape = parts
     ? '{"sections":[{"title":"...","content":"...","check_questions":[{"question":"...","answer":"...","evidence":"..."}],"sources":[3,4]}]}'
     : '{"sections":[{"title":"...","content":"...","check_questions":[{"question":"...","answer":"...","evidence":"..."}]}]}';
+  const mathy = mathRules(
+    parts ? parts.map((p) => p.text).join('\n') : text,
+    MATH_TEXT,
+    "- Keep each worked example's steps in order with its numbers and units.",
+  );
   const system = `${LESSON_RULES}
 
 Task: turn the lesson text into a study review made of bite-sized sections.
@@ -91,7 +110,7 @@ Task: turn the lesson text into a study review made of bite-sized sections.
 - "content": ${LENGTH_GUIDE[summaryLength] ?? LENGTH_GUIDE.detailed}. Plain text in short paragraphs; use lines that start with "- " for lists. No markdown headings, no bold or asterisks. Explain it clearly in your own words but stay faithful to the lesson.
 - "check_questions": 1 or 2 quick questions whose answer this section's lesson text states itself (what it is, what it includes, what it does, how the lesson describes it). Ask "why" or "how does X cause Y" only when the lesson states that reason or way in its own words; never ask for a reason, cause or effect the lesson does not give. Each has a short "answer" (1 or 2 sentences, in the lesson's words) and an "evidence": one sentence or phrase copied EXACTLY, word for word, from the lesson text (at most 40 words, ending where a sentence or clause ends, never in the middle of a phrase) that states the answer. If you cannot find such a quote, leave the question out. ${NO_POSITION}
 - ${NO_OBJECTIVES}
-${KEEP_MEANING}${sourcesRule}
+${KEEP_MEANING}${sourcesRule}${mathy}
 
 Reply with this JSON shape:
 ${shape}
@@ -164,7 +183,7 @@ Do NOT include:
 For each term:
 - "term": 1 to 4 words, written as the lesson writes it.
 - "definition": 1 or 2 plain sentences that say what the term IS (its meaning, what it does or how it works), using only what the lesson says. Never just list examples, and never use the term itself or a form of it in the definition (a student is shown the definition and must name the term). Build it from the lesson's own words: add no describing words the lesson does not use (if the lesson says "presented in written form", do not write "created and presented in written form").
-- "evidence": one sentence or phrase copied EXACTLY, word for word, from the lesson text (at most 25 words, ending where a sentence or clause ends, never in the middle of a phrase) that defines or explains the term. Copy it character for character: do not paraphrase, do not shorten with "...", do not join pieces from different places, and never use a title or heading as evidence. If you cannot find such a quote in the lesson, leave the term out.
+- "evidence": one sentence or phrase copied EXACTLY, word for word, from the lesson text (at most 25 words, ending where a sentence or clause ends, never in the middle of a phrase) that defines or explains the term. Copy it character for character: do not paraphrase, do not shorten with "...", do not join pieces from different places, and never use a title or heading as evidence. If you cannot find such a quote in the lesson, leave the term out.${mathRules(text, MATH_TEXT, MATH_TERMS)}
 Give about ${targetTerms} terms (at most ${maxTerms}), most important first. Do not stop at the few most basic concepts, but never pad the list with examples or list items just to reach that number: fewer is better than weak ones. Reply {"terms":[]} if the text defines no real concepts.
 
 Reply with this JSON shape:
@@ -179,7 +198,7 @@ export function simplifyPrompt({ title, content }) {
 
 Task: a student finds this section of a study review hard to follow. Explain it again in a simpler way.
 - "simple": the same ideas in short sentences and everyday words, as if explaining to a younger student. Explain any technical word right where you use it, using only what the section says. Keep every main idea. Plain text: put each paragraph and each list item on its own line, separated by line breaks; list items start with "- ". No markdown headings, no bold or asterisks. Not longer than the section.
-- "example": one everyday comparison or situation from a student's daily life (1 to 3 sentences) that shows the main idea. It may only illustrate ideas that are in the section: add no new facts, names or numbers about the topic. Write it as plain sentences, with no label like "Example:".
+- "example": one everyday comparison or situation from a student's daily life (1 to 3 sentences) that shows the main idea. It may only illustrate ideas that are in the section: add no new facts, names or numbers about the topic. Write it as plain sentences, with no label like "Example:".${mathRules(content, MATH_TEXT)}
 
 Reply with this JSON shape:
 {"simple":"...","example":"..."}`;
@@ -195,7 +214,7 @@ Task: re-explain this section of a study review in Filipino, the way Filipino st
 - Keep technical terms in English. ${keyTerms.length ? `These are the lesson's key terms: ${keyTerms.join('; ')}. When one of them appears in the section, keep it in English. This list is not something to add: never put a key term into the section where the section does not use it. ` : ''}The first time a technical term appears in a text, write the English term followed by its Filipino meaning in parentheses, for example "hypothesis (hinuha)". After that, use the English term alone.
 - Say exactly what the section says: do not add, remove or change any fact, number or name.
 - Keep the same layout: short paragraphs, and lines that start with "- " stay list lines. No markdown headings, no bold or asterisks.
-- Return the same number of quick-check questions, in the same order.
+- Return the same number of quick-check questions, in the same order.${mathRules(content, MATH_TEXT)}
 
 Reply with this JSON shape:
 {"title":"...","content":"...","check_questions":[{"question":"...","answer":"..."}]}`;
@@ -231,7 +250,7 @@ ${KEEP_MEANING}
       ? `
 - <review> is a study review written from this lesson text. Use it as a guide to what matters, but take every answer and every evidence quote from <lesson_text>.`
       : ''
-  }
+  }${mathRules(text, MATH_TEXT, MATH_CARDS)}
 ${
     items?.length
       ? `These list items of the lesson have no card yet. Write exactly one card for each of them, in this order, and no other cards:\n${items.map((item, i) => `${i + 1}. ${item}`).join('\n')}`
@@ -271,6 +290,8 @@ Task: for each card, write 3 wrong answers to its question. A student who has no
 - If the correct answer starts with or repeats words from the question (such as "Ginagamit ito" or "Because"), let the wrong answers do the same, so the right one is not the only option that echoes the question. Do not start all 3 wrong answers with the same words unless the correct answer starts that way too.
 - Never a correct or partly correct answer, never a reworded copy of the correct answer, and the 3 must differ from each other in substance, not just one word.
 - No "all of the above", "none of the above", jokes or obviously silly options.${
+    cards.some((c) => isFormulaOrQuantity(c.answer)) ? `\n${MATH_TEXT}\n${MATH_OPTIONS}` : ''
+  }${
     keyTerms.length ? `\n- The lesson's key terms: ${keyTerms.join('; ')}.` : ''
   }${
     cards.some((c) => c.rejected || c.problems)
@@ -312,7 +333,7 @@ ${
         others.length ? `\n- The question must not contain any of these answers from other cards: ${others.map((o) => `"${o}"`).join('; ')}.` : ''
       }`
 }
-${KEEP_MEANING}
+${KEEP_MEANING}${mathRules(text, MATH_TEXT)}
 
 Reply with this JSON shape:
 ${term ? '{"definition":"..."}' : '{"question":"...","answer":"...","evidence":"..."}'}`;
@@ -396,7 +417,7 @@ Task: an exam reviewer flagged these flashcards. Write each one again so the pro
 - Change the wording so the problem is really gone: a card that comes back with the same words is not used.
 ${KEEP_MEANING}${
     others.length ? `\n- A new question must not contain any of these answers from other cards: ${others.map((o) => `"${o}"`).join('; ')}.` : ''
-  }
+  }${mathRules(text, MATH_TEXT)}
 
 Reply with this JSON shape, one item per card by its number "n" (concept: question, answer, evidence; term: definition):
 {"cards":[{"n":1,"question":"...","answer":"...","evidence":"..."},{"n":2,"definition":"..."}]}`;
@@ -425,7 +446,7 @@ Task: each item is a quick-check question under one section of a study review, w
 - "answer": 1 or 2 short sentences in the lesson's own words, saying only what the "evidence" quote says.
 - "evidence": one sentence or phrase copied EXACTLY, word for word, from <lesson_text> (at most 40 words, ending where a sentence or clause ends, never in the middle of a phrase) that states the answer. Neighbouring list lines may be quoted together, in order.
 - ${NO_POSITION}
-${KEEP_MEANING}
+${KEEP_MEANING}${mathRules(text, MATH_TEXT)}
 - Change the wording so the problem is really gone: a question that comes back with the same words is not used. If the lesson gives nothing to ask about this section without the problem, reply with an empty "question" for that item.
 
 Reply with this JSON shape, one item per check by its number "n":

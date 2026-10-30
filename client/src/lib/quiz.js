@@ -21,7 +21,7 @@ export function quizKeyAction(event, { phase, optionCount = 0 }) {
 
 // The small line above a question, telling the student what kind of question it is.
 export function questionLead(q) {
-  if (q.type === 'tf') return 'Yes or no?';
+  if (q.type === 'tf') return 'True or False';
   return q.kind === 'term' ? 'Which term matches this description?' : 'Choose the best answer';
 }
 
@@ -29,29 +29,51 @@ export function questionLead(q) {
 // second letter is a capital ("iPhone", "pH") is left as it is.
 export const capitalFirst = (text) => String(text ?? '').replace(/^(\s*["“'(]?)(\p{Ll})(?!\p{Lu})/u, (_, lead, letter) => lead + letter.toUpperCase());
 
-// A true / false question is shown as a Yes / No question; the server still stores and exports it as True / False
-// (choices, chosen_answer, right_answer). What is judged is the big heading, then a smaller line saying what it is
-// judged against, then the short question above Yes / No:
-//   term:    [the term] / "Suggested meaning:" + the definition / "Does this match?"
-//   concept: [the suggested answer] / "For:" + the card's question / "Is this the answer?"
-// -> { heading, label, context, ask }
-export function yesNoAsk(q) {
-  if (q.kind === 'term') return { heading: q.question, label: 'Suggested meaning:', context: capitalFirst(q.statement), ask: 'Does this match?' };
-  return { heading: capitalFirst(q.statement), label: 'For:', context: q.question, ask: 'Is this the answer?' };
+// Words after which a sentence's capital is only there because it starts the sentence ("The sample..." -> "the sample...").
+const OPENERS = new Set(
+  'A An The It Its This That These Those Any Each Every One Some To When How What Which Who Where In On For By With From Ang Mga Isang Ito'.split(' '),
+);
+
+// A display-only lower-case first letter, for a definition that continues a sentence ("Sampling means picking part...").
+// Only a common opener or a capitalised -ing word is lowered; names, acronyms and "pH" are left alone.
+export function lowerFirst(text) {
+  const s = String(text ?? '');
+  const m = /^(\s*["“'(]?)(\p{Lu}\p{L}*)/u.exec(s);
+  if (!m) return s;
+  const word = m[2];
+  if (!OPENERS.has(word) && !/^\p{Lu}\p{Ll}+ing$/u.test(word)) return s;
+  return m[1] + word[0].toLowerCase() + s.slice(m[1].length + 1);
 }
 
-// "True" / "False" as the student sees them on a true / false question; any other text is left as it is.
-export function yesNo(q, text) {
-  if (q.type !== 'tf') return text;
-  return text === 'True' ? 'Yes' : text === 'False' ? 'No' : text;
+// Ends a sentence with a full stop unless it already ends in . ! or ? (a closing quote or bracket may follow).
+const endSentence = (s) => (/[.!?]["”’')]*$/.test(String(s ?? '').trim()) ? String(s ?? '').trim() : `${String(s ?? '').trim()}.`);
+
+// A true / false question is shown as "True or False", then "Question:" and one statement, then True / False; the
+// server stores and exports True / False (choices, chosen_answer, right_answer).
+//   term:    "<term> means <definition>."
+//   concept: "<the card's question> <the suggested answer>."
+export function tfStatement(q) {
+  if (q.kind === 'term') return `${q.question} means ${lowerFirst(endSentence(q.statement))}`;
+  return `${endSentence(q.question)} ${capitalFirst(endSentence(q.statement))}`;
 }
 
-// The whole question as one text, for screen readers and the results list, in the order it is shown.
+// What a missed or answered-wrong True / False statement should have said: the card's own answer, once, as a plain
+// sentence, never as a "right answer" (the right answer of a true / false item is True or False). '' when the answer is
+// not known. A statement that was true and answered False is told so: "That statement is true."
+//   term:    "<term> means <definition>."
+//   concept: "The answer is <the suggested answer>."
+export function tfCorrection(q) {
+  if (q.type !== 'tf') return '';
+  if (q.right_answer === 'True') return 'That statement is true.';
+  const answer = String(q.answer_text ?? '').trim();
+  if (!answer) return '';
+  if (q.kind === 'term') return `${q.question} means ${lowerFirst(endSentence(answer))}`;
+  return `The answer is ${endSentence(answer)}`;
+}
+
+// The whole question as one text, for the results list.
 export function questionText(q) {
-  if (q.type !== 'tf') return q.question;
-  const { heading, label, context, ask } = yesNoAsk(q);
-  const sentence = (s) => (/[.!?]["”’)]*$/.test(String(s).trim()) ? String(s).trim() : `${String(s).trim()}.`);
-  return `${sentence(heading)} ${label} ${sentence(context)} ${ask}`;
+  return q.type === 'tf' ? tfStatement(q) : q.question;
 }
 
 export const percent = (score, total) => (total ? Math.round((score / total) * 100) : 0);

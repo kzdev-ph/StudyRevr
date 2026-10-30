@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { HttpError } from '../middleware/errors.js';
+import { mathTextDeep } from '../services/math-text.js';
 import { parseJsonReply } from './json.js';
 import { chatModelIds } from './models.js';
 import { createRateLimiter } from './ratelimit.js';
@@ -403,7 +404,7 @@ export function createAiClient({
       const cutOff = finishReason === 'length' ? ' It was cut off for being too long, so keep it shorter.' : '';
       let value;
       try {
-        value = parseJsonReply(content);
+        value = mathTextDeep(parseJsonReply(content));
       } catch (err) {
         problem = `it was not valid JSON (${err.message}).${cutOff}`;
         continue;

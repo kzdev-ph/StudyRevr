@@ -6,6 +6,7 @@ import { cardLeaks, wordStems } from '../quiz/leaks.js';
 import { checkEvidence, comparable } from './evidence.js';
 import { isObjectiveBlock, onlyInObjectives, withoutObjectives } from '../quiz/list-items.js';
 import { singular } from './terms.js';
+import { hasMathOperator, hasNumberUnit, isFormulaLike } from '../services/math-text.js';
 
 // Flashcards for one lesson: "term -> definition" cards made straight from the (already grounded) key terms, plus
 // "question -> answer" concept cards the AI writes per chunk of lesson text. Every card keeps a verbatim evidence
@@ -28,6 +29,7 @@ export const targetCardCount = (wordCount, max, { terms = 0, items = 0 } = {}) =
   Math.min(max, Math.max(MIN_CARDS, Math.round(wordCount / WORDS_PER_CARD), terms + items));
 
 const LIST_ITEM = /^(?:-|\d+[.)])\s+(.+)$/;
+const WORD_OF_3 = /\p{L}{3,}/u;
 const MAX_ITEM_WORDS = 20; // a longer "item" is a paragraph set as a bullet, not a list item to recall
 
 // The list items the lesson stresses: bullet and numbered lines on its slides or pages (not in the teacher's spoken
@@ -41,6 +43,7 @@ export function listItems(lessonText) {
       if (line.trim() === NOTES_LABEL) break;
       const text = LIST_ITEM.exec(line.trim())?.[1]?.trim();
       if (!text || wordList(text).length > MAX_ITEM_WORDS) continue;
+      if (!WORD_OF_3.test(text) && hasMathOperator(text)) continue; // "x = 2", "F = ma", "3.5 m/s": a formula or value, not an item to recall ("CO2", "K-12", "RA 9003", "pH" stay)
       const key = comparable(text);
       if (key && !seen.has(key)) {
         seen.add(key);
@@ -225,10 +228,32 @@ function checkConceptCards(replyCards, sourceKey, onDrop, bodyKey = null) {
       const check = checkEvidence({ term: c.question, evidence: c.evidence, sourceKey, minExplaining: 2 });
       if (!check.ok) reject(check.reason);
       else if (bodyKey && onlyInObjectives(comparable(check.evidence), sourceKey, bodyKey)) reject(OBJECTIVE_ONLY);
+      else if (numbersNotIn(c.answer, check.evidence)) reject('a number in the answer is not in its quote');
       else cards.push({ kind: 'concept', front: c.question, back: c.answer, evidence: check.evidence });
     }
   }
   return cards;
+}
+
+// Numbers of `text` read as written (spaces kept, so "June 12, 1898" holds 12 and 1898, and "1,000" is one number),
+// each in its plain form ("10.0" and "10" are one). A fraction a/b also counts as its value ("1/2" holds 0.5).
+const NUMBER = /\d+(?:,\d{3}(?!\d))*(?:\.\d+)?|\.\d+/g;
+const FRACTION = /(?<![\d.])(\d+)\/(\d+)(?![\d.])/g;
+const plain = (n) => String(Number(n.replace(/,/g, '')));
+// NFKC turns "½" into "1⁄2" with a fraction slash (U+2044); read it as a plain "/" so "½" and "1/2" are one fraction
+const folded = (text) => String(text ?? '').normalize('NFKC').replace(/⁄/g, '/');
+const numbersOf = (text) => (folded(text).match(NUMBER) ?? []).map(plain);
+const withFractionValues = (text) => folded(text).replace(FRACTION, (whole, a, b) => (Number(b) === 0 ? whole : ` ${Number(a) / Number(b)} `));
+
+// A card the number check applies to: a formula or a number with a unit in the answer, or an equation in the quote.
+// Dates and counts on other cards ("1898", "3 types") are never checked.
+const isMathCard = (answer, evidence) => isFormulaLike(answer) || hasNumberUnit(answer) || /[=≈]/.test(String(evidence ?? ''));
+
+// True when a math card's `answer` holds a number its evidence quote doesn't: an invented or miscomputed result.
+function numbersNotIn(answer, evidence) {
+  if (!isMathCard(answer, evidence)) return false;
+  const quoted = new Set([...numbersOf(evidence), ...numbersOf(withFractionValues(evidence))]);
+  return numbersOf(withFractionValues(answer)).some((n) => !quoted.has(n));
 }
 
 // The blocks of the lesson that hold `items` (each block once, in lesson order), as the text for the coverage call.

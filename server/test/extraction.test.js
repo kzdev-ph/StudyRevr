@@ -1,15 +1,17 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { Document, Math, MathFraction, MathRun, MathSuperScript, Packer, Paragraph, TextRun } from 'docx';
 import JSZip from 'jszip';
 import PptxGenJS from 'pptxgenjs';
-import { PDFDocument, StandardFonts } from 'pdf-lib';
+import { PDFDocument, StandardFonts, beginText, endText, moveText, setFontAndSize, setTextRise, showText } from 'pdf-lib';
 import { createApp } from '../src/app.js';
 import { openDb, runMigrations } from '../src/db/index.js';
 import { extractText } from '../src/services/extract.js';
+import { latexToText } from '../src/services/math-text.js';
 import { extractPdf, reflowPdfPages } from '../src/services/pdf.js';
 import { drawingMlLines, textLines } from '../src/services/pptx.js';
 import { countWords } from '../src/services/text.js';
-import { studyFetch, TEST_PIN } from './helpers.js';
+import { seedTestLogin, studyFetch, TEST_PIN } from './helpers.js';
 
 const fetch = studyFetch; // as participant P00, with the admin PIN (see helpers.js)
 
@@ -265,6 +267,7 @@ describe('word count and warning use the final combined text', () => {
   before(async () => {
     db = openDb(':memory:');
     runMigrations(db);
+    seedTestLogin(db);
     const app = createApp(db, { maxUploadBytes: 5 * 1024 * 1024, adminPin: TEST_PIN }, { runner: { enqueue() {} } });
     await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
     base = `http://127.0.0.1:${server.address().port}`;
@@ -425,5 +428,131 @@ describe('pdf: end to end', () => {
     const [page1, page2] = blocks(text);
     assert.match(page1, /finishes here\./, 'merged paragraph stays on the page it starts on');
     assert.match(page2, /^A brand new paragraph starts afterwards/);
+  });
+});
+
+// ---- equations ----------------------------------------------------------------------------
+describe('equations survive extraction', () => {
+  it('reads Word equations as Unicode text, between the words around them', async () => {
+    const doc = new Document({
+      sections: [{
+        children: [
+          new Paragraph({
+            children: [
+              new TextRun('The area is '),
+              new Math({ children: [new MathRun('A='), new MathRun('π'), new MathSuperScript({ children: [new MathRun('r')], superScript: [new MathRun('2')] })] }),
+              new TextRun(' for a circle.'),
+            ],
+          }),
+          new Paragraph({ children: [new TextRun('Half is '), new Math({ children: [new MathFraction({ numerator: [new MathRun('1')], denominator: [new MathRun('2')] })] }), new TextRun(' of it.')] }),
+        ],
+      }],
+    });
+    const { text } = await extractText(await Packer.toBuffer(doc), '.docx');
+    assert.match(text, /The area is A=πr² for a circle\./);
+    assert.match(text, /Half is \(?1\/2\)? of it\./);
+    assert.ok(text.indexOf('The area is') < text.indexOf('Half is'));
+    assert.doesNotMatch(text, /\\/);
+    assert.equal(blocks(text).length, 2, 'every paragraph is still its own block');
+  });
+
+  it('reads a PowerPoint equation as the exact latexToText output, once', async () => {
+    const pptx = new PptxGenJS();
+    const slide = pptx.addSlide();
+    slide.addText('Kinetic energy', { x: 0.5, y: 0.2, w: 9, h: 0.8, fontSize: 28 });
+    slide.addText('MATHHERE', { x: 0.5, y: 1.1, w: 9, h: 0.6 });
+    const zip = await JSZip.loadAsync(await pptx.write({ outputType: 'nodebuffer' }));
+    // the equation as PowerPoint writes it: a14:m inside mc:AlternateContent, a sibling of the runs
+    const r = (t) => `<m:r><m:t>${t}</m:t></m:r>`;
+    const omml = `<m:oMath>${r('KE=')}<m:f><m:num>${r('1')}</m:num><m:den>${r('2')}</m:den></m:f>${r('m')}<m:sSup><m:e>${r('v')}</m:e><m:sup>${r('2')}</m:sup></m:sSup></m:oMath>`;
+    const equation = `<mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"><mc:Choice xmlns:a14="http://schemas.microsoft.com/office/drawing/2010/main" Requires="a14"><a14:m><m:oMathPara xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">${omml}</m:oMathPara></a14:m></mc:Choice><mc:Fallback/></mc:AlternateContent>`;
+    const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+    const patched = xml.replace(/<a:r>(?:(?!<\/a:r>)[\s\S])*MATHHERE[\s\S]*?<\/a:r>/, `<a:r><a:t>Energy: </a:t></a:r>${equation}`);
+    assert.notEqual(patched, xml, 'the fixture was patched');
+    zip.file('ppt/slides/slide1.xml', patched);
+    const { text } = await extractText(await zip.generateAsync({ type: 'nodebuffer' }), '.pptx');
+    assert.equal(text.split('\n')[1], `Energy: ${latexToText('KE=\\frac{1}{2}mv^{2}')}`);
+    assert.equal(text.split('\n')[1], 'Energy: KE=(1/2)mv²');
+    assert.equal(text.match(/KE=/g).length, 1, 'the equation is not repeated');
+    assert.doesNotMatch(text, /\\/);
+  });
+
+  it('converts LaTeX typed into a PDF', async () => {
+    const pdf = await PDFDocument.create();
+    const font = await pdf.embedFont(StandardFonts.Helvetica);
+    pdf.addPage([612, 792]).drawText('The square is x^{2} here.', { x: 50, y: 700, size: 11, font });
+    const { text } = await extractText(Buffer.from(await pdf.save()), '.pdf');
+    assert.match(text, /The square is x² here\./);
+  });
+});
+
+// ---- superscripts and subscripts in a PDF ---------------------------------------------------------
+// Each piece is [text, { size, dy }]: drawn straight after the one before it, dy points above (or below) the baseline.
+async function scriptPdf(pieces, { pageSize = 12 } = {}) {
+  const pdf = await PDFDocument.create();
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const page = pdf.addPage([612, 792]);
+  let x = 60;
+  for (const [text, { size = pageSize, dy = 0 } = {}] of pieces) {
+    page.drawText(text, { x, y: 700 + dy, size, font });
+    x += font.widthOfTextAtSize(text, size);
+  }
+  return Buffer.from(await pdf.save());
+}
+
+describe('pdf: superscripts and subscripts', () => {
+  const small = { size: 8, dy: 5 };
+  const low = { size: 8, dy: -3 };
+
+  it('writes a raised exponent as Unicode, never as a bare 1023', async () => {
+    const { text } = await extractText(await scriptPdf([["Avogadro's number is 6.022 × 10"], ['23', small], [' particles per mole.']]), '.pdf');
+    assert.match(text, /6\.022 × 10²³ particles per mole\./);
+    assert.doesNotMatch(text, /1023/);
+  });
+
+  it('writes x², a negative exponent and a trailing charge', async () => {
+    const { text } = await extractText(await scriptPdf([['Area x'], ['2', small], [' and 10'], ['-3', small], [' and Ca'], ['2+', small], [' ok']]), '.pdf');
+    assert.match(text, /Area x² and 10⁻³ and Ca²⁺ ok/);
+  });
+
+  it('writes a clearly lowered digit after a letter as a subscript', async () => {
+    const { text } = await extractText(await scriptPdf([['Water is H'], ['2', low], ['O and CO'], ['2', low], [' is a gas.']]), '.pdf');
+    assert.match(text, /Water is H₂O and CO₂ is a gas\./);
+  });
+
+  it('follows the text rise operator (Ts) as well as a moved baseline', async () => {
+    const pdf = await PDFDocument.create();
+    const font = await pdf.embedFont(StandardFonts.Helvetica);
+    const page = pdf.addPage([612, 792]);
+    const fontKey = page.node.newFontDictionary(font.name, font.ref);
+    page.pushOperators(
+      beginText(), moveText(60, 700),
+      setFontAndSize(fontKey, 12), showText(font.encodeText('Speed is 3 × 10')),
+      setFontAndSize(fontKey, 8), setTextRise(5), showText(font.encodeText('8')),
+      setFontAndSize(fontKey, 12), setTextRise(0), showText(font.encodeText(' m/s.')),
+      endText(),
+    );
+    const { text } = await extractText(Buffer.from(await pdf.save()), '.pdf');
+    assert.match(text, /Speed is 3 × 10⁸ m\/s\./);
+  });
+
+  it('leaves doubtful cases unchanged', async () => {
+    const same = await extractText(await scriptPdf([['Room 10'], ['23', { dy: 5 }], [' is open.']]), '.pdf');
+    assert.match(same.text, /Room 1023 is open\./, 'a raised digit at the normal size is not a script');
+    const barely = await extractText(await scriptPdf([['Room 10'], ['23', { size: 8, dy: 1 }], [' is open.']]), '.pdf');
+    assert.match(barely.text, /Room 1023 is open\./, 'a small digit hardly raised is not a script');
+    const word = await extractText(await scriptPdf([['Page 4 of 9 in volume'], ['12', small]]), '.pdf');
+    assert.match(word.text, /volume¹²/, 'sanity: attached to a word it is a script');
+    const spaced = await extractText(await scriptPdf([['Room '], ['23', small], [' is open.']]), '.pdf');
+    assert.match(spaced.text, /Room 23 is open\./, 'after a space it is not attached');
+    const letters = await extractText(await scriptPdf([['A ratio of 3'], ['x', small]]), '.pdf');
+    assert.match(letters.text, /3x/, 'only digits, signs and n are converted');
+    const subAfterDigit = await extractText(await scriptPdf([['Total 10'], ['2', low]]), '.pdf');
+    assert.match(subAfterDigit.text, /Total 102/, 'a subscript needs a letter before it');
+  });
+
+  it('extracts a plain PDF exactly as before', async () => {
+    const { text } = await extractText(await scriptPdf([['H2O has 1023 particles and x2 is here.']]), '.pdf');
+    assert.equal(text, 'H2O has 1023 particles and x2 is here.');
   });
 });

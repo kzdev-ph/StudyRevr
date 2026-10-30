@@ -7,6 +7,10 @@ const MIN_EXPLAINING_WORDS = 3; // words in the quote that are not the term itse
 const MIN_CUT_WORDS = 8; // a cut at a boundary must keep at least this many words
 const SENTENCE_END = /[.!?;:—]["')”’]*$/;
 const CLAUSE_END = /[,–-]["')”’]*$/;
+// A relation with a letter or digit on both sides ("F = ma", "x ≤ 5"), or a reaction: an arrow, a "+" and a digit or
+// subscript ("2H₂ + O₂ → 2H₂O"). A title with an arrow ("Photosynthesis → Respiration") is not a formula.
+const RELATION = /[\p{L}\p{N})\]]\s*[=≈≤≥]\s*[\p{L}\p{N}(√−-]/u;
+const isFormula = (quote) => RELATION.test(quote) || (/[→⇌]/.test(quote) && /\+/.test(quote) && /[\d₀-₉]/.test(quote));
 
 const words = (s) => String(s).normalize('NFKC').toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
 
@@ -43,6 +47,8 @@ export function checkEvidence({ term, evidence, sourceKey, minExplaining = MIN_E
     .replace(/^[\s"'“”‘’]+|[\s"'“”‘’]+$/g, '')
     .replace(/\s+/g, ' ');
   if (!quote) return { ok: false, reason: 'no evidence quote' };
+  // a formula or reaction ("F = ma") is explanation on its own: it has few words but says what the term is
+  if (isFormula(quote)) minExplaining = Math.min(minExplaining, 1);
   const termWords = new Set(words(term));
   const explaining = words(quote).filter((w) => !termWords.has(w));
   if (explaining.length < minExplaining) return { ok: false, reason: 'evidence is only the term or a title' };
