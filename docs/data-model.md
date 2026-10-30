@@ -14,6 +14,8 @@ Moved verbatim from CLAUDE.md (full original: docs/CLAUDE-full.md). CLAUDE.md ke
 - `key_points` (id, lesson_id, position, text)
 - `key_terms` (id, lesson_id, term, definition, evidence)
 - `participants` (id, code UNIQUE, created_at) (migration 008; `P00` made by the migration). Deleting a row cascades to every per-participant table.
+- `accounts` (id, participant_id UNIQUE → participants ON DELETE CASCADE, email UNIQUE (trimmed, lowercase), password_hash `scrypt$N$r$p$salt$hash`, must_change_password, failed_logins, lockouts, locked_until, created_at, password_changed_at) (migration 018): the way in to one participant. Identifying data: never exported; backups keep it. `settings.last_study_number` is the highest study number handed out (never reused).
+- `auth_sessions` (id, account_id → accounts ON DELETE CASCADE, token_hash UNIQUE (sha256 of the token), created_at, last_seen_at, revoked_at, revoked_reason `signed_out`|`signed_out_elsewhere`|`signed_out_by_admin`|`password_reset`) (migration 018): one live row per account (unique partial index on `account_id WHERE revoked_at IS NULL`). Emptied in backups and on restore.
 - `review_progress` (participant_id, lesson_id, last_section, completed_sections JSON, updated_at), PK (participant_id, lesson_id)
 - `flashcards` (id, lesson_id, front, back, state, ease, interval, due_at, reps, lapses, step, kind, evidence, position)
   - `kind` `term` | `concept`; `position` is the new-card order within the lesson. Since migration 008 the scheduling columns here are no longer read: the schedule is per participant in `flashcard_progress`.
@@ -23,7 +25,7 @@ Moved verbatim from CLAUDE.md (full original: docs/CLAUDE-full.md). CLAUDE.md ke
   - one row per answer: rating = button (1 Again … 4 Easy), `state` before the answer (daily limits count it), `ease` after, intervals in days (a learning step is a fraction of a day), `snapshot` = the participant's scheduling fields before the answer plus `existed` (for undo: a card that had no progress row gets none again; undo deletes the row).
 - `quiz_questions` (id, lesson_id, question, choices JSON, answer_index, explanation)
 - `quiz_attempts` (id, participant_id, lesson_id, score, total, answers JSON, taken_at, + migration 007 columns)
-- `study_sessions` (id, participant_id, lesson_id (SET NULL; NULL = All lessons deck), activity `reading`|`flashcards`|`quiz`, started_at, last_active_at, ended_at, active_ms, end_reason `left`|`idle`|`background`|`switched` (NULL while open), study_date) (rebuilt in migration 008)
+- `study_sessions` (id, participant_id, lesson_id (SET NULL; NULL = All lessons deck), activity `reading`|`flashcards`|`quiz`, started_at, last_active_at, ended_at, active_ms, end_reason `left`|`idle`|`background`|`switched` (old rows only)|`signed_out`|`signed_out_elsewhere`|`signed_out_by_admin` (migration 019; NULL while open), study_date) (rebuilt in migration 008)
 - `events` (id, participant_id, type `stats_view`|`quiz_retake`|`review_flashcards_tap`|`section_simplify`|`section_translate`, lesson_id, attempt_id, section_index, created_at, study_date)
 - `setting_events` (id, participant_id → participants ON DELETE CASCADE, study_date, setting `motion`, value `system`|`less`|`full`, created_at) (migration 011)
 - `participant_ai_keys` (participant_id PK → participants ON DELETE CASCADE, provider, model, api_key, key_last4, created_at, updated_at) (migration 009): a student's own key, saved only after a passing test; never returned, exported or backed up.

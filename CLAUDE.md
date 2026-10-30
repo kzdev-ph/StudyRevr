@@ -44,15 +44,15 @@ Work one phase at a time. At the end of each phase: run it, fix errors, summariz
 - Key terms, cards and quick checks carry an `evidence` quote checked in code against `raw_text`; ungrounded items are dropped. Sections follow the lesson (`sectionRange`, `server/src/pipeline/generate.js`).
 
 ## Participants, sessions, admin (detail: `docs/participants-sessions.md`, `docs/admin.md`)
-- Shared host over Wi-Fi: `npm run study`. Students type a participant code (`P` + 1-3 digits, normalised); codes are created only in admin; P00 is the researcher's test data and never shown.
-- **Every study request sends `X-Participant`**; `server/src/middleware/participant.js` answers 401 without a listed code.
+- Shared host over Wi-Fi: `npm run study`. Students sign up / sign in with an email and password (`server/src/routes/auth.js`); the participant code (`P` + 1-3 digits) is the hidden study ID, given to the account at sign-up: students never see it; stats, export and admin use it; P00 is the researcher's test data.
+- **Every study request sends `Authorization: Bearer <token>`** (the login session token); `server/src/middleware/participant.js` answers 401 `auth_required` / `session_unknown` without a live one. There is no participant header and no code-check route. **One active login per account:** signing in on another device signs the first one out (asks first unless that device was silent longer than the `session_timeout_seconds` setting). Admin > Accounts lists emails with study IDs, resets a password (temporary, shown once) and signs an account out; turn `allow_signups` off once everyone is enrolled.
 - Shared: lessons, sections and cached rewrites, key points/terms, cards, `quiz_distractors`. Per participant: schedules, reviews, limits, quiz attempts, progress, sessions, events, stats.
 - Sessions (`client/src/lib/session.js`, `hooks/useStudySession.js`, `server/src/sessions/store.js`): active time only, 5 min idle ends, hidden pauses, 30 s heartbeat. `study_date` uses the 04:00 Asia/Manila day (`server/src/stats/days.js`).
 - Setting changes go to `setting_events`; new lesson event types go to `lesson_events` (`events.type` has a CHECK constraint: don't add types there).
-- **Admin** (`#/admin`, `ADMIN_PIN` in `.env`; empty = 403 `admin_off`): `server/src/middleware/admin.js` (constant-time compare, lockout after 5 wrong PINs). Behind the PIN: all of `/api/admin`, `/api/settings/*`, lesson upload/retry/delete as teacher, make cards, quiz-options, section-versions, share. **The client sends `X-Admin-Pin` only on calls flagged `{ admin: true }` in `client/src/lib/api.js`** (`client/test/api.test.js` classifies every function); `lockAdmin()` on Switch participant and on leaving admin routes.
+- **Admin** (`#/admin`, `ADMIN_PIN` in `.env`; empty = 403 `admin_off`): `server/src/middleware/admin.js` (constant-time compare, lockout after 5 wrong PINs). Behind the PIN: all of `/api/admin`, `/api/settings/*`, lesson upload/retry/delete as teacher, make cards, quiz-options, section-versions, share. **The client sends `X-Admin-Pin` only on calls flagged `{ admin: true }` in `client/src/lib/api.js`** (`client/test/api.test.js` classifies every function); `lockAdmin()` on sign-out and on leaving admin routes.
 - Admin screens make no study records; the lesson preview (`AdminLessonScreen.jsx`) makes no AI call. Students see no upload/delete/retry/make-cards controls beyond their own uploads.
 - **A lesson with records from any participant other than P00 can't be deleted, rebuilt or have cards regenerated** (409 `lesson_has_records`; `services/lesson-records.js`).
-- Withdrawal: `npm run participant:delete -- P07`. Backup `GET /api/admin/backup` (strips keys); restore `npm run restore -- <file>` (refuses while a server runs).
+- Withdrawal: `npm run participant:delete -- <email or study ID>` (deletes the account and its sign-in sessions too). Emails are linked to study IDs only inside the DB and backups, never in the export. Backup `GET /api/admin/backup` (strips API keys and sign-in sessions, keeps accounts: a backup is identifying data, keep it private); restore `npm run restore -- <file>` (refuses while a server runs).
 
 ## Student uploads (detail: `docs/student-uploads.md`)
 - Off by default (`allow_student_uploads`, `student_uploads_per_day` 2). Origin `admin` | `student`; visibility is one rule, `visibleSql` / `visibleLesson` in `server/src/services/lesson-access.js`, failing closed.
@@ -64,7 +64,7 @@ Work one phase at a time. At the end of each phase: run it, fix errors, summariz
 - Flashcards: SM-2 (`server/src/flashcards/scheduler.js`, pure, takes `now` + config; defaults `server/src/flashcards/config.js`), study day 04:00 Asia/Manila, one daily budget across lessons, seeded fuzz. `recordAnswer` (`flashcards/study.js`) refuses early reviews (409 `not_due`) and new cards over the limit (409 `new_limit`).
 - Card rules: every card has a grounded quote; leak rules g, i, j, k, l, m (`server/src/quiz/leaks.js`; h is info only); every list item gets a card (`quiz/list-items.js`); nothing from learning-objective blocks; cap `flashcards_max` (30).
 - Quiz: built in code from cards (`server/src/quiz/build.js`, pure, seeded), up to 10 questions, ≥ 2 cards; term / list-item / concept question rules, leak rules a-f, related terms never offered against each other (`quiz/related.js`), trailing punctuation normalised, only clean forms asked. Wrong answers are made in the `quiz_options` stage (`quiz/distractors.js`), reviewed by the AI exam review (`services/quiz-review.js`, flags in `quiz/review-flags.js`). Failures of those stages leave the lesson ready. Quiz results never touch flashcard scheduling.
-- Yes/No display and capitals are display only: stored and exported values stay True/False and unchanged.
+- True/False display (shown as "True or False", "Question: <one statement>", True / False) and capitals are display only: stored and exported values stay True/False and unchanged.
 
 ## Stats, export, settings (detail: `docs/stats-export-settings.md`)
 - Stats per participant (`server/src/stats/participant.js`); series colours from tokens, never colour alone; every value also written out.
@@ -77,7 +77,7 @@ Tables, columns, migrations and every endpoint are listed there.
 - `npm ci` (root) · `npm run study` (build + serve on LAN) · `npm test` (in `server/`)
 - `npm run pipeline -- --thinking=minimal|low|medium|high` · `npm run quiz:check [-- --lesson <id> --db <file>]` (read-only; run before the study: "Clean questions available: N of 10")
 - `npm run lesson:rebuild -- <id>` · `npm run lesson:export -- <id> <folder>` / `npm run lesson:import -- <folder> [--as-new] [--yes]` (detail: `docs/claude-import.md`)
-- `npm run participant:delete -- P07` · `npm run restore -- <file>`
+- `npm run participant:delete -- <email or study ID>` · `npm run restore -- <file>`
 - Rebuild, import and restore refuse while a server runs (`services/server-check.js`).
 
 ## History

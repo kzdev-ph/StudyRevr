@@ -2,7 +2,7 @@
 
 Open-source, mobile-first study app. Upload a lesson (.docx / .pptx / .pdf) and get a sectioned review, Anki-style flashcards, and mock quizzes. Study activity is logged and exportable for research.
 
-> **Status:** Phase 7A of 7. Working: lesson upload and AI review (sections, quick checks, key points and terms, simpler and Filipino/Taglish rewrites), Anki-style flashcards (SM-2, undo), mock quizzes built from the flashcards with **leak protection** (nothing that gives its answer away is asked; `npm run quiz:check` and an admin list of leaking cards), participant codes, active-time session logging, a Stats tab, and a PIN-protected researcher admin (upload, participant codes, research CSV export, AI and study settings, Prepare, database backup and restore). Students can optionally use their own AI key for the rewrites. The screens use a small **paper motion** (the deck coming out, the card turning, pen marks on quiz answers, Stats bars inked in); **Settings › Motion** (Match my device / Less motion / Full motion) controls it. **Answer time never includes animation** (or time the app was hidden), with any motion setting. Still to come: polish and the rest of Phase 7.
+> **Status:** Phase 7A of 7. Working: lesson upload and AI review (sections, quick checks, key points and terms, simpler and Filipino/Taglish rewrites), Anki-style flashcards (SM-2, undo), mock quizzes built from the flashcards with **leak protection** (nothing that gives its answer away is asked; `npm run quiz:check` and an admin list of leaking cards), accounts, active-time session logging, a Stats tab, and a PIN-protected researcher admin (upload, accounts, research CSV export, AI and study settings, Prepare, database backup and restore). Students can optionally use their own AI key for the rewrites. The screens use a small **paper motion** (the deck coming out, the card turning, pen marks on quiz answers, Stats bars inked in); **Settings › Motion** (Match my device / Less motion / Full motion) controls it. **Answer time never includes animation** (or time the app was hidden), with any motion setting. Still to come: polish and the rest of Phase 7.
 
 ## Running it
 
@@ -29,7 +29,7 @@ The SQLite database is created at `server/data/studyrevr.db` on first start, and
 | `PORT` | `3001` | API port |
 | `DB_PATH` | `server/data/studyrevr.db` | SQLite file (relative to repo root). Git-ignored: it can hold API keys saved in Settings |
 | `MAX_UPLOAD_MB` | `20` | Upload size limit |
-| `ADMIN_PIN` | – | The researcher's admin PIN (upload, participant codes, AI settings, export). Empty: admin is off |
+| `ADMIN_PIN` | – | The researcher's admin PIN (upload, accounts, AI settings, export). Empty: admin is off |
 | `AI_PROVIDER` | `google` | `google`, `deepseek`, `qwen`, `nvidia-nim`, `openrouter`, `ollama`, `llamacpp` or `custom` |
 | `GOOGLE_API_KEY` / `DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` / `NVIDIA_API_KEY` / `OPENROUTER_API_KEY` | – | One key per provider; only the active provider's key is sent. Never logged or returned by the API. The Google key also serves the Gemma fallback for live rewrites |
 | `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL` | – | Optional overrides for the `AI_PROVIDER` provider (an older `.env` with only `AI_BASE_URL` still works: the provider is recognised from the URL) |
@@ -59,27 +59,27 @@ Each value resolves as: a one-off request value → what is saved in the `settin
 1. In `.env`, set `ADMIN_PIN` (at least 6 characters students can't guess) and your AI key. Without `ADMIN_PIN`, admin is off.
    The PIN box in the app only says "Ask the researcher for the PIN"; it never shows where the PIN is kept (`ADMIN_PIN` in `.env`).
 2. `npm run study` builds the app and starts the server. It prints the addresses phones can open, e.g. `http://192.168.1.20:3001`. On Termux, run it the same way; keep the phone awake. The host and the phones must be on the same Wi-Fi.
-3. On any device, open that address, tap **Researcher admin** under the code box (or Settings › Researcher admin), and enter the PIN. In **Admin**:
-   - **Lessons**: upload every lesson and wait until it is ready; the last step makes the quiz answer options, so students never wait on the AI when they start a quiz (if that step fails the lesson is still usable; use **Retry quiz answers** on its row). Then an AI exam reviewer checks every quiz question against the lesson (two right answers, giveaways, vague questions, words the lesson doesn't use), remakes what it flags once, and leaves out what is still flagged; the row says how many cards it flagged, with **Review again**, and `npm run quiz:check` lists them. Students cannot upload (unless you turn on *Student uploads*), retry, delete or make cards for your lessons. A lesson that participants (other than P00) have answered or logged study time on cannot be deleted; the app tells you how many records it would remove. Tap a lesson's title to open a read-only preview (`#/admin/lessons/:id`) that logs nothing and calls no AI; a failed lesson has a **Retry** button and a lesson without cards **Make cards** on its row. Admin is only unlocked on the admin screens: **Switch participant** or leaving them locks it again.
-   - **Participants**: add the codes, e.g. `P01-P10`. Students can only type a code that is on this list; P00 (made by the Phase 6 migration) holds your own earlier test data.
+3. On any device, open that address, tap **Researcher admin** under the sign-in form (or Settings › Researcher admin), and enter the PIN. In **Admin**:
+   - **Lessons**: upload every lesson and wait until it is ready; the last step makes the quiz answer options, so students never wait on the AI when they start a quiz (if that step fails the lesson is still usable; use **Retry quiz answers** on its row). Then an AI exam reviewer checks every quiz question against the lesson (two right answers, giveaways, vague questions, words the lesson doesn't use), remakes what it flags once, and leaves out what is still flagged; the row says how many cards it flagged, with **Review again**, and `npm run quiz:check` lists them. Students cannot upload (unless you turn on *Student uploads*), retry, delete or make cards for your lessons. A lesson that participants (other than P00) have answered or logged study time on cannot be deleted; the app tells you how many records it would remove. Tap a lesson's title to open a read-only preview (`#/admin/lessons/:id`) that logs nothing and calls no AI; a failed lesson has a **Retry** button and a lesson without cards **Make cards** on its row. Admin is only unlocked on the admin screens: **Sign out** or leaving them locks it again.
+   - **Accounts**: students create their own account on first visit (the teacher can switch sign-ups off in admin after enrolment). P00 (made by the Phase 6 migration) holds your own earlier test data.
    - **Research export**: `Download all (zip)` or single CSVs (summary, sessions, flashcard reviews, due reviews, quiz attempts and answers, events, setting_events, ai_calls, lessons, lesson_events); tick **Include P00** to include your test data. `README.txt` in the zip explains every column. Student uploads appear as `Student upload <id>` in the exports (their file names can hold a name).
    - **AI and study settings**: the Default AI (provider, key, model; the model list shows chat models only; **Test connection** tries it before you save), **New flashcards per day** (default 20), and **Allow students to use their own API key** (off by default).
    - **Prepare simpler and Taglish** on each lesson row (after processing): makes the Explain simpler and Filipino/Taglish version of every section with the Default ahead of time, within the 15 requests/min limit, with progress on the row. Run this before study day: while it runs, students' live requests use the backup AI. Afterwards study day needs no live AI calls (unless a student uses their own key).
    - **Student uploads** (off by default): **Allow students to upload lessons** and **Uploads per student per study day** (default 2). While on, students see an Upload button in the lesson list with how many uploads they have left today. An upload is private to that student until you tap **Share with everyone** on its row in Admin › Lessons (one way, it asks first). See *Student uploads* below.
    - **Backup**: **Download backup** saves `studyrevr-backup-YYYY-MM-DD-HHMM.db` (Manila time), a copy of the whole database made while the app runs, without any API key or the PIN; "Last backup" shows when you last did it.
-4. Each student opens the address on their phone and types their code. The code stays on that phone until **Settings › Switch participant**. The header shows the code in use.
-5. Withdrawal: on the host, `npm run participant:delete -- P07` shows what will be deleted and asks you to type the code again; it deletes everything recorded for that participant, their own AI key included (shared lessons stay), and rewrites the database file so nothing can be read back. Add `--yes` to skip the question.
+4. Each student opens the address on their phone and signs in. The sign-in stays on that phone until the student signs out in Settings. The header shows the start of their email.
+5. Withdrawal: on the host, `npm run participant:delete -- P07` shows what will be deleted and asks you to retype the study ID to confirm; it deletes everything recorded for that participant, their own AI key included (shared lessons stay), and rewrites the database file so nothing can be read back. Add `--yes` to skip the question.
 6. Restore a backup: stop the server, then `npm run restore -- studyrevr-backup-2026-10-06-1430.db`. It refuses while the server runs (if it says a server is running but none is, it names the `.pid` file next to the database to delete), checks the file, asks you to type `RESTORE`, keeps the current database as `pre-restore-<time>.db` next to it, and brings the backup up to date. **That `pre-restore` copy still contains the API keys (yours and the students'): delete it once you have checked that the restore worked.** Afterwards enter the API key again in Admin (backups hold no keys) and check `ADMIN_PIN` in `.env`.
 
-**Students' own AI keys (optional):** with the admin switch on, Settings shows "AI for Explain simpler and Filipino/Taglish": **Default** or **Use your own key** (Google, DeepSeek, Qwen, NVIDIA NIM or OpenRouter, a pasted key, and a chat model from the provider's list). **Test key** sends one tiny request and saves the key only if it works; the key is stored on the host under the participant code, shown back only as its last 4 characters, never exported or backed up, and removed by **Remove my key** or `participant:delete`. A student's key is used only for their own Explain simpler and Filipino/Taglish taps; lessons are always prepared with the Default.
+**Students' own AI keys (optional):** with the admin switch on, Settings shows "AI for Explain simpler and Filipino/Taglish": **Default** or **Use your own key** (Google, DeepSeek, Qwen, NVIDIA NIM or OpenRouter, a pasted key, and a chat model from the provider's list). **Test key** sends one tiny request and saves the key only if it works; the key is stored on the host under the student's account, shown back only as its last 4 characters, never exported or backed up, and removed by **Remove my key** or `participant:delete`. A student's key is used only for their own Explain simpler and Filipino/Taglish taps; lessons are always prepared with the Default.
 
 **Delete all student keys** (Admin › AI and study settings) removes every saved student key after the study (with a confirmation). The temporary file a backup is made in sits next to the database and is deleted when the download is done (any leftover is removed when the server starts).
 
-**Known limit: the participant code is the only identity.** The code screen is type-only by design, so a student who types another student's code is that student to the app: they can see that participant's Stats, use or replace that participant's saved AI key, and add records under that code. There is no password. The limit is accepted for a classroom study on a trusted Wi-Fi; a student's own key also travels over that Wi-Fi without encryption (plain HTTP), so students should only use a key they can delete later.
+**Known limit: sign-in (email and password) travels over plain HTTP on the local Wi-Fi, so it is not encrypted in transit.** Tell students to use a throwaway password they use nowhere else. The teacher can reset any password or sign a student out in the admin Accounts screen. A student's own AI key, if they add one, also travels unencrypted over the local network.
 
 **What is logged, per participant:** flashcard schedule and every answer (Again/Hard/Good/Easy), quiz attempts and every answer (abandoned attempts and retakes included and marked), Review-tab position, study sessions (reading / flashcards / quiz) with active time, changes to the Motion setting (`setting_events.csv`), self-monitoring events (Stats views, quiz retakes, "Review these flashcards" taps, "Explain simpler" and "Filipino/Taglish" taps), and every live AI request for a rewrite (`ai_calls.csv`: which source, provider and model answered and how many fallbacks it took). Active time stops when the app goes to the background and a session ends after 5 minutes without a tap, scroll or key press. Time on a flashcard or quiz question (`time_ms`) starts when it is on screen and usable, pauses while a card turns or the app is hidden, and never includes animation, so Less motion and Full motion give the same numbers; the zip's `README.txt` says exactly how. Days follow the flashcard study day: 04:00 to 04:00 Asia/Manila. The export never contains names, settings or API keys (yours or students').
 
-The Stats tab shows each student their own study time this week (reading / flashcards / quiz), cards reviewed and % Good or Easy, first and best quiz score per lesson, and cards due tomorrow. In admin, tap a code to see that participant's Stats (this is not logged as their view).
+The Stats tab shows each student their own study time this week (reading / flashcards / quiz), cards reviewed and % Good or Easy, first and best quiz score per lesson, and cards due tomorrow. In admin, tap a study ID to see that participant's Stats (this is not logged as their view).
 
 ### Student uploads
 
@@ -89,22 +89,20 @@ Off unless you switch it on in Admin, so the study runs on your lesson. When on,
 - Another student's private lesson answers "not found", like a lesson that doesn't exist.
 - Turning the switch off hides the Upload button; lessons already uploaded and their records stay.
 - `lessons.csv` and `lesson_events.csv` in the export say where each lesson came from and what happened to uploads. In `summary.csv` the main measures count your lessons only; the `_all` columns next to them count every lesson, uploads included.
-- `npm run participant:delete -- P07` also deletes P07's private uploads; uploads you shared stay, without P07's code on them.
+- `npm run participant:delete -- P07` also deletes P07's private uploads; uploads you shared stay, without P07's study ID or email on them.
 
 ### Try the API
 
-Study routes need the participant header (`-H "x-participant: P01"`, a code on the list); admin routes (upload, retry, delete, making cards, AI settings, participant codes, export) need the PIN (`-H "x-admin-pin: $PIN"`).
+Study routes need a Bearer token (`-H "Authorization: Bearer <token>"`); get one by logging in: `curl -X POST http://localhost:3001/api/auth/login -H "Content-Type: application/json" -d '{"email":"you@example.com","password":"..."}'` returns `{ "token": ... }`; admin routes (upload, retry, delete, making cards, AI settings, accounts, export) need the PIN (`-H "x-admin-pin: $PIN"`).
 
 ```bash
-curl -H "x-admin-pin: $PIN" -H 'content-type: application/json' -d '{"codes":"P01-P10"}' http://localhost:3001/api/admin/participants
-curl http://localhost:3001/api/participants/P01                                    # is this code on the list? (404 if not)
-curl -H "x-participant: P01" http://localhost:3001/api/stats                       # the Stats tab's numbers
+curl -H "Authorization: Bearer <token>" http://localhost:3001/api/stats                       # the Stats tab's numbers
 curl -H "x-admin-pin: $PIN" -o export.zip http://localhost:3001/api/admin/export.zip   # ?include_p00=1 to include P00
 curl -H "x-admin-pin: $PIN" http://localhost:3001/api/admin/export/summary.csv
 curl -H "x-admin-pin: $PIN" -OJ http://localhost:3001/api/admin/backup             # studyrevr-backup-YYYY-MM-DD-HHMM.db, no keys or PIN
 curl -H "x-admin-pin: $PIN" http://localhost:3001/api/settings                      # { flashcard_new_per_day, allow_student_keys } (PUT to change)
-curl -H "x-participant: P01" http://localhost:3001/api/my-ai                        # the student's AI choice (allowed, default, key: { provider, model, last4 } | null)
-curl -H "x-participant: P01" -X POST http://localhost:3001/api/my-ai/key -H 'content-type: application/json' \
+curl -H "Authorization: Bearer <token>" http://localhost:3001/api/my-ai                        # the student's AI choice (allowed, default, key: { provider, model, last4 } | null)
+curl -H "Authorization: Bearer <token>" -X POST http://localhost:3001/api/my-ai/key -H 'content-type: application/json' \
      -d '{"provider":"deepseek","model":"deepseek-chat","apiKey":"..."}'           # Test key: saved only if a tiny request works
 ```
 
@@ -154,11 +152,11 @@ npm run pipeline -- lesson.pdf --summary=short --chunk-tokens=1500 --concurrency
 ### Review endpoints
 
 ```bash
-curl -H "x-participant: P01" -X POST http://localhost:3001/api/sections/1/simplify    # { section_id, kind, version: { text, example }, cached, shared, answered_by, fallback }
-curl -H "x-participant: P01" -X POST http://localhost:3001/api/sections/1/translate   # { ..., version: { title, content, check_questions } }
+curl -H "Authorization: Bearer <token>" -X POST http://localhost:3001/api/sections/1/simplify    # { section_id, kind, version: { text, example }, cached, shared, answered_by, fallback }
+curl -H "Authorization: Bearer <token>" -X POST http://localhost:3001/api/sections/1/translate   # { ..., version: { title, content, check_questions } }
 curl -H "x-admin-pin: $PIN" -X POST http://localhost:3001/api/lessons/1/section-versions   # Prepare: make every missing version now (202; progress on GET /api/lessons)
-curl -H "x-participant: P01" -X PUT http://localhost:3001/api/lessons/1/review-progress -H 'content-type: application/json'      -d '{"last_section":2,"completed_sections":[0,1]}'      # 0-based indices into the lesson's sections
-curl -H "x-participant: P01" http://localhost:3001/api/lessons/1/review-progress      # { review_progress: { last_section, completed_sections, updated_at } | null }
+curl -H "Authorization: Bearer <token>" -X PUT http://localhost:3001/api/lessons/1/review-progress -H 'content-type: application/json'      -d '{"last_section":2,"completed_sections":[0,1]}'      # 0-based indices into the lesson's sections
+curl -H "Authorization: Bearer <token>" http://localhost:3001/api/lessons/1/review-progress      # { review_progress: { last_section, completed_sections, updated_at } | null }
 ```
 
 `simplify` and `translate` answer from the shared version saved in the `sections` row (`simple_version`, `filipino_version`, as JSON) when there is one. Otherwise they make it live, through a fallback chain, one try per step with no retry waits: the student's own key (if admin allows it and they saved one) → the app's Default → `gemma-4-26b-a4b-it` on the admin's Google key → an error with "Try again". Only the Default's answer is saved as the shared version (two taps at the same time share one call); answers from a student's key or from Gemma are shown to that student only, so the next request tries the Default again. A step falls back only on a rate limit, timeout, network error or 5xx (the student's key also on a rejected key or no credit), never on a bad request; an answer that came from a fallback carries a short note ("Your key didn't work, so the default AI answered."). Every live request is logged in `ai_calls`. `simplify` gives a plain-words rewrite plus an everyday example; `translate` gives natural Filipino/Taglish for the title, content and quick-check questions, keeping the lesson's key terms in English with the Filipino meaning in parentheses. The stored summary is never changed. `GET /api/lessons/:id` returns both versions (or `null`) on each section, the saved `review_progress`, and where each section came from: `lesson.source` (`{ kind, total, numbers }`, the real slide / page / paragraph number of each block of `raw_text`; `null` for lessons uploaded before this was recorded) and `sections[].sources` (the slide / page numbers the section was written from, checked against the file's real count; `null` when unknown, and Original text then falls back to an approximate match).
@@ -174,12 +172,12 @@ Scheduling is Anki's SM-2 (`server/src/flashcards/scheduler.js`, a pure module t
 Settings rows: `flashcard_new_per_day` (20, editable in Admin), `flashcard_reviews_per_day` (200), `flashcard_learning_steps` (`1m 10m`), `flashcards_max` (30); optional overrides `flashcard_graduating_interval`, `flashcard_easy_interval`, `flashcard_starting_ease`, `flashcard_easy_bonus`, `flashcard_hard_interval`, `flashcard_relearning_steps`, `flashcard_lapse_interval`, `flashcard_min_interval`, `flashcard_max_interval`, `study_timezone`.
 
 ```bash
-curl -H "x-participant: P01" http://localhost:3001/api/flashcards/decks                    # every lesson's New / Learning / Due counts, plus "All lessons"
-curl -H "x-participant: P01" http://localhost:3001/api/lessons/1/flashcards/due            # the next card (with each button's interval) or next_due_at
-curl -H "x-participant: P01" http://localhost:3001/api/flashcards/due                      # the same for All lessons
-curl -H "x-participant: P01" -X POST http://localhost:3001/api/flashcards/5/review -H 'content-type: application/json' \
+curl -H "Authorization: Bearer <token>" http://localhost:3001/api/flashcards/decks                    # every lesson's New / Learning / Due counts, plus "All lessons"
+curl -H "Authorization: Bearer <token>" http://localhost:3001/api/lessons/1/flashcards/due            # the next card (with each button's interval) or next_due_at
+curl -H "Authorization: Bearer <token>" http://localhost:3001/api/flashcards/due                      # the same for All lessons
+curl -H "Authorization: Bearer <token>" -X POST http://localhost:3001/api/flashcards/5/review -H 'content-type: application/json' \
      -d '{"rating":3,"time_ms":4200,"deck":1}'                     # 1 Again, 2 Hard, 3 Good, 4 Easy -> review_id + the deck's next card
-curl -H "x-participant: P01" -X POST http://localhost:3001/api/flashcards/reviews/17/undo -H 'content-type: application/json' -d '{"deck":1}'
+curl -H "Authorization: Bearer <token>" -X POST http://localhost:3001/api/flashcards/reviews/17/undo -H 'content-type: application/json' -d '{"deck":1}'
 curl -H "x-admin-pin: $PIN" -X POST http://localhost:3001/api/lessons/1/flashcards/generate   # make cards for a lesson that has none
 ```
 
@@ -192,11 +190,11 @@ A quiz is built from the lesson's flashcards when it starts: up to 10 questions,
 Every question is saved in `quiz_answers` when the quiz starts, and each answer the moment it is given (choice, right or wrong, time on the question, timestamp), so a quiz left part-way is still logged. `quiz_attempts` records start, finish, total time and `retake_of` (a retake asks the same questions in a new order). The quiz never changes flashcard scheduling.
 
 ```bash
-curl -H "x-participant: P01" http://localhost:3001/api/quiz                                     # one row per lesson: questions it supports, best score, attempts
-curl -H "x-participant: P01" -X POST http://localhost:3001/api/lessons/1/quiz/attempts          # start: questions without answers (body {"retake_of": 4} for a retake)
-curl -H "x-participant: P01" -X POST http://localhost:3001/api/quiz/attempts/4/answers -H 'content-type: application/json' \
+curl -H "Authorization: Bearer <token>" http://localhost:3001/api/quiz                                     # one row per lesson: questions it supports, best score, attempts
+curl -H "Authorization: Bearer <token>" -X POST http://localhost:3001/api/lessons/1/quiz/attempts          # start: questions without answers (body {"retake_of": 4} for a retake)
+curl -H "Authorization: Bearer <token>" -X POST http://localhost:3001/api/quiz/attempts/4/answers -H 'content-type: application/json' \
      -d '{"position":0,"choice":2,"time_ms":5200}'                      # -> correct, the right option, the card's evidence
-curl -H "x-participant: P01" -X POST http://localhost:3001/api/quiz/attempts/4/finish -H 'content-type: application/json' -d '{"total_ms":61000}'
+curl -H "Authorization: Bearer <token>" -X POST http://localhost:3001/api/quiz/attempts/4/finish -H 'content-type: application/json' -d '{"total_ms":61000}'
 ```
 
 In the app: 1–4 answer (1–2 on true / false), Enter goes to the next question. After an answer, a pen mark shows it (a loop, a tick or a strike); a tap skips it.
