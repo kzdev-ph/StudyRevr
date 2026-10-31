@@ -3,7 +3,7 @@ import { termKey } from '../pipeline/terms.js';
 import { answerInQuestion, cardLeaks, falseStatementProblems, lessonWords as lessonWordsOf, maskTerm, optionSetProblems, sharesWord, termInText, wrongOptionProblems } from './leaks.js';
 import { listGroups, onlyInObjectives, sameItem, sameShape, siblingItems, withoutObjectives } from './list-items.js';
 import { familyIndex, relatedTerms } from './related.js';
-import { describe, optionFlags, reviewFor } from './review-flags.js';
+import { cardHash, describe, optionFlags, reviewFor } from './review-flags.js';
 
 // Turning a lesson's flashcards into quiz questions. Pure: the caller passes the cards, the saved wrong answers and a
 // `random` function (tests pass a seeded one), so the same inputs always give the same quiz.
@@ -27,6 +27,11 @@ import { describe, optionFlags, reviewFor } from './review-flags.js';
 // in one family) is never a wrong option or false statement for the other (related.js). What the AI exam reviewer
 // flagged (review-flags.js) is left out: a flagged card is not asked, a flagged option or false statement is not shown,
 // a flagged set is not asked as multiple choice and a flagged true statement not as Yes/No.
+//
+// A concept card with a saved true / false pair (statements.js: `statements`, Map card id -> row) is asked as one whole
+// sentence, true or its false twin, when the pair was reviewed clean. Without a clean pair a card that can be multiple
+// choice is asked that way (never as a stiff question-plus-answer True/False); one that can't keeps the old form.
+// With `statements` undefined (older databases, tests) nothing changes.
 
 export const QUIZ_LENGTH = 10;
 export const TF_SHARE = 0.3;
@@ -109,10 +114,13 @@ function arrange(correct, wrong, random) {
 //     mcWrong / falsePool (every candidate), mcClean / falseClean (what passed), problems (why the card itself or
 //     its option set can't be used: [{ rule, detail }]), reviewable (the wrong options and false statements that passed
 //     the code checks: what the AI reviewer is shown), mcCode (the wrong options of those, for multiple choice), excluded ([{ text, rule, detail }]: left out as a related term,
-//     rule r, or flagged by the AI reviewer, rule ai; text null for a flag on the whole set or the true statement) }
-// `npm run quiz:check` reports the candidates; the quiz only uses mcClean and falseClean.
+//     rule r, or flagged by the AI reviewer, rule ai; text null for a flag on the whole set or the true statement),
+//     yesNo (the false statements the quiz may use: falseClean, or the pair's twin, or none when multiple choice is
+//     possible and the card has no clean pair), pair ({ true, false } or null), tfForm ('statement' or null) }
+// `npm run quiz:check` reports the candidates; the quiz only uses mcClean and yesNo.
 // termFamilies: [[term, ...]] from the AI review; reviews: Map card id -> readReview(row) (review-flags.js).
-export function quizCandidates(cards, { distractors = new Map(), extraTerms = [], lessonText = null, termFamilies = [], reviews = new Map() } = {}) {
+export function quizCandidates(cards, { distractors = new Map(), extraTerms = [], lessonText = null, termFamilies = [], reviews = new Map(), statements } = {}) {
+  const statementMode = statements instanceof Map;
   const lessonWords = lessonWordsOf(lessonText);
   const families = familyIndex(termFamilies);
   const names = new Map(); // termKey -> spelling, from term cards first, then key terms without a card
@@ -218,8 +226,17 @@ export function quizCandidates(cards, { distractors = new Map(), extraTerms = []
     const reviewable = cardOk ? [...new Set([...savedClean, ...falseCode])] : [];
     const flagged = new Set(excluded.map((x) => x.text));
     const falseClean = reviewProblems.length || trueFlagged ? [] : falseCode.filter((s) => (flagged.has(s) ? false : passesReview(s)));
-    return { card, shown: card.back, mcWrong: saved, mcClean, falsePool, falseClean, reviewable, mcCode: cardOk ? savedClean : [], excluded, problems, sibling: Boolean(siblings) };
-  });
+
+    // the saved pair of whole sentences: used only when reviewed clean (status ok, current card, nothing flagged)
+    const row = statementMode && !siblings ? statements.get(card.id) : null;
+    const pair = row && row.card_hash === cardHash(card) && ['pending', 'ok', 'flagged'].includes(row.status) && hasText(row.true_text) && hasText(row.false_text)
+      ? { true: row.true_text, false: row.false_text }
+      : null;
+    const pairClean = Boolean(pair) && row.status === 'ok' && cardOk && !reviewProblems.length && !trueFlagged && !optionFlags(review, pair.false).length;
+    const yesNo = !statementMode || siblings ? falseClean : pairClean ? [pair.false] : mcClean.length >= WRONG_PER_QUESTION ? [] : falseClean;
+    const reviewablePair = pair ? [...new Set([...reviewable, pair.false])] : reviewable;
+    return { card, shown: card.back, mcWrong: saved, mcClean, falsePool, falseClean, reviewable: reviewablePair, mcCode: cardOk ? savedClean : [], excluded, problems, sibling: Boolean(siblings), yesNo, pair, tfForm: pairClean ? 'statement' : null };
+  }).map((p) => ({ yesNo: p.falseClean, pair: null, tfForm: null, ...p }));
 }
 
 // The first 3 of `clean` that pass the set checks (rules b, c, f as a set). -> { wrong, problems }: wrong is [] when
@@ -239,7 +256,7 @@ function pickSet(card, clean, lessonWords) {
 }
 
 const canMc = (p) => p.mcClean.length >= WRONG_PER_QUESTION;
-const usable = (p) => canMc(p) || p.falseClean.length > 0;
+const usable = (p) => canMc(p) || p.yesNo.length > 0;
 
 function multipleChoice({ card, shown, mcClean }, random) {
   const wrong = shuffle(mcClean, random).slice(0, WRONG_PER_QUESTION);
@@ -257,11 +274,28 @@ function multipleChoice({ card, shown, mcClean }, random) {
   };
 }
 
-function trueFalse({ card, shown, falseClean }, random) {
+function trueFalse({ card, shown, yesNo, pair, tfForm }, random) {
   const truth = random() < 0.5;
-  const statement = truth ? shown : pickOne(falseClean, random);
+  if (tfForm === 'statement') {
+    const statement = truth ? pair.true : pickOne(yesNo, random);
+    // the sentence shown, the true sentence and its false twin are cleaned together
+    const [text, answer] = normalizeTrailing([statement, pair.true, pair.false]);
+    return {
+      flashcard_id: card.id,
+      type: 'tf',
+      kind: card.kind,
+      question: card.front,
+      statement: text,
+      choices: TF_CHOICES,
+      answer_index: truth ? 0 : 1,
+      answer_text: answer,
+      evidence: card.evidence ?? null,
+      form: 'statement',
+    };
+  }
+  const statement = truth ? shown : pickOne(yesNo, random);
   // the statement and the real answer are cleaned together with every false statement it could have been
-  const [text, answer] = normalizeTrailing([statement, card.back, shown, ...falseClean]);
+  const [text, answer] = normalizeTrailing([statement, card.back, shown, ...yesNo]);
   return {
     flashcard_id: card.id,
     type: 'tf',
@@ -291,7 +325,7 @@ export function buildQuiz({ cards, count = QUIZ_LENGTH, random = Math.random, ..
   const picked = shuffle(candidates, random).slice(0, count);
   const forced = picked.filter((p) => !canMc(p)).length;
   const variety = picked.length >= 4 ? Math.round(picked.length * TF_SHARE) : 0;
-  const extraTf = new Set(shuffle(picked.filter((p) => canMc(p) && p.falseClean.length), random).slice(0, Math.max(0, variety - forced)));
+  const extraTf = new Set(shuffle(picked.filter((p) => canMc(p) && p.yesNo.length), random).slice(0, Math.max(0, variety - forced)));
   return picked.map((p) => (canMc(p) && !extraTf.has(p) ? multipleChoice(p, random) : trueFalse(p, random))).filter((q) => !hasBlank(q));
 }
 

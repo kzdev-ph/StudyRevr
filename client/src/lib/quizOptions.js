@@ -2,14 +2,21 @@
 // to say. `lesson.quiz_options` is { missing, weak, status, error } from GET /api/lessons?counts=1: `weak` counts
 // cards whose saved wrong answers would give the right one away and a remake can still fix (not settled sets, not
 // cards whose own question gives the answer). Students never see those options: the quiz asks the card as Yes/No or
-// leaves it out until remade.
+// leaves it out until remade. `statements` counts concept cards that have no True/False sentence pair yet.
 //   state  making (queued/running) | failed | missing (never made, e.g. a lesson from before the step, or weak)
 export function quizOptionsNotice(lesson) {
-  const { missing = 0, weak = 0, status = null, error = null } = lesson.quiz_options ?? {};
+  const { missing = 0, weak = 0, statements = 0, status = null, error = null } = lesson.quiz_options ?? {};
   if (lesson.status !== 'ready') return null;
   if (status === 'queued' || status === 'running') return { state: 'making', title: 'Making the quiz answers…', detail: null, action: null };
-  if (!missing && !weak) return null;
+  if (!missing && !weak && !statements) return null;
   if (status === 'failed') return { state: 'failed', title: 'Quiz answers failed.', detail: error, action: 'Retry quiz answers' };
+  if (!missing && !weak)
+    return {
+      state: 'missing',
+      title: `${statements} quiz ${statements === 1 ? 'card has' : 'cards have'} no True/False statement yet.`,
+      detail: 'Until then they are multiple choice where possible.',
+      action: 'Make True/False statements',
+    };
   if (!missing)
     return {
       state: 'missing',

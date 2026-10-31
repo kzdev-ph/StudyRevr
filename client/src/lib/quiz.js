@@ -52,7 +52,9 @@ const endSentence = (s) => (/[.!?]["”’')]*$/.test(String(s ?? '').trim()) ? 
 // server stores and exports True / False (choices, chosen_answer, right_answer).
 //   term:    "<term> means <definition>."
 //   concept: "<the card's question> <the suggested answer>."
+//   statement (an AI sentence pair): the whole sentence alone.
 export function tfStatement(q) {
+  if (q.form === 'statement') return capitalFirst(endSentence(q.statement));
   if (q.kind === 'term') return `${q.question} means ${lowerFirst(endSentence(q.statement))}`;
   return `${endSentence(q.question)} ${capitalFirst(endSentence(q.statement))}`;
 }
@@ -62,11 +64,13 @@ export function tfStatement(q) {
 // not known. A statement that was true and answered False is told so: "That statement is true."
 //   term:    "<term> means <definition>."
 //   concept: "The answer is <the suggested answer>."
+//   statement: "The true statement: <the true sentence>."
 export function tfCorrection(q) {
   if (q.type !== 'tf') return '';
   if (q.right_answer === 'True') return 'That statement is true.';
   const answer = String(q.answer_text ?? '').trim();
   if (!answer) return '';
+  if (q.form === 'statement') return `The true statement: ${capitalFirst(endSentence(answer))}`;
   if (q.kind === 'term') return `${q.question} means ${lowerFirst(endSentence(answer))}`;
   return `The answer is ${endSentence(answer)}`;
 }

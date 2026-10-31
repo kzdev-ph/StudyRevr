@@ -14,7 +14,7 @@ import { getJobStatus, queueJob } from '../src/pipeline/jobs.js';
 import { createPipelineRunner } from '../src/pipeline/runner.js';
 import { RESTATE_ONLY } from '../src/pipeline/run.js';
 import { lessonThinking, setSetting } from '../src/services/settings.js';
-import { addCodes, cleanCheckReview, cleanReview, groundedChecks, keepAllCandidates, quoteFromPrompt, seedLesson, startStudyApp, TEST_PIN } from './helpers.js';
+import { addCodes, blankStatements, cleanCheckReview, cleanReview, groundedChecks, keepAllCandidates, quoteFromPrompt, seedLesson, startStudyApp, TEST_PIN } from './helpers.js';
 
 const quiet = { error() {}, warn() {}, log() {}, info() {} };
 const SLIDES = 'Photosynthesis\n- Plants make glucose\nNotes:\nThe teacher explains that light drives the reaction.\n\nCellular respiration\n- Cells release energy';
@@ -37,7 +37,8 @@ function fakeAi({ fail } = {}) {
       else if (label.startsWith('the quiz answer options')) {
         const numbers = [...user.matchAll(/^\[(\d+)\] Question:/gm)].map((m) => Number(m[1]));
         value = { items: numbers.map((k) => ({ n: k, wrong: ['Plants make more starch.', 'Cells store some water.', 'Light warms the leaves.'] })) };
-      } else if (label.startsWith('the flashcards')) value = { cards: [{ question: `What does call ${n} ask?`, answer: 'Something from the lesson.', evidence: quoteFromPrompt(user, 8) }] };
+      } else if (label.startsWith('the quiz true/false statements')) value = blankStatements(user);
+      else if (label.startsWith('the flashcards')) value = { cards: [{ question: `What does call ${n} ask?`, answer: 'Something from the lesson.', evidence: quoteFromPrompt(user, 8) }] };
       else if (label.includes('simpler')) value = { simple: 'Simple.', example: 'Like a line.' };
       else if (label.includes('Taglish') || label.includes('Filipino')) value = { title: 'Pamagat', content: 'Laman.', check_questions: [] };
       else value = { terms: [{ term: 'Media', definition: `Defined in call ${n}.`, evidence: quoteFromPrompt(user) }, { term: `Term ${n}`, definition: 'Another definition.', evidence: quoteFromPrompt(user, 7) }] };
@@ -102,7 +103,7 @@ describe('lesson thinking: setting, calls and the record on the lesson', () => {
     await runner.idle();
     assert.equal(getJobStatus(t.db, id).lesson.status, 'ready');
     assert.deepEqual([...new Set(ai.calls.map((c) => c.label))], [
-      'the review sections', 'the key points', 'the key terms', 'the flashcards', 'the flashcards for list items without a card', 'the quiz answer options', 'the quiz review', 'the quick check review',
+      'the review sections', 'the key points', 'the key terms', 'the flashcards', 'the flashcards for list items without a card', 'the quiz answer options', 'the quiz true/false statements', 'the quiz review', 'the quick check review',
     ]);
     assert.ok(ai.calls.every((c) => c.reasoning === 'high'), JSON.stringify(ai.calls.filter((c) => c.reasoning !== 'high')));
     const quizStage = (c) => c.label.startsWith('the quiz') || c.label.startsWith('the quick check review');

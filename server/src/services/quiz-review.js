@@ -9,6 +9,8 @@ import { usableFamilies } from '../quiz/related.js';
 import { ensureDistractors, loadDistractors, remakeFlagged } from '../quiz/distractors.js';
 import { listGroups, siblingItems } from '../quiz/list-items.js';
 import { CARD_FLAGS, cardHash, itemHash, OPTION_FLAGS, readReview, SET_FLAGS, TRUE_FLAGS } from '../quiz/review-flags.js';
+import { loadStatements, markStatementReviewed } from '../quiz/statement-store.js';
+import { ensureStatements } from './quiz-statements.js';
 import { checkNewCard } from './regenerate-card.js';
 import { hasRecords, participantRecords } from './lesson-records.js';
 
@@ -135,7 +137,9 @@ function itemFor(p) {
     kind: p.card.kind,
     question: term ? p.shown : p.card.front,
     answer: term ? p.card.front : p.card.back,
-    true_statement: p.shown,
+    true_statement: p.pair ? p.pair.true : p.shown,
+    // a card with a saved pair is shown as one sentence alone (true, or its false twin among the options); not in itemHash
+    sentence: Boolean(p.pair),
     evidence: p.card.evidence ?? '',
     options,
   };
@@ -144,7 +148,7 @@ function itemFor(p) {
 // Every card the quiz can ask, with what the reviewer would be shown. -> [{ card, item, hash, saved (readReview or null) }]
 export function reviewItems(db, lessonId) {
   const cards = lessonCards(db, lessonId);
-  const candidates = quizCandidates(cards, { distractors: loadDistractors(db, lessonId), extraTerms: keyTermNames(db, lessonId), lessonText: rawTextOf(db, lessonId) });
+  const candidates = quizCandidates(cards, { distractors: loadDistractors(db, lessonId), extraTerms: keyTermNames(db, lessonId), lessonText: rawTextOf(db, lessonId), statements: loadStatements(db, lessonId) });
   const rows = new Map(db.prepare('SELECT * FROM quiz_reviews WHERE lesson_id = ?').all(lessonId).map((r) => [r.flashcard_id, r]));
   return candidates
     .filter((p) => p.reviewable.length && !p.problems.some((x) => ['a', 'k', 'd'].includes(x.rule)))
@@ -153,7 +157,7 @@ export function reviewItems(db, lessonId) {
       const hash = itemHash({ ...item, options: item.options.map((o) => o.text) });
       const row = rows.get(p.card.id);
       const fresh = row && row.card_hash === cardHash(p.card) && row.item_hash === hash;
-      return { card: p.card, item, hash, saved: fresh ? readReview(row) : null };
+      return { card: p.card, item, hash, pair: p.pair, saved: fresh ? readReview(row) : null };
     });
 }
 
@@ -182,7 +186,7 @@ async function reviewBatch({ db, ai, lessonId, batch, terms, round, madeBy, rawT
   const byN = new Map(reply.items.map((it) => [it.n, it]));
   // A reply that answers none of the batch's numbers (empty, or numbered some other way) is no review at all: the batch
   // fails and its cards stay pending. Otherwise the reviewer lists what it found, and (as for the quick checks, lesson
-  // 12) an item it left out has nothing flagged.
+  // 12) an item it left out has nothing flagged (except a card with a True/False pair: that is not reviewed, see below).
   if (!batch.some((_, i) => byN.has(i + 1))) throw new Error('the reviewer’s reply listed none of the cards');
 
   // "off_topic" means the lesson doesn't cover the option at all: an option that is in the lesson's own text is never
@@ -194,6 +198,7 @@ async function reviewBatch({ db, ai, lessonId, batch, terms, round, madeBy, rawT
   };
   const results = [];
   for (const [i, x] of batch.entries()) {
+    const omitted = !byN.has(i + 1);
     const it = byN.get(i + 1) ?? { card: [], set: [], true_statement: [], options: [] };
     const options = {};
     for (const raw of it.options) {
@@ -202,7 +207,7 @@ async function reviewBatch({ db, ai, lessonId, batch, terms, round, madeBy, rawT
       const flags = text ? cleanFlags([raw], OPTION_FLAGS).filter((f) => !(f.flag === 'off_topic' && inLesson(text))) : [];
       if (flags.length) options[text] = [...(options[text] ?? []), ...flags.filter((f) => !(options[text] ?? []).some((g) => g.flag === f.flag))];
     }
-    results.push({ ...x, flags: { card: cleanFlags(it.card, CARD_FLAGS), set: cleanFlags(it.set, SET_FLAGS), trueStatement: cleanFlags(it.true_statement, TRUE_FLAGS), options } });
+    results.push({ ...x, omitted, flags: { card: cleanFlags(it.card, CARD_FLAGS), set: cleanFlags(it.set, SET_FLAGS), trueStatement: cleanFlags(it.true_statement, TRUE_FLAGS), options } });
   }
 
   const save = db.prepare(
@@ -212,10 +217,18 @@ async function reviewBatch({ db, ai, lessonId, batch, terms, round, madeBy, rawT
   const saved = [];
   db.transaction(() => {
     for (const r of results) {
+      // a card with a pair that the reviewer left out of its reply was not reviewed: nothing is saved, so the pair stays
+      // pending (not shown to students) and the card is reviewed again on the next run
+      if (r.pair && r.omitted) continue;
       const current = db.prepare('SELECT front, back FROM flashcards WHERE id = ?').get(r.card.id);
       if (current?.front !== r.card.front || current.back !== r.card.back) continue;
       save.run(r.card.id, lessonId, cardHash(r.card), r.hash, JSON.stringify(r.flags.card), JSON.stringify(r.flags.set), JSON.stringify(r.flags.trueStatement), JSON.stringify(r.flags.options), round, madeBy, now().toISOString());
       saved.push(r);
+      if (r.pair) {
+        // the pair's verdict: flagged on any card flag, true-statement flag or flag on its false twin
+        const f = [...r.flags.card, ...r.flags.trueStatement, ...(r.flags.options[r.pair.false] ?? [])];
+        markStatementReviewed(db, { cardId: r.card.id, cardHash: cardHash(r.card), trueText: r.pair.true, falseText: r.pair.false, flagged: f.length > 0, why: reason(f).join('; ').slice(0, MAX_WHY), now });
+      }
     }
     if (terms.length) {
       // only the lesson's own terms, in groups of two or more different terms, and not a term with its kinds or two
@@ -277,6 +290,7 @@ async function regenerateFlagged({ db, ai, lessonId, fixes, rawText, concurrency
           if (current?.front !== old.front || current.back !== old.back) continue;
           db.prepare('UPDATE flashcards SET front = ?, back = ?, evidence = ? WHERE id = ?').run(card.front, card.back, card.evidence, card.id);
           db.prepare('DELETE FROM quiz_distractors WHERE flashcard_id = ?').run(card.id);
+          db.prepare('DELETE FROM quiz_statements WHERE flashcard_id = ?').run(card.id);
           changed.push(card.id);
           log.info?.(`[quiz-review] lesson ${lessonId}: card ${card.id} written again ("${old.front}" -> "${card.front}")`);
         }
@@ -340,7 +354,8 @@ export async function reviewQuiz({ db, ai, lessonId, concurrency = 1, madeBy = n
   const cardFixes = [];
   const optionFixes = [];
   for (const r of flagged) {
-    const answerWrong = r.flags.trueStatement.filter((f) => f.flag === 'not_in_lesson');
+    // a pair's true sentence is the AI's own wording: flagging it never rewrites the card
+    const answerWrong = r.item.sentence ? [] : r.flags.trueStatement.filter((f) => f.flag === 'not_in_lesson');
     if (r.flags.card.length || answerWrong.length) {
       if (!studied) cardFixes.push({ card: r.card, problems: reason([...r.flags.card, ...answerWrong]) });
       continue;
@@ -366,6 +381,12 @@ export async function reviewQuiz({ db, ai, lessonId, concurrency = 1, madeBy = n
     // a concept card written again needs new wrong answers before it is reviewed again
     const filled = await ensureDistractors({ db, ai, lessonId, concurrency, log, now });
     error ??= filled.error;
+    // and a new True/False pair (the old one went with the old text); a failure is only logged, the card then has no pair
+    try {
+      await ensureStatements({ db, ai, lessonId, concurrency, log, now });
+    } catch (err) {
+      log.warn(`[quiz-review] lesson ${lessonId}: True/False statements for the cards written again failed: ${err.message}`);
+    }
   }
 
   // round 2: everything whose review went out of date in the fix round: what was made again, and every card whose

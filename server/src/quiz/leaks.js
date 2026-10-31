@@ -204,6 +204,12 @@ export const sharesWord = (a, b) => {
   const other = wordStems(b);
   return wordStems(a).some((w) => other.some((o) => matches(w, o)));
 };
+// The content words of `text` that have no exact match (the same word or a form of it, never a longer word that
+// merely holds it) among the words of `source`. -> [word]
+export const wordsNotIn = (text, source) => {
+  const other = wordStems(source);
+  return names(wordStems(text).filter((w) => !other.some((o) => exact(w, o))));
+};
 // whether a lesson (a LessonWords, or a plain Set of stems as in tests) holds a word (a list of possible stems)
 const lessonHolds = (lesson, forms) => forms.some((s) => (lesson.holds ? lesson.holds(s) : lesson.has(s) || [...lesson].some((l) => sameWord(s, l))));
 
@@ -412,6 +418,8 @@ export function questionLeaks(q, { lessonWords = null } = {}) {
     for (const w of wrong) problems.push(...wrongOptionProblems(w, correct, { lessonWords, lengths: q.kind !== 'term', reworded: q.kind !== 'term' }).map((p) => ({ ...p, detail: `${p.detail}: "${w}"` })));
     return problems;
   }
+  // a whole-sentence pair is checked by statements.js when it is saved
+  if (q.form === 'statement') return [];
   const truth = q.answer_index === 0;
   if (q.kind === 'term') {
     const found = termInText(q.question, q.statement);

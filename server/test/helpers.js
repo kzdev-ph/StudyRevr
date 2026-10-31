@@ -180,6 +180,12 @@ export function liveRoutes(app) {
   return { routes, untagged };
 }
 
+// A True/False statements mock (services/quiz-statements.js) that gives no usable pair: one item per card in the prompt
+// with empty sentences, so every pair is rejected and the quiz is built as it was before the statements existed.
+export const blankStatements = (user) => ({
+  items: [...user.matchAll(/^\[(\d+)\] Question:/gm)].map((m) => ({ n: Number(m[1]), true_statement: '', false_statement: '' })),
+});
+
 // A quiz-review mock (services/quiz-review.js) that flags nothing: one clean entry per item in the prompt.
 export const cleanReview = (user) => ({
   items: [...user.matchAll(/^\[(\d+)\] (?:Term|Concept) card/gm)].map((m) => ({ n: Number(m[1]), card: [], set: [], true_statement: [], options: [] })),

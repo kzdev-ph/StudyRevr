@@ -20,6 +20,8 @@ export const MAX_QUESTION_WORDS = 40;
 const WORDS_PER_CARD = 50;
 const MIN_CARDS = 5;
 const EXTRA = 1.25; // ask for a few more concept cards than needed: some are dropped or merged
+const SECOND_TRY_WORDS = 400; // a chunk this long has plenty of ideas, so a near-empty reply is a miss, not an honest {"cards":[]}
+const SECOND_TRY_SHARE = 0.25; // a reply that kept under this share of the cards asked for gets one more try
 
 const wordList = (s) => String(s ?? '').match(/\S+/g) ?? [];
 
@@ -164,14 +166,18 @@ const responseSchema = {
   },
 };
 
+// True when a chunk's reply kept too few of the `asked` cards for a chunk of `words` words: it gets one more try.
+export const needsSecondTry = ({ kept, asked, words }) => words >= SECOND_TRY_WORDS && kept < Math.ceil(asked * SECOND_TRY_SHARE);
+
 // The review sections written from a chunk, as a guide for its call. A section belongs to a chunk when its sources
 // are slides / pages of that chunk; without sources it can only be placed when the lesson is a single chunk. The
-// guide is left out when it would be bigger than half the chunk (small local models have little room).
-function reviewFor(chunk, sections, single) {
+// guide is cut to the section titles when it would be bigger than `share` of the chunk (small local models have
+// little room); the second try allows the whole chunk's size.
+function reviewFor(chunk, sections, single, share = 0.5) {
   const mine = sections.filter((s) => (s.sources ? chunk.numbers && s.sources.some((n) => chunk.numbers.includes(n)) : single));
   if (!mine.length) return null;
   const text = mine.map((s) => `${s.title}\n${s.content}`).join('\n\n');
-  return estimateTokens(text) <= Math.max(600, chunk.tokens / 2) ? text : mine.map((s) => `- ${s.title}`).join('\n');
+  return estimateTokens(text) <= Math.max(600, chunk.tokens * share) ? text : mine.map((s) => `- ${s.title}`).join('\n');
 }
 
 // The first of rules g, i, k (gives its answer away) and l (asks by place in the list) a concept card breaks, or undefined.
@@ -179,9 +185,15 @@ const givesAnswerAway = (card) => cardLeaks({ kind: 'concept', ...card }).find((
 
 const partLabel = (i, n) => `the flashcards${n > 1 ? ` (part ${i + 1} of ${n})` : ''}`;
 
+// Added to the user message of the second try (the system prompt stays as it was).
+const secondTryNote = (kept, asked) =>
+  `\n\nYour previous reply gave only ${kept} usable card${kept === 1 ? '' : 's'}, but this lesson text explains more ideas than that. Write about ${asked} cards, following every rule above. Some words in the text may have lost letters or run together when the file was read: copy each "evidence" quote exactly as <lesson_text> writes it, broken words included; never repair them.`;
+
 // One AI call per chunk (in parallel, up to `concurrency`), each asked for its share of `target` cards by length.
 // -> concept cards in lesson order; each one passed the evidence, length and leak checks against its own chunk.
-export async function generateConceptCards({ ai, chunks, sections = [], keyTerms = [], target, concurrency = 1, onProgress = () => {}, onDrop = () => {} }) {
+// A chunk of 400+ words whose reply kept under a quarter of the cards asked is asked once more (needsSecondTry), with
+// the whole review. `onReply({ label, asked, returned, kept, secondTry, askingAgain, error })` follows each call.
+export async function generateConceptCards({ ai, chunks, sections = [], keyTerms = [], target, concurrency = 1, onProgress = () => {}, onDrop = () => {}, onReply = () => {} }) {
   if (target <= 0 || !chunks.length) {
     onProgress({ done: 0, total: 0 });
     return [];
@@ -191,23 +203,43 @@ export async function generateConceptCards({ ai, chunks, sections = [], keyTerms
   onProgress({ done, total: chunks.length });
   const lists = await mapLimit(chunks, concurrency, async (chunk, i, ctx) => {
     const targetCards = Math.max(2, Math.round((target * EXTRA * chunk.tokens) / totalTokens));
-    const { system, user } = flashcardsPrompt({
-      text: chunk.text,
-      review: reviewFor(chunk, sections, chunks.length === 1),
-      keyTerms,
-      index: chunk.index,
-      total: chunks.length,
-      targetCards,
-    });
-    const out = await ai.generateJSON({
-      system,
-      user,
-      schema: cardsSchema,
-      responseSchema,
-      maxTokens: Math.min(8000, 600 + targetCards * 160),
-      label: partLabel(i, chunks.length),
-    });
-    const cards = checkConceptCards(out.cards, comparable(chunk.text), onDrop, comparable(withoutObjectives(chunk.text)));
+    const promptFor = (share) =>
+      flashcardsPrompt({
+        text: chunk.text,
+        review: reviewFor(chunk, sections, chunks.length === 1, share),
+        keyTerms,
+        index: chunk.index,
+        total: chunks.length,
+        targetCards,
+      });
+    const ask = ({ system, user }, note, label) =>
+      ai.generateJSON({
+        system,
+        user: user + note,
+        schema: cardsSchema,
+        responseSchema,
+        maxTokens: Math.min(8000, 600 + targetCards * 160),
+        label,
+      });
+    const sourceKey = comparable(chunk.text);
+    const bodyKey = comparable(withoutObjectives(chunk.text));
+    const label = partLabel(i, chunks.length);
+    const out = await ask(promptFor(0.5), '', label);
+    let cards = checkConceptCards(out.cards, sourceKey, onDrop, bodyKey);
+    const retry = !ctx.stopped() && needsSecondTry({ kept: cards.length, asked: targetCards, words: wordList(chunk.text).length });
+    onReply({ label, asked: targetCards, returned: out.cards.length, kept: cards.length, secondTry: false, askingAgain: retry, error: null });
+    if (retry) {
+      const secondLabel = `${label} (second try)`;
+      try {
+        const again = await ask(promptFor(1), secondTryNote(cards.length, targetCards), secondLabel);
+        const more = checkConceptCards(again.cards, sourceKey, onDrop, bodyKey);
+        cards = placeInLesson(cards, more, chunk.text);
+        onReply({ label: secondLabel, asked: targetCards, returned: again.cards.length, kept: more.length, secondTry: true, askingAgain: false, error: null });
+      } catch (err) {
+        // like askAgain in quick-checks.js: the first cards stand
+        onReply({ label: secondLabel, asked: targetCards, returned: 0, kept: 0, secondTry: true, askingAgain: false, error: err.message });
+      }
+    }
     if (!ctx.stopped()) onProgress({ done: ++done, total: chunks.length });
     return cards;
   });
@@ -316,7 +348,7 @@ export function interleave(terms, concepts) {
 // The target counts every key term and every list item the lesson stresses (listItems), so the term cards fit beside a
 // card per item; past that, term cards take at most half, so a term-heavy lesson still gets questions about how things
 // work. After the per-chunk calls, list items no card asks about get ONE more call (coverItems).
-export async function generateFlashcards({ ai, chunks, lessonText, keyTerms = [], sections = [], wordCount, maxCards = 30, concurrency = 1, onProgress = () => {}, onDrop = () => {} }) {
+export async function generateFlashcards({ ai, chunks, lessonText, keyTerms = [], sections = [], wordCount, maxCards = 30, concurrency = 1, onProgress = () => {}, onDrop = () => {}, onReply = () => {} }) {
   const items = listItems(lessonText);
   const terms = termCards(keyTerms, { sourceKey: comparable(lessonText), bodyKey: comparable(withoutObjectives(lessonText)), onDrop });
   const target = targetCardCount(wordCount, maxCards, { terms: terms.length, items: items.length });
@@ -335,6 +367,7 @@ export async function generateFlashcards({ ai, chunks, lessonText, keyTerms = []
       onProgress(p);
     },
     onDrop,
+    onReply,
   });
 
   // de-duplicated, without cards that give another card's answer away (rule j in quiz/leaks.js)

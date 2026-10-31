@@ -31,6 +31,16 @@ describe('quizOptionsNotice (admin lesson row)', () => {
     assert.equal(quizOptionsNotice(lesson({ missing: 0, weak: 1, status: null })).title, '1 quiz question is skipped or changed to keep answers hidden.');
     assert.equal(quizOptionsNotice(lesson({ missing: 0, weak: 1, status: 'failed', error: 'x' })).action, 'Retry quiz answers');
   });
+  it('offers to make True/False statements when only those are missing', () => {
+    const n = quizOptionsNotice(lesson({ missing: 0, weak: 0, statements: 3, status: 'done', error: null }));
+    assert.deepEqual(n, { state: 'missing', title: '3 quiz cards have no True/False statement yet.', detail: 'Until then they are multiple choice where possible.', action: 'Make True/False statements' });
+    assert.equal(quizOptionsNotice(lesson({ missing: 0, statements: 1, status: null })).title, '1 quiz card has no True/False statement yet.');
+    assert.equal(quizOptionsNotice(lesson({ missing: 0, statements: 0, status: 'done' })), null);
+  });
+  it('keeps the older notices when statements are also missing', () => {
+    assert.equal(quizOptionsNotice(lesson({ missing: 3, statements: 2, status: null })).action, 'Make quiz answers');
+    assert.equal(quizOptionsNotice(lesson({ missing: 0, weak: 2, statements: 2, status: 'done' })).action, 'Remake quiz answers');
+  });
   it('stays quiet while the lesson itself is processing or failed', () => {
     assert.equal(quizOptionsNotice(lesson({ missing: 4, status: 'failed', error: 'x' }, 'processing')), null);
     assert.equal(quizOptionsNotice(lesson({ missing: 4, status: 'failed', error: 'x' }, 'failed')), null);

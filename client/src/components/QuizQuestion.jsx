@@ -102,8 +102,8 @@ export default function QuizQuestion({ question: q, feedback, onAnswer, busy, re
           )}
           {(tf ? q.choices[feedback.answer_index] !== 'True' : !feedback.correct) && (
             <p className="quiz-feedback__answer">
-              {tf ? (q.kind === 'term' ? `${q.question} means: ` : 'The answer is ') : 'The right answer: '}
-              <strong>{feedback.answer_text}</strong>
+              {tf ? (q.form === 'statement' ? 'The true statement: ' : q.kind === 'term' ? `${q.question} means: ` : 'The answer is ') : 'The right answer: '}
+              <strong>{q.form === 'statement' ? capitalFirst(feedback.answer_text) : feedback.answer_text}</strong>
               {tf && q.kind !== 'term' && !/[.!?]$/.test(String(feedback.answer_text).trim()) ? '.' : null}
             </p>
           )}

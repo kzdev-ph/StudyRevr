@@ -40,6 +40,12 @@ describe('quiz wording', () => {
     const tf = { type: 'tf', kind: 'concept', question: 'Why sample?', statement: 'to save time' };
     assert.equal(questionText(tf), tfStatement(tf));
   });
+  it('shows an AI sentence pair (statement form) as the sentence alone, not joined to the card question', () => {
+    const q = { type: 'tf', kind: 'concept', form: 'statement', question: 'Why sample?', statement: 'sampling saves time' };
+    assert.equal(tfStatement(q), 'Sampling saves time.');
+    assert.equal(tfStatement({ ...q, statement: 'Sampling saves time!' }), 'Sampling saves time!');
+    assert.equal(questionText(q), 'Sampling saves time.');
+  });
   it('lowers the first letter only after a common opener or an -ing word', () => {
     assert.equal(lowerFirst('The sample.'), 'the sample.');
     assert.equal(lowerFirst('Picking a sample.'), 'picking a sample.');
@@ -104,6 +110,12 @@ describe('tfCorrection', () => {
   it('says the statement is true when the right answer is True, never repeating the card answer', () => {
     assert.equal(quiz.tfCorrection({ type: 'tf', kind: 'concept', right_answer: 'True', answer_text: '9 J' }), 'That statement is true.');
     assert.equal(quiz.tfCorrection({ type: 'tf', kind: 'term', question: 'Work', right_answer: 'True', answer_text: 'The force times distance' }), 'That statement is true.');
+  });
+  it('gives the true sentence for an AI sentence pair (statement form)', () => {
+    const q = { type: 'tf', kind: 'concept', form: 'statement', question: 'Why sample?', right_answer: 'False', answer_text: 'sampling saves time' };
+    assert.equal(quiz.tfCorrection(q), 'The true statement: Sampling saves time.');
+    assert.equal(quiz.tfCorrection({ ...q, right_answer: 'True' }), 'That statement is true.');
+    assert.equal(quiz.tfCorrection({ ...q, answer_text: '' }), '');
   });
   it('is empty when the answer is unknown or the item is not true / false', () => {
     assert.equal(quiz.tfCorrection({ type: 'tf', kind: 'concept', right_answer: 'False', answer_text: '' }), '');

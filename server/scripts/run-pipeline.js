@@ -194,6 +194,13 @@ console.log(`Structured output (response_format json_schema): sent on ${schemaSe
 
 console.log(`\n${formatReport(lessonLeakReport(db, lessonId))}`);
 
+// Every True/False statement pair of the lesson (the report above shows only a few examples)
+const pairs = db
+  .prepare('SELECT f.id, f.front, s.status, s.true_text, s.false_text, s.why FROM quiz_statements s JOIN flashcards f ON f.id = s.flashcard_id WHERE f.lesson_id = ? ORDER BY f.position, f.id')
+  .all(lessonId);
+console.log(`\n## True/False statements (${pairs.length})`);
+for (const p of pairs) console.log(`- [${p.status}] #${p.id} ${p.front}\n    true:  ${p.true_text ?? '-'}\n    false: ${p.false_text ?? '-'}${p.why ? `\n    why: ${p.why}` : ''}`);
+
 // Stored texts a student reads, searched for LaTeX that was never turned into plain text
 const latex = /\\[a-zA-Z]+|\$[^$\n]+\$|\^\{|_\{/;
 const stored = [
@@ -202,6 +209,7 @@ const stored = [
   ...db.prepare('SELECT term, definition FROM key_terms WHERE lesson_id = ?').all(lessonId).flatMap((t) => [['key_terms.term', t.term], ['key_terms.definition', t.definition]]),
   ...db.prepare('SELECT front, back FROM flashcards WHERE lesson_id = ?').all(lessonId).flatMap((c) => [['flashcards.front', c.front], ['flashcards.back', c.back]]),
   ...db.prepare('SELECT d.choices FROM quiz_distractors d JOIN flashcards f ON f.id = d.flashcard_id WHERE f.lesson_id = ?').all(lessonId).map((d) => ['quiz_distractors.choices', d.choices]),
+  ...pairs.flatMap((p) => [['quiz_statements.true_text', p.true_text], ['quiz_statements.false_text', p.false_text]]),
 ];
 const leftovers = stored.filter(([, value]) => latex.test(value ?? ''));
 console.log(`LaTeX leftovers: ${leftovers.length}`);

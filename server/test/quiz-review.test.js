@@ -8,8 +8,9 @@ import { formatReport, lessonLeakReport } from '../src/quiz/check.js';
 import { loadDistractors } from '../src/quiz/distractors.js';
 import { quizBuildOptions } from '../src/quiz/options.js';
 import { cardHash, readReview } from '../src/quiz/review-flags.js';
+import { saveStatements } from '../src/quiz/statement-store.js';
 import { contextForBatch, itemsToReview, resetReviews, reviewQuiz, reviewSummary, unchangedRewrite } from '../src/services/quiz-review.js';
-import { addCodes, cleanCheckReview, seedLesson, startStudyApp, TEST_PIN } from './helpers.js';
+import { addCodes, blankStatements, cleanCheckReview, seedLesson, startStudyApp, TEST_PIN } from './helpers.js';
 
 const quiet = { error() {}, warn() {}, log() {}, info() {} };
 
@@ -29,12 +30,12 @@ function parseItems(user) {
 
 // A fake Default AI. `review(item, label)` -> { card, set, true_statement, options, omit } for one item (nothing:
 // clean); `families` is the reply's families; `remake(n)` the wrong answers for a remade set; `rewrite(n)` a card
-// written again.
-function fakeAi({ review = () => ({}), families = [], remake = (n) => [`Alpha topic answer ${n}.`, `Beta topic answer ${n}.`, `Gamma topic answer ${n}.`], rewrite = () => null } = {}) {
+// written again; `statements(user)` the reply to the True/False statements call (blank sentences: nothing usable).
+function fakeAi({ review = () => ({}), families = [], remake = (n) => [`Alpha topic answer ${n}.`, `Beta topic answer ${n}.`, `Gamma topic answer ${n}.`], rewrite = () => null, statements = blankStatements } = {}) {
   const ai = {
     calls: [],
-    async generateJSON({ schema, label, user }) {
-      ai.calls.push({ label, user });
+    async generateJSON({ schema, label, user, system }) {
+      ai.calls.push({ label, user, system });
       if (label.startsWith('the quiz review')) {
         const items = parseItems(user)
           .map((it) => ({ n: it.n, ...review(it, label) }))
@@ -46,6 +47,7 @@ function fakeAi({ review = () => ({}), families = [], remake = (n) => [`Alpha to
         const numbers = [...user.matchAll(/^\[(\d+)\] Question:/gm)].map((m) => Number(m[1]));
         return schema.parse({ items: numbers.map((n) => ({ n, wrong: remake(n) })) });
       }
+      if (label.startsWith('the quiz true/false statements')) return schema.parse(statements(user));
       if (label.startsWith('the quick check review')) return schema.parse(cleanCheckReview(user));
       if (label === 'the flashcards the quiz review flagged') {
         const numbers = [...user.matchAll(/^\[(\d+)\] (?:Term|Concept) card/gm)].map((m) => Number(m[1]));
@@ -64,6 +66,7 @@ const candidates = (db, lessonId) => {
   return quizCandidates(cards, quizBuildOptions(db, lessonId));
 };
 const labels = (ai) => ai.calls.map((c) => c.label);
+const CARDS_CALL = 'the flashcards the quiz review flagged';
 
 describe('quiz review', () => {
   let db;
@@ -181,7 +184,7 @@ describe('quiz review', () => {
       rewrite: () => ({ question: 'What does each topic of this lesson come with?', answer: 'A right and a wrong answer.', evidence: 'with a right and a wrong answer' }),
     });
     const result = await reviewQuiz({ db, ai, lessonId, log: quiet });
-    assert.deepEqual(labels(ai), ['the quiz review', 'the flashcards the quiz review flagged', 'the quiz answer options', 'the quiz review (after fixes)']);
+    assert.deepEqual(labels(ai), ['the quiz review', 'the flashcards the quiz review flagged', 'the quiz answer options', 'the quiz true/false statements', 'the quiz review (after fixes)']);
     assert.match(ai.calls[1].user, /vague: names no topic/);
     assert.equal(result.regenerated, 1);
 
@@ -189,6 +192,44 @@ describe('quiz review', () => {
     assert.deepEqual(card, { id: cards[0], front: 'What does each topic of this lesson come with?', back: 'A right and a wrong answer.' }, 'same id, new text');
     assert.equal(rows(db, lessonId).find((r) => r.flashcard_id === cards[0]).round, 2);
     assert.ok(candidates(db, lessonId).find((p) => p.card.id === cards[0]).mcClean.length === 3, 'asked again once it passes');
+  });
+
+  describe('a card written again gets a new True/False pair in the same run', () => {
+    const rewritten = { question: 'What does each topic of this lesson come with?', answer: 'A right and a wrong answer.', evidence: 'with a right and a wrong answer' };
+    const flagFirst = (it, label) => (label === 'the quiz review' && it.question.startsWith(`Q${lessonId}.1:`) ? { card: [{ flag: 'vague', why: 'names no topic' }] } : {});
+    const pairOf = (id) => db.prepare('SELECT * FROM quiz_statements WHERE flashcard_id = ?').get(id);
+    const pairFor = (user) => ({
+      items: [...user.matchAll(/^\[(\d+)\] Question:/gm)].map((m) => ({
+        n: Number(m[1]),
+        true_statement: 'Each topic of this lesson comes with a right and a wrong answer.',
+        false_statement: 'Each topic of this lesson comes with alpha and beta.',
+      })),
+    });
+
+    it('asks for it after the new wrong answers, and the new pair is reviewed in round 2', async () => {
+      db.prepare("INSERT INTO quiz_statements (flashcard_id, card_hash, true_text, false_text, status, made_at) VALUES (?, 'old', 'An old sentence.', 'An old twin.', 'ok', '2026-10-01T00:00:00.000Z')").run(cards[0]);
+      const ai = fakeAi({ review: flagFirst, rewrite: () => rewritten, statements: pairFor });
+      const result = await reviewQuiz({ db, ai, lessonId, log: quiet });
+      assert.equal(result.regenerated, 1);
+      assert.deepEqual(labels(ai).slice(-3), ['the quiz answer options', 'the quiz true/false statements', 'the quiz review (after fixes)']);
+      const card = db.prepare('SELECT id, front, back FROM flashcards WHERE id = ?').get(cards[0]);
+      const row = pairOf(cards[0]);
+      assert.equal(row.card_hash, cardHash(card), 'made for the new text, not the old one');
+      assert.equal(row.true_text, 'Each topic of this lesson comes with a right and a wrong answer.');
+      assert.match(ai.calls.at(-1).user, /True statement: Each topic of this lesson comes with a right and a wrong answer\./, 'round 2 reviews the new pair');
+      assert.equal(row.status, 'ok', 'pending when made, then set by the round 2 review');
+    });
+
+    it('a failed statements call is only logged: the review still ends, and the card has no pair', async () => {
+      const warned = [];
+      const ai = fakeAi({ review: flagFirst, rewrite: () => rewritten, statements: () => { throw new Error('statements down'); } });
+      const result = await reviewQuiz({ db, ai, lessonId, log: { ...quiet, warn: (m) => warned.push(m) } });
+      assert.equal(result.regenerated, 1);
+      assert.equal(result.error, null);
+      assert.equal(pairOf(cards[0]), undefined);
+      assert.ok(warned.some((m) => /True\/False statements/.test(m)));
+      assert.equal(labels(ai).at(-1), 'the quiz review (after fixes)');
+    });
   });
 
   describe('term cards: a new definition is another term\'s false statement', () => {
@@ -273,6 +314,116 @@ describe('quiz review', () => {
     assert.equal(itemsToReview(db, lessonId).length, 4);
   });
 
+  describe('true / false sentence pairs (quiz_statements)', () => {
+    const PAIR_LINE = /For some cards the Yes\/No question shows one sentence alone/;
+    // a pending pair for card `i` (0-based), as the quiz_options stage saves it
+    const addPair = (i) => {
+      const card = db.prepare('SELECT id, front, back FROM flashcards WHERE id = ?').get(cards[i]);
+      const pair = { trueText: `Rivers and mountains are what the lesson says for answer ${i + 1}.`, falseText: `Lakes and plains are what the lesson says for answer ${i + 1}.` };
+      saveStatements(db, [{ card, ...pair, status: 'pending' }], () => new Date('2026-10-01T00:00:00.000Z'));
+      return pair;
+    };
+    const statusOf = (i) => db.prepare('SELECT status, why FROM quiz_statements WHERE flashcard_id = ?').get(cards[i]);
+
+    it('shows the sentence with its false twin as a yes_no option, and adds the prompt line only then', async () => {
+      const plain = fakeAi();
+      await reviewQuiz({ db, ai: plain, lessonId, log: quiet });
+      assert.doesNotMatch(plain.calls[0].system, PAIR_LINE, 'no pair, no new line');
+
+      resetReviews(db, lessonId);
+      const pair = addPair(1);
+      const ai = fakeAi();
+      await reviewQuiz({ db, ai, lessonId, log: quiet });
+      assert.match(ai.calls[0].system, PAIR_LINE);
+      assert.match(ai.calls[0].user, new RegExp(`\\[2\\] Concept card[^]*?True statement: ${pair.trueText}`));
+      const second = parseItems(ai.calls[0].user).find((it) => it.n === 2);
+      assert.ok(second.options.some((o) => o.use === 'yes_no' && o.text === pair.falseText), 'the twin is a yes_no option');
+      const first = parseItems(ai.calls[0].user).find((it) => it.n === 1);
+      assert.ok(first.options.every((o) => o.text !== pair.falseText));
+      assert.match(ai.calls[0].user, /\[1\] Concept card[^]*?True statement: Topic answer 1 of Inquiry/, 'a card without a pair shows its answer');
+    });
+
+    it('a clean review sets ok, and the builder can then ask the card as a statement', async () => {
+      const pairs = cards.map((_, i) => addPair(i));
+      assert.ok(candidates(db, lessonId).every((p) => p.tfForm === null), 'pending: not used yet');
+      await reviewQuiz({ db, ai: fakeAi(), lessonId, log: quiet });
+      assert.deepEqual(cards.map((_, i) => statusOf(i).status), ['ok', 'ok', 'ok', 'ok']);
+      const cands = candidates(db, lessonId);
+      assert.ok(cands.every((p) => p.tfForm === 'statement' && p.yesNo.length === 1));
+      const cardsRows = db.prepare('SELECT id, kind, front, back, evidence FROM flashcards WHERE lesson_id = ? ORDER BY position').all(lessonId);
+      const quiz = buildQuiz({ cards: cardsRows, ...quizBuildOptions(db, lessonId), random: () => 0.9 });
+      const asStatement = quiz.filter((q) => q.form === 'statement');
+      assert.ok(asStatement.length >= 1);
+      assert.ok(asStatement.every((q) => pairs.some((p) => p.falseText.replace(/\.$/, '') === q.statement.replace(/\.$/, ''))), 'random 0.9 asks the false twin');
+    });
+
+    it('a flagged twin sets flagged, and the card is multiple choice', async () => {
+      const pair = addPair(0);
+      const ai = fakeAi({ review: (it) => (it.n === 1 ? { options: it.options.filter((o) => o.text === pair.falseText).map((o) => ({ o: o.o, flag: 'two_correct', why: 'also true' })) } : {}) });
+      await reviewQuiz({ db, ai, lessonId, log: quiet });
+      assert.equal(statusOf(0).status, 'flagged');
+      assert.match(statusOf(0).why, /two_correct: also true/);
+      const p = candidates(db, lessonId).find((c) => c.card.id === cards[0]);
+      assert.equal(p.tfForm, null);
+      assert.deepEqual(p.yesNo, []);
+      assert.equal(p.mcClean.length, 3);
+      const cardsRows = db.prepare('SELECT id, kind, front, back, evidence FROM flashcards WHERE lesson_id = ? ORDER BY position').all(lessonId);
+      const quiz = buildQuiz({ cards: cardsRows, ...quizBuildOptions(db, lessonId), random: () => 0.1 });
+      assert.equal(quiz.find((q) => q.flashcard_id === cards[0]).type, 'mc');
+    });
+
+    it('a true sentence flagged not_in_lesson is only flagged: the card is not written again', async () => {
+      addPair(0);
+      const before = db.prepare('SELECT front, back FROM flashcards WHERE id = ?').get(cards[0]);
+      const ai = fakeAi({ review: (it) => (it.n === 1 ? { true_statement: [{ flag: 'not_in_lesson', why: 'adds a word' }] } : {}) });
+      const result = await reviewQuiz({ db, ai, lessonId, log: quiet });
+      assert.deepEqual(labels(ai), ['the quiz review'], `${CARDS_CALL} is not made`);
+      assert.equal(result.regenerated, 0);
+      assert.equal(statusOf(0).status, 'flagged');
+      assert.deepEqual(db.prepare('SELECT front, back FROM flashcards WHERE id = ?').get(cards[0]), before);
+    });
+
+    it('a card flag still flags the pair, and the card is still written again', async () => {
+      addPair(0);
+      const ai = fakeAi({ review: (it) => (it.n === 1 ? { card: [{ flag: 'vague', why: 'no topic' }] } : {}) });
+      await reviewQuiz({ db, ai, lessonId, log: quiet });
+      assert.ok(labels(ai).includes(CARDS_CALL));
+    });
+
+    it('a pair the reviewer left out of its reply stays pending and is asked again; the statement form is not used', async () => {
+      [0, 1, 2].forEach(addPair);
+      const result = await reviewQuiz({ db, ai: fakeAi({ review: (it) => (it.n === 2 ? { omit: true } : {}) }), lessonId, log: quiet });
+      assert.equal(result.error, null);
+      assert.deepEqual([0, 1, 2].map((i) => statusOf(i).status), ['ok', 'pending', 'ok']);
+      assert.deepEqual(itemsToReview(db, lessonId).map((x) => x.card.id), [cards[1]], 'the omitted pair is reviewed again on the next run');
+
+      const cands = candidates(db, lessonId);
+      assert.equal(cands.find((p) => p.card.id === cards[1]).tfForm, null);
+      const cardsRows = db.prepare('SELECT id, kind, front, back, evidence FROM flashcards WHERE lesson_id = ? ORDER BY position').all(lessonId);
+      const quiz = buildQuiz({ cards: cardsRows, ...quizBuildOptions(db, lessonId), random: () => 0.9 });
+      assert.ok(quiz.every((q) => q.flashcard_id !== cards[1] || q.form !== 'statement'), 'not asked as a statement');
+      assert.ok(quiz.some((q) => q.form === 'statement'), 'the reviewed pairs are still asked');
+
+      const again = fakeAi();
+      await reviewQuiz({ db, ai: again, lessonId, log: quiet });
+      assert.equal(parseItems(again.calls[0].user).length, 1, 'only the omitted card is asked again');
+      assert.equal(statusOf(1).status, 'ok');
+    });
+
+    it('adding a pair makes the item stale exactly once', async () => {
+      await reviewQuiz({ db, ai: fakeAi(), lessonId, log: quiet });
+      assert.equal(itemsToReview(db, lessonId).length, 0);
+      addPair(2);
+      assert.deepEqual(itemsToReview(db, lessonId).map((x) => x.card.id), [cards[2]]);
+      await reviewQuiz({ db, ai: fakeAi(), lessonId, log: quiet });
+      assert.equal(statusOf(2).status, 'ok', 'pending -> ok does not change what the reviewer saw');
+      assert.equal(itemsToReview(db, lessonId).length, 0);
+      const again = fakeAi();
+      await reviewQuiz({ db, ai: again, lessonId, log: quiet });
+      assert.deepEqual(labels(again), []);
+    });
+  });
+
   it('sends the whole lesson when short, else the blocks around the quotes', () => {
     assert.equal(contextForBatch('short lesson', ['x']), 'short lesson');
     const blocks = Array.from({ length: 200 }, (_, i) => `Block ${i} ${'filler words '.repeat(10)}`);
@@ -304,7 +455,7 @@ describe('quiz review stage and Review again', () => {
   it('runs after the quiz options and shows on admin’s lesson row', async () => {
     assert.equal((await call('POST', `/api/lessons/${lessonId}/quiz-options`)).status, 202);
     await runner.idle();
-    assert.deepEqual(labels(ai), ['the quiz answer options', 'the quiz review']);
+    assert.deepEqual(labels(ai), ['the quiz answer options', 'the quiz true/false statements', 'the quiz review']);
     assert.equal(getJobStatus(t.db, lessonId).job.status, 'done');
     const row = (await call('GET', '/api/lessons?counts=1')).body.lessons.find((l) => l.id === lessonId);
     assert.deepEqual(row.quiz_review, { reviewed: 3, flagged: 0, pending: 0, checks: { reviewed: 0, pending: 0, dropped: 0 }, status: null, error: null }, 'seeded sections have no quick checks');
@@ -347,7 +498,7 @@ describe('quiz review stage and Review again', () => {
     t.db.prepare('UPDATE sections SET check_questions = ? WHERE lesson_id = ? AND position = 0').run(JSON.stringify([check]), lessonId);
     await call('POST', `/api/lessons/${lessonId}/quiz-options`);
     await runner.idle();
-    assert.deepEqual(labels(ai), ['the quiz answer options', 'the quiz review', 'the quick check review']);
+    assert.deepEqual(labels(ai), ['the quiz answer options', 'the quiz true/false statements', 'the quiz review', 'the quick check review']);
     const row = async () => (await call('GET', '/api/lessons?counts=1')).body.lessons.find((l) => l.id === lessonId).quiz_review;
     assert.deepEqual((await row()).checks, { reviewed: 1, pending: 0, dropped: 0 });
 

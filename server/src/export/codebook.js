@@ -140,6 +140,10 @@ quiz_answers.csv - one row per question of each attempt above
   true/false questions are shown to students as "True or False", then "Question:" and one statement ("<term> means
   <definition>" for a term card; the card's question followed by the suggested answer for a concept card), then the
   choices True and False. choices, chosen_answer and right_answer stay True or False.
+  Some concept-card true/false questions show one AI-written sentence alone instead: the true sentence from the
+  lesson, or a false twin of it with only the answer's part changed. For those, statement is that sentence as shown,
+  question is still the card's question (not shown to the student) and the choices stay True and False. The export
+  does not say which of the two forms a question used, and the sentence pairs are not exported.
   question, statement  as the student saw them. For a term card, the definition in question (multiple choice) or
                     statement (true/false) is stored masked: where a definition names its term (or a form of it),
                     the term is written as ___, so the definition doesn't give the term away. The flashcard itself

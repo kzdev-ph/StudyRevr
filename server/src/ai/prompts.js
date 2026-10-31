@@ -315,6 +315,38 @@ Reply with this JSON shape, one item per card, using the card's number as "n":
   return { system, user: `<cards>\n${list}\n</cards>` };
 }
 
+// True / False statements for the quiz (services/quiz-statements.js): for each concept card, one TRUE sentence that
+// states the card's answer and one FALSE twin that is the same sentence with only the answer's part swapped for another
+// idea from the lesson. `cards`: [{ n, question, answer, evidence, language? }] (`language` 'en' | 'fil'); `text`: the
+// lesson (or the blocks around the cards' quotes). The replies are checked in code (quiz/statements.js).
+export function statementsPrompt({ cards, text }) {
+  const system = `${LESSON_RULES}
+
+Task: the quiz asks some flashcards as True or False. The student sees ONE sentence alone and answers True or False. For each card, write one true sentence and one false sentence.
+- "true_statement": one plain sentence that states the card's answer as a fact, joining the question's topic and the answer ("What is the purpose of a self-introduction?" + "To share your background" -> "The purpose of a self-introduction is to share your background."). Use only words from the card's question, its answer and its quote, and keep every key word of the answer. Never add a fact, example, cause or describing word the card does not have. Never a question, never "Yes" or "No", never "The answer is ...".
+- "false_statement": the SAME sentence with only the answer's part changed so it is false according to the lesson: put in another idea, item or term FROM THE LESSON that does not answer this question. Every other word stays exactly as in the true sentence.
+- The false sentence must be clearly false to a student who studied the lesson and believable to one who did not. Never make it false by adding "not", "never", "no", "hindi", "wala" or "walang", or by turning the answer into its opposite ("builds confidence" -> "creates anxiety"). Never add "only", "always", "all", "every" or "lahat". Never use something the lesson says is also true here, not even partly, and never another item of the same list if the sentence would still be true with it.
+- Keep the changed part about as long as the part it replaces. Write both sentences in the language of the card's answer.
+- The true sentence must be a COMPLETE sentence of at least 5 words, with the question's subject and a verb. Never just the answer, a bare phrase or a formula alone, and never a line copied from the lesson.
+- The changed part of the false sentence must be the same KIND of thing as the answer (a number for a number, a direction for a direction, a term for a term, a step for a step) and a believable alternative on the SAME topic taken from the lesson, such as the other value in a pair or a neighbouring term. Never an unrelated term from another topic.
+- If a card cannot be written this way, return empty strings for both "true_statement" and "false_statement" instead of forcing it.
+${KEEP_MEANING}
+- ${NO_OBJECTIVES}
+- ${NO_POSITION} ${ASK_BY_MEANING}${mathRules(text, MATH_TEXT)}
+
+Reply with this JSON shape, one item per card, using the card's number as "n":
+{"items":[{"n":1,"true_statement":"...","false_statement":"..."}]}`;
+  const languageName = { en: 'English', fil: 'Filipino' };
+  const list = cards
+    .map((c) => {
+      const lines = [`[${c.n}] Question: ${c.question}`, `    Answer: ${c.answer}`, `    From the lesson: "${c.evidence ?? ''}"`];
+      if (languageName[c.language]) lines.push(`    Write in ${languageName[c.language]}`);
+      return lines.join('\n');
+    })
+    .join('\n');
+  return { system, user: `<cards>\n${list}\n</cards>\n\n${lessonText(text)}` };
+}
+
 // One flashcard written again because it gives its answer away (admin "Regenerate this card"). `card`: { kind, front,
 // back, evidence }; `problems`: why it was flagged (quiz/leaks.js details); `text`: the part of the lesson around its
 // evidence quote; `others`: the lesson's other cards' answers, which the new question must not contain. A concept card
@@ -356,7 +388,12 @@ Rules:
 2. A line "${NOTES_LABEL}" inside a slide block starts the teacher's spoken explanation of that slide: it is lesson content.
 3. Reply with ONE JSON object and nothing else: no markdown, no code fences, no commentary.
 
-Each item is one flashcard and the ways the quiz can ask it: a multiple-choice question (the right answer among wrong options marked "mc") and a Yes/No question ("Is this the answer?") that shows either the right answer (the true statement) or one false statement (marked "yes_no"). For a term card the question is a definition and the answer is the term it defines. Options marked "both" are used both ways.
+Each item is one flashcard and the ways the quiz can ask it: a multiple-choice question (the right answer among wrong options marked "mc") and a Yes/No question ("Is this the answer?") that shows either the right answer (the true statement) or one false statement (marked "yes_no"). For a term card the question is a definition and the answer is the term it defines. Options marked "both" are used both ways.${
+    items.some((it) => it.sentence)
+      ? `
+For some cards the Yes/No question shows one sentence alone (True or False): then the true statement is that sentence, and the "yes_no" option that is a whole sentence is its false version. Flag that false sentence "two_correct" if the lesson makes it true as well, "reversed" if it is the true sentence negated or turned into its opposite, "giveaway" if nobody would believe it; flag the true statement "not_in_lesson" if it says anything the card and the lesson do not.`
+      : ''
+  }
 
 Flag only real problems; an item with none gets empty lists. Flags:
 - "card" (the flashcard itself):

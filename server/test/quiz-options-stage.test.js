@@ -5,21 +5,31 @@ import { openDb, runMigrations } from '../src/db/index.js';
 import { getJobStatus, queueJob, STAGES } from '../src/pipeline/jobs.js';
 import { createPipelineRunner } from '../src/pipeline/runner.js';
 import { loadDistractors } from '../src/quiz/distractors.js';
-import { addCodes, cleanReview, seedLesson, startStudyApp, TEST_PIN } from './helpers.js';
+import { addCodes, blankStatements, cleanReview, seedLesson, startStudyApp, TEST_PIN } from './helpers.js';
 
 const quiet = { error() {}, warn() {}, log() {}, info() {} };
 
 // A fake AI for the wrong-answers call. Set `fail` to make every call throw; `calls` counts them. The quiz review that
-// follows the stage (services/quiz-review.js) flags nothing and is counted apart (`reviews`).
+// follows the stage (services/quiz-review.js) flags nothing and is counted apart (`reviews`). The True/False statements
+// call that follows the wrong answers is counted apart too (`statements`): by default it gives no usable pair
+// (blankStatements); set `statementsReply` for one that does, `failStatements` for one that throws.
 const fakeAi = () => {
   const ai = {
     fail: null,
+    failStatements: null,
+    statementsReply: null,
     calls: 0,
+    statements: 0,
     reviews: 0,
     async generateJSON({ user, schema, label }) {
       if (label?.startsWith('the quiz review')) {
         ai.reviews += 1;
         return schema.parse(cleanReview(user));
+      }
+      if (label?.startsWith('the quiz true/false statements')) {
+        ai.statements += 1;
+        if (ai.fail || ai.failStatements) throw ai.fail ?? ai.failStatements;
+        return schema.parse(ai.statementsReply ? ai.statementsReply(user) : blankStatements(user));
       }
       ai.calls += 1;
       if (ai.fail) throw ai.fail;
@@ -190,7 +200,7 @@ describe('quiz answer options as a processing step', () => {
     for (let i = 5; i <= 20; i++) insert.run(lessonId, `Extra Q${i}: what about the topic?`, `Topic answer ${i} about rivers and lakes.`, i); // 20 cards: batches of 15 and 5
     const original = ai.generateJSON;
     let n = 0;
-    ai.generateJSON = (args) => (args.label?.startsWith('the quiz review') ? original(args) : ++n === 2 ? Promise.reject(rateLimit()) : original(args));
+    ai.generateJSON = (args) => (!args.label?.startsWith('the quiz answer options') ? original(args) : ++n === 2 ? Promise.reject(rateLimit()) : original(args));
 
     await runStage();
     assert.equal(getJobStatus(t.db, lessonId).job.status, 'failed');
@@ -221,11 +231,76 @@ describe('quiz answer options as a processing step', () => {
     assert.equal(ai.calls, 1);
   });
 
+  describe('the True/False statements that follow the wrong answers', () => {
+    const statements = () => t.db.prepare('SELECT * FROM quiz_statements ORDER BY flashcard_id').all();
+
+    it('makes a pair for a card the quiz can ask, saved pending and set ok by the review that follows', async () => {
+      const text = 'A survey is used to collect data from many people. An interview asks one person questions in depth.';
+      const survey = Number(t.db.prepare("INSERT INTO lessons (title, filename, raw_text, word_count, status) VALUES ('Survey', 's.pptx', ?, 20, 'ready')").run(text).lastInsertRowid);
+      const card = Number(
+        t.db
+          .prepare("INSERT INTO flashcards (lesson_id, kind, front, back, evidence, position) VALUES (?, 'concept', 'What is a survey used for?', 'To collect data from many people.', 'A survey is used to collect data from many people.', 1)")
+          .run(survey).lastInsertRowid,
+      );
+      // wrong answers already saved (and settled), so only the statements are made
+      t.db.prepare('INSERT INTO quiz_distractors (flashcard_id, choices, made_at, settled) VALUES (?, ?, ?, 1)').run(card, JSON.stringify(['To ask one person questions.', 'To measure the weather.', 'To sort numbers.']), '2026-10-01T00:00:00.000Z');
+      ai.statementsReply = (user) => ({
+        items: [...user.matchAll(/^\[(\d+)\] Question:/gm)].map((m) => ({
+          n: Number(m[1]),
+          true_statement: 'A survey is used to collect data from many people.',
+          false_statement: 'A survey is used to ask one person questions in depth.',
+        })),
+      });
+      queueJob(t.db, survey, { stage: 'quiz_options', keepLesson: true });
+      runner.enqueue(survey);
+      await runner.idle();
+
+      assert.equal(ai.statements, 1);
+      assert.equal(ai.calls, 0, 'the wrong answers were already there');
+      const [row] = statements();
+      assert.deepEqual([row.flashcard_id, row.true_text, row.false_text], [card, 'A survey is used to collect data from many people.', 'A survey is used to ask one person questions in depth.']);
+      assert.equal(row.status, 'ok', 'it passed the code checks (pending), then the quiz review that follows the stage found nothing');
+      assert.ok(ai.reviews >= 1, 'the quiz review ran after the stage');
+      assert.deepEqual([getJobStatus(t.db, survey).job.stage, getJobStatus(t.db, survey).job.status], ['done', 'done']);
+    });
+
+    it('a statements error leaves the job done, the lesson ready and the review still running', async () => {
+      ai.failStatements = rateLimit();
+      await runStage();
+
+      const { lesson, job } = getJobStatus(t.db, lessonId);
+      assert.deepEqual([lesson.status, lesson.error], ['ready', null]);
+      assert.deepEqual([job.stage, job.status, job.error], ['done', 'done', null]);
+      assert.equal(saved(), 4, 'the wrong answers are saved');
+      assert.equal(ai.statements, 1);
+      assert.ok(ai.reviews >= 1, 'the quiz review still ran');
+      assert.equal(statements().length, 0);
+      const row = (await call('GET', '/api/lessons?counts=1')).body.lessons.find((l) => l.id === lessonId);
+      assert.equal(row.quiz_options.statements, 4, 'admin sees the cards still without a pair');
+    });
+
+    it('POST quiz-options is accepted when only statements are missing, and refused when nothing is', async () => {
+      await runStage(); // blank pairs are rejected rows: every card has an answer
+      assert.equal(ai.statements, 1);
+      assert.equal(ai.calls, 1);
+      assert.equal((await call('POST', `/api/lessons/${lessonId}/quiz-options`)).status, 409, 'nothing missing');
+
+      t.db.prepare('DELETE FROM quiz_statements WHERE flashcard_id = (SELECT MIN(id) FROM flashcards WHERE lesson_id = ?)').run(lessonId);
+      const row = (await call('GET', '/api/lessons?counts=1')).body.lessons.find((l) => l.id === lessonId);
+      assert.deepEqual([row.quiz_options.missing, row.quiz_options.statements], [0, 1]);
+      assert.equal((await call('POST', `/api/lessons/${lessonId}/quiz-options`)).status, 202);
+      await runner.idle();
+      assert.equal(ai.calls, 1, 'the wrong answers were not asked for again');
+      assert.equal(ai.statements, 2);
+      assert.equal((await call('POST', `/api/lessons/${lessonId}/quiz-options`)).status, 409);
+    });
+  });
+
   it('a quiz started while the stage is running shares its AI call', async () => {
     let release;
     const original = ai.generateJSON;
     ai.generateJSON = async (args) => {
-      if (args.label?.startsWith('the quiz review')) return original(args);
+      if (!args.label?.startsWith('the quiz answer options')) return original(args);
       await new Promise((resolve) => { release = resolve; });
       return original(args);
     };

@@ -3,6 +3,8 @@ import { AiError } from '../ai/client.js';
 import { HttpError } from '../middleware/errors.js';
 import { flashcardsMax } from '../flashcards/config.js';
 import { cardsNeedingDistractors, ensureDistractors } from '../quiz/distractors.js';
+import { cardsNeedingStatements } from '../quiz/statement-store.js';
+import { ensureStatements } from '../services/quiz-statements.js';
 import { prepareVersions, missingVersions } from '../services/prepare-versions.js';
 import { checksToReview, reviewChecks } from '../services/check-review.js';
 import { itemsToReview, reviewQuiz } from '../services/quiz-review.js';
@@ -148,6 +150,10 @@ export async function runPipeline({ db, ai: plainAi, lessonId, chunkTokens = DEF
           .all(lessonId)
           .map((s) => ({ ...s, sources: s.sources ? JSON.parse(s.sources) : null }));
         const onDrop = ({ front, reason }) => log.info?.(`[pipeline] lesson ${lessonId}: dropped flashcard "${front}" (${reason})`);
+        const onReply = ({ label, asked, returned, kept, askingAgain, error }) => {
+          const after = error ? `; second try failed: ${error}` : askingAgain ? '; asking once more' : '';
+          log.info?.(`[pipeline] lesson ${lessonId}: ${label}: reply had ${returned} card(s) for about ${asked} asked, ${kept} kept${after}`);
+        };
         // Where the stage's time goes: the AI calls, the checks and de-duplication after them, and saving.
         const started = Date.now();
         let aiDone = started;
@@ -166,6 +172,7 @@ export async function runPipeline({ db, ai: plainAi, lessonId, chunkTokens = DEF
           concurrency,
           onProgress,
           onDrop,
+          onReply,
         });
         const checked = Date.now();
         const insert = db.prepare('INSERT INTO flashcards (lesson_id, kind, front, back, evidence, position) VALUES (?, ?, ?, ?, ?, ?)');
@@ -177,11 +184,14 @@ export async function runPipeline({ db, ai: plainAi, lessonId, chunkTokens = DEF
       },
     },
     quiz_options: {
-      // Concept cards still without wrong answers, or whose saved ones give the answer away (quiz/leaks.js); none (or
-      // no concept cards) means nothing to do.
-      saved: () => cardsNeedingDistractors(db, lessonId, { includeFailing: true }).length === 0,
+      // Concept cards still without wrong answers, or whose saved ones give the answer away (quiz/leaks.js), or still
+      // without a True/False statement pair; none (or no concept cards) means nothing to do.
+      saved: () => cardsNeedingDistractors(db, lessonId, { includeFailing: true }).length === 0 && cardsNeedingStatements(db, lessonId).length === 0,
       async run() {
         const { error } = await ensureDistractors({ db, ai: thinkingAi, lessonId, includeFailing: true, concurrency, log, onProgress: progress });
+        // The True/False statements follow the wrong answers. A failure here is only logged (ensureStatements does that):
+        // the review still runs, those cards have no pair, and admin can ask again.
+        await ensureStatements({ db, ai: thinkingAi, lessonId, concurrency, log, now: clock });
         // batches that worked are saved, so a retry only asks for the rest
         if (error) throw new HttpError(502, `The quiz answer options couldn’t be made: ${error}`);
       },

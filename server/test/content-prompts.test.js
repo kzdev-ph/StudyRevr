@@ -23,8 +23,11 @@ import {
   regenerateCardsPrompt,
   sectionsPrompt,
   simplifyPrompt,
+  statementsPrompt,
   translatePrompt,
 } from '../src/ai/prompts.js';
+import { NOTES_LABEL } from '../src/ai/chunk.js';
+import { promptKind } from '../src/ai/prompts-haiku.js';
 import { CHECK_FLAGS } from '../src/services/check-review.js';
 import { CARD_FLAGS, OPTION_FLAGS } from '../src/quiz/review-flags.js';
 
@@ -247,5 +250,23 @@ describe('math rules', () => {
     const math = ask('10 N');
     assert.ok(math.includes(MATH_OPTIONS) && math.includes(MATH_TEXT));
     assert.ok(!ask('Builds confidence').includes(MATH_OPTIONS));
+  });
+});
+
+describe('the True/False statements prompt', () => {
+  it('carries the shared rules, forbids "not", gives the JSON shape and is left unchanged for Haiku', () => {
+    const { system, user } = statementsPrompt({ cards: [{ n: 1, question: 'Q?', answer: 'A.', evidence: 'e', language: 'fil' }], text: 'Lesson text.' });
+    assert.ok(system.includes(`A line that says exactly "${NOTES_LABEL}"`));
+    for (const rule of [KEEP_MEANING, `- ${NO_OBJECTIVES}`, `- ${NO_POSITION} ${ASK_BY_MEANING}`]) assert.ok(system.includes(rule));
+    assert.match(system, /Never make it false by adding "not", "never", "no", "hindi", "wala" or "walang"/);
+    assert.match(system, /COMPLETE sentence of at least 5 words, with the question's subject and a verb\. Never just the answer, a bare phrase or a formula alone/);
+    assert.match(system, /the same KIND of thing as the answer \(a number for a number, a direction for a direction, a term for a term, a step for a step\)/);
+    assert.match(system, /SAME topic taken from the lesson.*Never an unrelated term from another topic/);
+    assert.match(system, /return empty strings for both "true_statement" and "false_statement" instead of forcing it/);
+    assert.match(system, /\{"items":\[\{"n":1,"true_statement":"\.\.\.","false_statement":"\.\.\."\}\]\}/);
+    assert.equal(promptKind(system), 'other');
+    assert.ok(user.startsWith('<cards>\n[1] Question: Q?\n    Answer: A.\n    From the lesson: "e"\n    Write in Filipino\n</cards>'));
+    assert.ok(user.endsWith('<lesson_text>\nLesson text.\n</lesson_text>'));
+    assert.ok(!system.includes(MATH_TEXT), 'plain text gets no math rules');
   });
 });

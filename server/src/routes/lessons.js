@@ -7,6 +7,7 @@ import { extractText } from '../services/extract.js';
 import { getJobStatus, queueJob } from '../pipeline/jobs.js';
 import { QUIZ_LENGTH } from '../quiz/build.js';
 import { cardsNeedingDistractors } from '../quiz/distractors.js';
+import { cardsNeedingStatements } from '../quiz/statement-store.js';
 import { CARD_LEAK_RULES, cardLeaks } from '../quiz/leaks.js';
 import { PREPARE_FAILED_MESSAGE, TEXT_WARNINGS, ownerRecords, safeError, textWarning } from '../services/lesson-access.js';
 import { hasRecords, participantRecords } from '../services/lesson-records.js';
@@ -221,7 +222,12 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin, { ac
   // reviewer's cards `reviewed`, `flagged` (left out in part or whole) and `pending`, and its job's `status` and `error`.
   const quizOptionCounts = (lessonId) => {
     const missing = cardsNeedingDistractors(db, lessonId).length;
-    return { missing, weak: cardsNeedingDistractors(db, lessonId, { includeFailing: true }).length - missing };
+    return {
+      missing,
+      weak: cardsNeedingDistractors(db, lessonId, { includeFailing: true }).length - missing,
+      // concept cards still without a True/False statement pair
+      statements: cardsNeedingStatements(db, lessonId).length,
+    };
   };
   const leakyCards = (lessonId) => {
     const cards = db.prepare('SELECT id, kind, front, back FROM flashcards WHERE lesson_id = ?').all(lessonId);
@@ -369,7 +375,7 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin, { ac
     if (lesson.status === 'failed') throw new HttpError(409, 'Retry this lesson first; its quiz answer options are made when it finishes.');
     const { job } = getJobStatus(db, id);
     if (job && ['queued', 'running'].includes(job.status)) throw new HttpError(409, 'This lesson is already being worked on.');
-    if (!cardsNeedingDistractors(db, id, { includeFailing: true }).length) throw new HttpError(409, 'This lesson has no flashcards that still need quiz answer options.');
+    if (!cardsNeedingDistractors(db, id, { includeFailing: true }).length && !cardsNeedingStatements(db, id).length) throw new HttpError(409, 'This lesson has no flashcards that still need quiz answer options.');
     db.transaction(() => queueJob(db, id, { stage: 'quiz_options', keepLesson: true }))();
     runner.enqueue(id);
     res.status(202).json(getJobStatus(db, id));

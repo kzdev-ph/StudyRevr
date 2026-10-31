@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openDb, runMigrations } from '../src/db/index.js';
+import { cardHash } from '../src/quiz/review-flags.js';
 import { quizCheck } from '../scripts/quiz-check.js';
 import { EN_LESSON, FIL_LESSON } from './fixtures/leak-lessons.js';
 
@@ -77,6 +78,33 @@ describe('npm run quiz:check', () => {
     const { code, out } = quizCheck(['--db', dbPath]);
     assert.equal(code, 0);
     assert.equal(out.match(/Clean questions available: 5 of 10/g).length, 2);
+  });
+
+  it('reports the True/False statement pairs, and prints no statements line on a database from before migration 021', () => {
+    const db = openDb(dbPath);
+    const cards = db.prepare('SELECT id, front, back FROM flashcards WHERE lesson_id = ? AND kind != ? ORDER BY position, id').all(ids['Photosynthesis basics'], 'term');
+    const save = db.prepare("INSERT INTO quiz_statements (flashcard_id, card_hash, true_text, false_text, status, why, made_at) VALUES (?, ?, ?, ?, ?, ?, 'x')");
+    save.run(cards[0].id, cardHash(cards[0]), 'A true sentence.', 'A false sentence.', 'ok', null);
+    save.run(cards[1].id, cardHash(cards[1]), 'Another true one.', 'Another false one.', 'pending', null);
+    save.run(cards[2].id, cardHash(cards[2]), 'Flagged true.', 'Flagged false.', 'flagged', 'the twin is true as well');
+    save.run(cards[3].id, cardHash(cards[3]), null, null, 'rejected', 'no statement in the reply');
+    save.run(cards[4].id, 'stale', 'Old true.', 'Old false.', 'ok', null);
+    db.close();
+    const { code, out } = quizCheck(['--db', dbPath, '--lesson', String(ids['Photosynthesis basics'])]);
+    assert.equal(code, 0);
+    assert.match(out, /True\/False statements: 4 cards, 1 ready, 1 waiting for the review, 1 flagged, 1 rejected/, 'the stale pair is not counted');
+    assert.match(out, /the twin is true as well/);
+    assert.match(out, /no statement in the reply/);
+    assert.match(out, /multiple choice only/);
+    assert.match(out, /Clean questions available: \d+ of 10/);
+
+    const old = openDb(dbPath);
+    old.exec("DROP TABLE quiz_statements; DELETE FROM schema_migrations WHERE version LIKE '021%'");
+    old.close();
+    const older = quizCheck(['--db', dbPath]);
+    assert.equal(older.code, 0);
+    assert.doesNotMatch(older.out, /True\/False statements/);
+    assert.equal(older.out.match(/Clean questions available: 5 of 10/g).length, 2);
   });
 
   it('explains bad arguments, a missing file and an unknown lesson', () => {

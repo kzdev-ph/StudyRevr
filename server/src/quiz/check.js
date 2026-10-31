@@ -1,7 +1,8 @@
 import { quizBuildOptions } from './options.js';
 import { checkSummary } from '../services/check-review.js';
 import { reviewItems } from '../services/quiz-review.js';
-import { describe } from './review-flags.js';
+import { cardHash, describe } from './review-flags.js';
+import { loadStatements } from './statement-store.js';
 import { QUIZ_LENGTH, quizCandidates, usableCount } from './build.js';
 import { CARD_LEAK_RULES, cardLeaks, falseStatementProblems, lessonWords as lessonWordsOf, sharesWord, termInText, wrongOptionProblems } from './leaks.js';
 
@@ -66,7 +67,7 @@ export function lessonLeakReport(db, lessonId) {
       falses.skipped.push({ card_id: card.id, question: card.front, statement, reasons });
     }
 
-    if (p.mcClean.length < 3 && !p.falseClean.length) {
+    if (p.mcClean.length < 3 && !p.yesNo.length) {
       const left = p.excluded.length ? p.excluded.map(excludedReason) : [{ rule: '-', detail: card.kind === 'term' ? 'no clean other definition or 3 other terms' : 'no clean wrong answers saved' }];
       const reasons = p.problems.length ? p.problems : left;
       never.push({ card_id: card.id, kind: card.kind, front: card.front, reasons });
@@ -117,13 +118,25 @@ export function lessonLeakReport(db, lessonId) {
     checks = null;
   }
 
+  // the AI's True/False statement pairs (statement-store.js), only those made for the cards' current text; null on a
+  // database from before migration 021
+  const saved = loadStatements(db, lessonId);
+  let statements = null;
+  if (saved) {
+    const rows = cards.filter((c) => saved.get(c.id)?.card_hash === cardHash(c)).map((c) => ({ card: c, ...saved.get(c.id) }));
+    const withStatus = (status) => rows.filter((r) => r.status === status);
+    const listed = (status) => withStatus(status).map((r) => ({ card_id: r.card.id, question: r.card.front, true_text: r.true_text, false_text: r.false_text, why: r.why }));
+    const flaggedCards = listed('flagged');
+    statements = { cards: rows.length, ok: withStatus('ok').length, pending: withStatus('pending').length, flagged: flaggedCards.length, flagged_cards: flaggedCards, rejected: listed('rejected') };
+  }
+
   const usable = usableCount(cards, opts);
   return {
     review,
     checks,
     lesson: { id: lesson.id, title: lesson.title, status: lesson.status },
     cards: { total: cards.length, term: cards.filter((c) => c.kind === 'term').length, concept: cards.filter((c) => c.kind !== 'term').length, flagged, names_term: namesTerm },
-    quiz: { multiple_choice: mc, yes_no_false: falses, masked, never, usable_cards: usable, clean_questions: Math.min(QUIZ_LENGTH, usable) },
+    quiz: { multiple_choice: mc, yes_no_false: falses, masked, never, statements, usable_cards: usable, clean_questions: Math.min(QUIZ_LENGTH, usable) },
   };
 }
 
@@ -156,6 +169,13 @@ export function formatReport(report, { examples = 5 } = {}) {
   for (const q of tf.skipped.slice(0, examples)) lines.push(`    #${q.card_id} "${cut(q.question, 60)}" / "${cut(q.statement, 70)}"  (${why(q.reasons)})`);
   if (quiz.masked.length) lines.push(`  Term definitions shown with the term blanked (d): ${quiz.masked.map((m) => `#${m.card_id}`).join(' ')}`);
   lines.push(`  Cards the quiz never asks: ${quiz.never.length}${quiz.never.length ? `  (${quiz.never.slice(0, examples).map((c) => `#${c.card_id} ${why(c.reasons)}`).join(' | ')})` : ''}`);
+  const { statements } = quiz;
+  if (statements) {
+    lines.push(`  True/False statements: ${statements.cards} cards, ${statements.ok} ready, ${statements.pending} waiting for the review, ${statements.flagged} flagged, ${statements.rejected.length} rejected`);
+    for (const s of [...statements.rejected, ...statements.flagged_cards].slice(0, examples))
+      lines.push(`    #${s.card_id} "${cut(s.question, 60)}"${s.true_text ? ` / "${cut(s.true_text, 70)}" / "${cut(s.false_text, 70)}"` : ''}  (${cut(s.why ?? 'no reason saved', 200)})`);
+    lines.push('    Concept cards with 3 clean wrong answers and no ready statement are multiple choice only.');
+  }
   const { review } = report;
   if (review) {
     lines.push(`  AI review: ${review.reviewed} of ${cards.total} cards reviewed${review.pending ? ` (${review.pending} not reviewed yet or changed since)` : ''}, ${review.flagged.length} with flags${review.families.length ? `; term families: ${review.families.map((f) => f.join(' / ')).join('; ')}` : ''}`);

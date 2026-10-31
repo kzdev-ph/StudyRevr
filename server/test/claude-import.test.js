@@ -10,7 +10,7 @@ import { exportRound, ExchangeRefused, importExchange, lessonMeta, loadExchange 
 import { resetLesson } from '../src/services/rebuild-lesson.js';
 import { serverBlock } from '../src/services/server-check.js';
 import { writePidFile } from '../src/server-pid.js';
-import { addCodes, cleanCheckReview, cleanReview, groundedChecks, keepAllCandidates, quoteFromPrompt, startStudyApp, TEST_PIN } from './helpers.js';
+import { addCodes, blankStatements, cleanCheckReview, cleanReview, groundedChecks, keepAllCandidates, quoteFromPrompt, startStudyApp, TEST_PIN } from './helpers.js';
 
 // `npm run lesson:export` / `lesson:import`: a lesson written outside the app goes through the real pipeline with a
 // file-backed AI, so the schemas and the code checks apply as they do to the Default AI's output.
@@ -41,6 +41,7 @@ function writer(overrides = {}) {
       const numbers = [...user.matchAll(/^\[(\d+)\] Question:/gm)].map((m) => Number(m[1]));
       return { items: numbers.map((x) => ({ n: x, wrong: ['Plants make more starch.', 'Cells store some water.', 'Light warms the leaves.'] })) };
     }
+    if (label.startsWith('the quiz true/false statements')) return blankStatements(user);
     if (label.startsWith('the quick checks')) return { checks: [] };
     if (label.startsWith('the quiz review')) return cleanReview(user);
     if (label.startsWith('the quick check review')) return cleanCheckReview(user);

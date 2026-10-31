@@ -106,6 +106,7 @@ export async function regenerateCard({ db, ai, cardId, log = console }) {
     if (current?.front !== card.front || current.back !== card.back) throw new HttpError(409, 'This card changed while it was being written. Look at it again before regenerating.', { code: 'card_changed' });
     db.prepare('UPDATE flashcards SET front = ?, back = ?, evidence = ? WHERE id = ?').run(next.front, next.back, next.evidence, card.id);
     db.prepare('DELETE FROM quiz_distractors WHERE flashcard_id = ?').run(card.id);
+    db.prepare('DELETE FROM quiz_statements WHERE flashcard_id = ?').run(card.id);
     markMixedIfClaude(db, lesson.id);
   })();
   log.info?.(`[admin] lesson ${lesson.id}: card ${card.id} regenerated ("${card.front}" -> "${next.front}")`);

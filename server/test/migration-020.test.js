@@ -24,7 +24,7 @@ describe('migration 020: text_warning', () => {
     const id = Number(db.prepare("INSERT INTO lessons (title, filename, raw_text, word_count, status) VALUES ('L', 'l.pdf', 't', 1, 'ready')").run().lastInsertRowid);
     assert.equal(db.prepare("SELECT COUNT(*) AS n FROM pragma_table_info('lessons') WHERE name = 'text_warning'").get().n, 0);
 
-    assert.deepEqual(runMigrations(db), ['020_text_warning.sql']);
+    assert.equal(runMigrations(db)[0], '020_text_warning.sql');
 
     assert.equal(db.prepare("SELECT COUNT(*) AS n FROM pragma_table_info('lessons') WHERE name = 'text_warning'").get().n, 1);
     assert.equal(db.prepare('SELECT text_warning FROM lessons WHERE id = ?').get(id).text_warning, null);

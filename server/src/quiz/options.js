@@ -1,6 +1,7 @@
 import { loadDistractors } from './distractors.js';
 import { usableFamilies } from './related.js';
 import { readReview } from './review-flags.js';
+import { loadStatements } from './statement-store.js';
 
 // Everything the quiz builder reads for one lesson besides its cards (see quizCandidates in build.js). Used by the quiz
 // routes, the admin leak report and `npm run quiz:check`, so all three build the same questions. Works on a database
@@ -35,5 +36,6 @@ export function quizBuildOptions(db, lessonId) {
     lessonText: db.prepare('SELECT raw_text FROM lessons WHERE id = ?').get(lessonId)?.raw_text ?? '',
     termFamilies: loadTermFamilies(db, lessonId),
     reviews: loadReviews(db, lessonId),
+    statements: loadStatements(db, lessonId),
   };
 }

@@ -11,7 +11,7 @@ const MAX_TIME_MS = 60 * 60 * 1000; // one question left open for hours counts a
 const MAX_DURATION_MS = 6 * MAX_TIME_MS;
 const clampMs = (ms, max) => Math.round(Math.min(Math.max(Number(ms) || 0, 0), max));
 
-const ANSWER_COLUMNS = `position, flashcard_id, type, kind, question, statement, choices, answer_index, answer_text, evidence,
+const ANSWER_COLUMNS = `position, flashcard_id, type, kind, question, statement, choices, answer_index, answer_text, evidence, form,
   chosen_index, correct, time_ms, answered_at`;
 
 const parseRow = (row) => ({ ...row, choices: JSON.parse(row.choices), correct: row.correct === null ? null : Boolean(row.correct) });
@@ -32,7 +32,16 @@ export const attemptQuestions = (db, attemptId) =>
   db.prepare(`SELECT ${ANSWER_COLUMNS} FROM quiz_answers WHERE attempt_id = ? ORDER BY position`).all(attemptId).map(parseRow);
 
 // A question as the quiz screen gets it before it is answered: no right answer, no evidence.
-export const publicQuestion = (q) => ({ position: q.position, type: q.type, kind: q.kind, question: q.question, statement: q.statement, choices: q.choices });
+// `form` is there only for a True/False question made from an AI sentence pair, so every other question keeps its old shape.
+export const publicQuestion = (q) => ({
+  position: q.position,
+  type: q.type,
+  kind: q.kind,
+  question: q.question,
+  statement: q.statement,
+  choices: q.choices,
+  ...(q.form ? { form: q.form } : {}),
+});
 
 // Saves a new attempt and its questions (from buildQuiz / reshuffle) in one transaction. -> attempt id
 export function startAttempt(db, { participantId, lessonId, questions: all, now, retakeOf = null }) {
@@ -45,10 +54,10 @@ export function startAttempt(db, { participantId, lessonId, questions: all, now,
         .run(participantId, lessonId, questions.length, '[]', now.toISOString(), now.toISOString(), retakeOf).lastInsertRowid,
     );
     const insert = db.prepare(
-      `INSERT INTO quiz_answers (attempt_id, position, flashcard_id, type, kind, question, statement, choices, answer_index, answer_text, evidence)
-       VALUES (@attemptId, @position, @flashcard_id, @type, @kind, @question, @statement, @choices, @answer_index, @answer_text, @evidence)`,
+      `INSERT INTO quiz_answers (attempt_id, position, flashcard_id, type, kind, question, statement, choices, answer_index, answer_text, evidence, form)
+       VALUES (@attemptId, @position, @flashcard_id, @type, @kind, @question, @statement, @choices, @answer_index, @answer_text, @evidence, @form)`,
     );
-    questions.forEach((q, position) => insert.run({ ...q, attemptId, position, statement: q.statement ?? null, evidence: q.evidence ?? null, choices: JSON.stringify(q.choices) }));
+    questions.forEach((q, position) => insert.run({ ...q, attemptId, position, statement: q.statement ?? null, evidence: q.evidence ?? null, form: q.form ?? null, choices: JSON.stringify(q.choices) }));
     return attemptId;
   })();
 }
@@ -74,7 +83,7 @@ export function findOpenAttempt(db, lessonId, now, participantId) {
 
 // The questions of an earlier attempt, as buildQuiz returns them (for a retake).
 export function questionsOf(db, attemptId) {
-  return attemptQuestions(db, attemptId).map(({ flashcard_id, type, kind, question, statement, choices, answer_index, answer_text, evidence }) => ({
+  return attemptQuestions(db, attemptId).map(({ flashcard_id, type, kind, question, statement, choices, answer_index, answer_text, evidence, form }) => ({
     flashcard_id,
     type,
     kind,
@@ -84,6 +93,7 @@ export function questionsOf(db, attemptId) {
     answer_index,
     answer_text,
     evidence,
+    ...(form ? { form } : {}),
   }));
 }
 
@@ -128,6 +138,7 @@ export function attemptResults(db, attemptId, participantId = null) {
       right_answer: q.choices[q.answer_index],
       answer_text: q.answer_text,
       evidence: q.evidence,
+      ...(q.form ? { form: q.form } : {}),
     }));
   // the participant's best finished score on this lesson before this attempt, so the results can say "New best"
   const best = db

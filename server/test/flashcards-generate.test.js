@@ -6,6 +6,7 @@ import { comparable } from '../src/pipeline/evidence.js';
 import {
   dedupeCards, generateConceptCards, generateFlashcards, interleave, isDuplicate, listItems, shortDefinition, targetCardCount, termCards, uncoveredItems,
 } from '../src/pipeline/flashcards.js';
+import { needsSecondTry } from '../src/pipeline/flashcards.js';
 import { SELF_INTRO_TERMS, SELF_INTRO_TEXT } from './fixtures/self-intro.js';
 
 const LESSON = [
@@ -387,5 +388,114 @@ describe('flashcards prompt', () => {
     // generateConceptCards' schema is internal; exercise it through a call that returns a bare array.
     const ai = fakeAi(() => [concept('Why sample at random?', 'It reduces bias.', 'It reduces bias in the results of the study.')]);
     return generateConceptCards({ ai, chunks: chunkLesson(LESSON), target: 3 }).then((cards) => assert.equal(cards.length, 1));
+  });
+});
+
+// ---- the second try ---------------------------------------------------------------------------------------------
+
+describe('the second try for a near-empty flashcards reply', () => {
+  const NOUNS = 'granite harbor lantern meadow orchard quarry ribbon saddle thistle velvet walnut yarrow zephyr anchor bramble cobalt'.split(' ');
+  const H1 = 'A hypothesis is a testable prediction about the relationship between two or more variables.';
+  const H2 = 'The independent variable is the factor the researcher changes on purpose.';
+  const H3 = 'Random sampling gives every member of the population an equal chance to be chosen.';
+  // 20 distinct sentences, 400+ words: three real ideas among filler lines
+  const filler = (n) => `Filler sentence number ${n} talks about ${NOUNS[n % NOUNS.length]} and keeps adding words so that this chunk is long enough to need a second try when its first reply is empty.`;
+  const sentences = [H1, ...Array.from({ length: 8 }, (_, n) => filler(n)), H2, ...Array.from({ length: 8 }, (_, n) => filler(n + 8)), H3, filler(3)];
+  const LONG = sentences.join('\n\n');
+  const cardOf = (sentence, question, answer) => concept(question, answer, sentence);
+  const C1 = cardOf(H1, 'What does a hypothesis predict?', 'The relationship between variables.');
+  const C2 = cardOf(H2, 'Which variable does the researcher change on purpose?', 'The independent variable.');
+  const C3 = cardOf(H3, 'What does random sampling give every member of the population?', 'An equal chance to be chosen.');
+  const TARGET = 8; // asks for 10, so a reply keeping fewer than 3 gets a second try
+  const run = (ai, extra = {}) => generateConceptCards({ ai, chunks: chunkLesson(LONG), target: TARGET, ...extra });
+
+  it('needsSecondTry: only a long chunk whose reply kept under a quarter of the cards asked', () => {
+    assert.equal(needsSecondTry({ kept: 0, asked: 23, words: 980 }), true);
+    assert.equal(needsSecondTry({ kept: 6, asked: 23, words: 980 }), false);
+    assert.equal(needsSecondTry({ kept: 0, asked: 23, words: 399 }), false);
+  });
+
+  it('asks once more after an empty reply: same system prompt, the note ends the user message, cards in lesson order', async () => {
+    assert.equal(chunkLesson(LONG).length, 1);
+    assert.ok(LONG.match(/\S+/g).length >= 400);
+    const ai = fakeAi((label) => ({ cards: label.endsWith('(second try)') ? [C3, C1, C2] : [] }));
+    const replies = [];
+    const cards = await run(ai, { onReply: (r) => replies.push(r) });
+    assert.deepEqual(ai.calls.map((c) => c.label), ['the flashcards', 'the flashcards (second try)']);
+    assert.equal(ai.calls[1].system, ai.calls[0].system);
+    assert.match(ai.calls[1].user, /\n\nYour previous reply gave only 0 usable cards, but this lesson text explains more ideas than that\. Write about 10 cards, following every rule above\./);
+    assert.ok(ai.calls[1].user.endsWith('never repair them.'));
+    assert.ok(ai.calls[1].user.startsWith(ai.calls[0].user), 'the same text and prompt, plus the note');
+    assert.equal(ai.calls[1].maxTokens, ai.calls[0].maxTokens);
+    assert.deepEqual(cards.map((c) => c.front), [C1.question, C2.question, C3.question]);
+    assert.ok(cards.every((c) => c.kind === 'concept'));
+    assert.deepEqual(replies.map((r) => [r.label, r.asked, r.returned, r.kept, r.secondTry, r.askingAgain, r.error]), [
+      ['the flashcards', 10, 0, 0, false, true, null],
+      ['the flashcards (second try)', 10, 3, 3, true, false, null],
+    ]);
+  });
+
+  it('a healthy first reply makes exactly one call', async () => {
+    const ai = fakeAi(() => ({ cards: [C1, C2, C3] }));
+    const cards = await run(ai);
+    assert.equal(ai.calls.length, 1);
+    assert.equal(cards.length, 3);
+  });
+
+  it('drops an ungrounded second-try card like any other', async () => {
+    const ungrounded = concept('What does a catalyst do?', 'It speeds up a reaction.', 'A catalyst speeds up a reaction without being used up.');
+    const ai = fakeAi((label) => ({ cards: label.endsWith('(second try)') ? [C1, ungrounded] : [] }));
+    const drops = [];
+    const cards = await run(ai, { onDrop: (d) => drops.push(d) });
+    assert.deepEqual(cards.map((c) => c.front), [C1.question]);
+    assert.deepEqual(drops, [{ front: ungrounded.question, reason: 'evidence not found in the lesson text' }]);
+  });
+
+  it('keeps the first cards and does not throw when the second try fails, and reports the error', async () => {
+    const ai = fakeAi((label) => {
+      if (label.endsWith('(second try)')) throw new Error('the model is down');
+      return { cards: [C1] };
+    });
+    const replies = [];
+    const cards = await run(ai, { onReply: (r) => replies.push(r) });
+    assert.deepEqual(cards.map((c) => c.front), [C1.question]);
+    assert.equal(ai.calls.length, 2);
+    assert.equal(replies.length, 2);
+    assert.equal(replies[1].secondTry, true);
+    assert.equal(replies[1].error, 'the model is down');
+  });
+
+  it('two empty replies make exactly two calls', async () => {
+    const ai = fakeAi(() => ({ cards: [] }));
+    assert.deepEqual(await run(ai), []);
+    assert.equal(ai.calls.length, 2);
+  });
+
+  it('a card repeated across the two replies is dropped as a duplicate and logged by generateFlashcards', async () => {
+    const repeat = cardOf(H1, 'Which prediction can be tested about two or more variables?', 'A hypothesis.');
+    const ai = fakeAi((label) => ({ cards: label.endsWith('(second try)') ? [repeat, C2, C3] : [C1] }));
+    const drops = [];
+    const cards = await generateFlashcards({ ai, chunks: chunkLesson(LONG), lessonText: LONG, wordCount: 400, maxCards: 30, onDrop: (d) => drops.push(d) });
+    assert.equal(ai.calls.length, 2);
+    assert.deepEqual(cards.map((c) => c.front), [C1.question, C2.question, C3.question]);
+    assert.deepEqual(drops.map((d) => [d.front, d.reason]), [[repeat.question, `duplicate of "${C1.question}"`]]);
+  });
+
+  it('a review bigger than half the chunk goes as titles only the first time and in full the second time', async () => {
+    const review = Array.from({ length: 40 }, (_, n) => `Review sentence ${n} about ${NOUNS[n % NOUNS.length]} says something short.`).join(' ');
+    const sections = [{ title: 'Big review', content: review, sources: null }];
+    const ai = fakeAi(() => ({ cards: [] }));
+    await run(ai, { sections });
+    assert.equal(ai.calls.length, 2);
+    assert.match(ai.calls[0].user, /<review>\n- Big review\n<\/review>/);
+    assert.doesNotMatch(ai.calls[0].user, /Review sentence 0/);
+    assert.match(ai.calls[1].user, /<review>\nBig review\nReview sentence 0 about granite/);
+    assert.equal(ai.calls[1].system, ai.calls[0].system);
+  });
+
+  it('a lesson under 400 words never gets a second try', async () => {
+    const ai = fakeAi(() => ({ cards: [] }));
+    await generateConceptCards({ ai, chunks: chunkLesson(LESSON), target: 5 });
+    assert.equal(ai.calls.length, 1);
   });
 });
