@@ -508,6 +508,8 @@ describe('pdf: superscripts and subscripts', () => {
     const { text } = await extractText(await scriptPdf([["Avogadro's number is 6.022 × 10"], ['23', small], [' particles per mole.']]), '.pdf');
     assert.match(text, /6\.022 × 10²³ particles per mole\./);
     assert.doesNotMatch(text, /1023/);
+    const read = await extractPdf(await scriptPdf([["Avogadro's number is 6.022 × 10"], ['23', small], [' particles per mole.']]));
+    assert.equal(read.strays, 0, 'a script is not a stray letter');
   });
 
   it('writes x², a negative exponent and a trailing charge', async () => {
@@ -554,5 +556,58 @@ describe('pdf: superscripts and subscripts', () => {
   it('extracts a plain PDF exactly as before', async () => {
     const { text } = await extractText(await scriptPdf([['H2O has 1023 particles and x2 is here.']]), '.pdf');
     assert.equal(text, 'H2O has 1023 particles and x2 is here.');
+  });
+});
+
+// ---- damage report --------------------------------------------------------------------------------
+describe('extractText reports damage', () => {
+  const GARBLED_LINE = 'Th nk carefu y abut how each force affects an ob ect. Don t forget the ang e factor and ntegra n Work. Next Master ng Phys cs dead ne s next Monday. Exam #2 s next Fr day at 10 am.';
+
+  it('flags a PDF that drew letters apart from their line as stray_letters', async () => {
+    const pdf = await PDFDocument.create();
+    const font = await pdf.embedFont(StandardFonts.Helvetica);
+    const page = pdf.addPage([612, 792]);
+    // each line is the text before a gap, the letters that belong in it, the text after; the letters are drawn first
+    const lines = [
+      ['Th', 'i', 'nk carefu', 'll', 'y about how each force affects an ob', 'j', 'ect.'],
+      ['Next Master', 'i', 'ng Phys', 'i', 'cs dead', 'li', 'ne ', 'i', 's next Monday.'],
+      ['Work done by a force ', 'i', 's not a vector quant', 'i', 'ty.'],
+    ];
+    let y = 700;
+    for (const parts of lines) {
+      let before = '';
+      let host = '';
+      parts.forEach((part, k) => {
+        if (k % 2 === 0) {
+          before += part;
+          host += part;
+        } else {
+          page.drawText(part, { x: 60 + font.widthOfTextAtSize(before, 12), y, size: 12, font });
+          host += ' ';
+        }
+      });
+      page.drawText(host, { x: 60, y, size: 12, font });
+      y -= 30;
+    }
+    const { damage } = await extractText(Buffer.from(await pdf.save()), '.pdf');
+    assert.equal(damage.reason, 'stray_letters');
+    assert.ok(damage.strays >= 5, `strays ${damage.strays}`);
+  });
+
+  it('flags a Word file with dropped letters as broken_words, with no strays', async () => {
+    const doc = new Document({ sections: [{ children: Array.from({ length: 6 }, () => new Paragraph({ children: [new TextRun(GARBLED_LINE)] })) }] });
+    const { damage } = await extractText(await Packer.toBuffer(doc), '.docx');
+    assert.equal(damage.reason, 'broken_words');
+    assert.equal(damage.strays, 0);
+  });
+
+  it('reports no damage for clean files', async () => {
+    const deck = await makePptx([{ title: 'Cell Biology', body: 'The nucleus stores DNA.', bullets: ['Plain bullet one', 'Plain bullet two'] }]);
+    const pptx = await extractText(deck, '.pptx');
+    assert.equal(pptx.damage.reason, null);
+    assert.equal(pptx.damage.strays, 0);
+    const pdf = await extractText(await scriptPdf([['H2O has 1023 particles and x2 is here.']]), '.pdf');
+    assert.equal(pdf.damage.reason, null);
+    assert.equal(pdf.damage.strays, 0);
   });
 });

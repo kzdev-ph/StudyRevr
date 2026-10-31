@@ -47,7 +47,8 @@ describe('admin: cards that give their answer away', () => {
 
   it('the lesson list counts them, and the leak report lists them with the rules they break', async () => {
     const row = (await call('GET', '/api/lessons?counts=1')).body.lessons.find((l) => l.id === lessonId);
-    assert.deepEqual(row.leaks, { cards: 1 }, 'the term card that names its term (h) is not counted: the quiz blanks the term');
+    assert.equal(row.flashcards.quiz_length, 10, 'admin sees how many cards a full quiz needs');
+    assert.deepEqual(row.leaks, { cards: 1 },'the term card that names its term (h) is not counted: the quiz blanks the term');
     const res = await call('GET', `/api/admin/lessons/${lessonId}/leaks`);
     assert.equal(res.status, 200);
     assert.deepEqual(res.body.cards.flagged.map((c) => [c.id, [...new Set(c.rules.map((r) => r.rule))]]), [[leaky, ['g', 'k']]]);
@@ -63,6 +64,7 @@ describe('admin: cards that give their answer away', () => {
     const student = (await t.call('GET', '/api/lessons', { as: 'P01' })).body.lessons.find((l) => l.id === lessonId);
     assert.equal(student.leaks, undefined);
     assert.equal(student.quiz_options, undefined);
+    assert.equal('flashcards' in student, false, 'the students’ list rows have no flashcards counts');
     assert.equal((await call('GET', '/api/lessons?counts=1', { pin: null })).status, 401);
     assert.equal((await call('GET', '/api/lessons?counts=1', { pin: 'wrong' })).status, 401);
   });

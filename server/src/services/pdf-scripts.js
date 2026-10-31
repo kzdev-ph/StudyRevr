@@ -16,7 +16,7 @@ const MAX_OFFSET = 0.8; // further away than this and it is another line, not a 
 const MAX_GAP = 0.6; // the script starts within this distance of where the text before it ends
 
 const sizeOf = (t) => Math.hypot(t[2], t[3]);
-const upright = (t) => Array.isArray(t) && t.length >= 6 && Math.abs(t[1]) < 1e-6 && Math.abs(t[2]) < 1e-6 && t[3] > 0;
+export const upright = (t) => Array.isArray(t) && t.length >= 6 && Math.abs(t[1]) < 1e-6 && Math.abs(t[2]) < 1e-6 && t[3] > 0;
 const mapChars = (digits, table) => [...digits].map((c) => table[c]).join('');
 
 // Takes the text items of one page; returns the text of the page (the items joined, an end-of-line where pdf.js saw one),

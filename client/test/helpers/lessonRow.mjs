@@ -52,5 +52,19 @@ await click(button('Keep it'));
 await render({ lesson: { ...admin, status: 'failed', error: 'The real reason' }, admin: true, onDelete: noop, onRetry: noop });
 out.adminFailedText = text().includes('The real reason');
 out.adminRetry = Boolean(button('Retry'));
+// the stored text warning: admin and the owner see it, another student's row does not even if the field is there
+const warning = { code: 'damaged_text', message: 'Some of this file’s text looked damaged.' };
+await render({ lesson: { ...admin, text_warning: warning }, admin: true, onDelete: noop });
+out.adminWarning = text().includes(warning.message);
+await render({ lesson: { ...base, text_warning: warning }, onDeleteOwn: noop });
+out.ownerWarning = text().includes(warning.message);
+await render({ lesson: { ...base, mine: false, text_warning: warning } });
+out.otherWarning = text().includes(warning.message);
+
+// admin: no cards and damaged text is a calm note (not the failed style), with Make cards
+await render({ lesson: { ...admin, text_warning: warning, flashcards: { total: 0, status: null } }, admin: true, onDelete: noop, onMakeFlashcards: noop });
+const emptyBox = [...host.querySelectorAll('.lesson__extra')].find((el) => el.textContent.includes('No flashcards could be made.'));
+out.emptyClass = emptyBox?.className;
+out.emptyAction = Boolean(button('Make cards'));
 console.log(`RESULT ${JSON.stringify(out)}`);
 process.exit(0);

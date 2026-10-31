@@ -5,9 +5,10 @@ import { requireParticipant } from '../middleware/participant.js';
 import { assertSignature, createUpload, fileExtension } from '../middleware/upload.js';
 import { extractText } from '../services/extract.js';
 import { getJobStatus, queueJob } from '../pipeline/jobs.js';
+import { QUIZ_LENGTH } from '../quiz/build.js';
 import { cardsNeedingDistractors } from '../quiz/distractors.js';
 import { CARD_LEAK_RULES, cardLeaks } from '../quiz/leaks.js';
-import { PREPARE_FAILED_MESSAGE, ownerRecords, safeError } from '../services/lesson-access.js';
+import { PREPARE_FAILED_MESSAGE, TEXT_WARNINGS, ownerRecords, safeError, textWarning } from '../services/lesson-access.js';
 import { hasRecords, participantRecords } from '../services/lesson-records.js';
 import { logAdminEvent } from '../services/backup.js';
 import { missingVersions, versionCounts } from '../services/prepare-versions.js';
@@ -18,15 +19,14 @@ import { getBoolSetting, taglishShown, uploadsPerDay } from '../services/setting
 import { assertCanUpload, assertQueueRoom, assertUploadsOn, createUploadGuard, logLessonEvent, uploadStatus, uploadsUsedToday } from '../services/student-upload.js';
 
 const SHORT_TEXT_WORDS = 150;
-const SHORT_TEXT_WARNING =
-  "Very little text was found in this file. Image-heavy slides can't be read, so the review may be thin. Try a text-based version.";
-
-const SCANNED_PDF_WARNING = "This PDF looks scanned or image-only; text can't be extracted.";
 const SCANNED_PDF_WORDS_PER_PAGE = 15;
 
-function lessonWarning(ext, wordCount, pageCount) {
-  if (ext === '.pdf' && (wordCount === 0 || wordCount / pageCount < SCANNED_PDF_WORDS_PER_PAGE)) return SCANNED_PDF_WARNING;
-  return wordCount < SHORT_TEXT_WORDS ? SHORT_TEXT_WARNING : null;
+// The code (a key of TEXT_WARNINGS) for what is wrong with an upload's text, or null: scanned first, then damaged
+// (letters missing), then very little text.
+function textWarningCode(ext, wordCount, pageCount, damaged) {
+  if (ext === '.pdf' && (wordCount === 0 || wordCount / pageCount < SCANNED_PDF_WORDS_PER_PAGE)) return 'scanned_pdf';
+  if (damaged) return 'damaged_text';
+  return wordCount < SHORT_TEXT_WORDS ? 'short_text' : null;
 }
 
 const idParam = z.object({ id: z.coerce.number().int().positive() });
@@ -42,7 +42,7 @@ const progressBody = z.object({
 // than the file limit plus this is refused before anything is read.
 const MULTIPART_OVERHEAD = 64 * 1024;
 
-const SUMMARY_COLUMNS = 'l.id, l.title, l.filename, l.word_count, l.status, l.error, l.created_at, l.origin, l.owner_participant_id, l.shared_at, l.error_kind, l.thinking_level, l.made_by';
+const SUMMARY_COLUMNS = 'l.id, l.title, l.filename, l.word_count, l.status, l.error, l.created_at, l.origin, l.owner_participant_id, l.shared_at, l.error_kind, l.thinking_level, l.made_by, l.text_warning';
 const OWNER_CODE = '(SELECT code FROM participants WHERE id = l.owner_participant_id) AS owner_code';
 
 // The upload problems worth a lesson_upload_failed event, by the code the upload checks put on their error
@@ -67,12 +67,12 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin, { ac
 
   // The lesson starts as 'processing' with a queued job; text extraction is already done at this point.
   const insertLesson = db.prepare(
-    `INSERT INTO lessons (title, filename, raw_text, word_count, status, source_kind, source_numbers, source_total, origin, owner_participant_id)
-     VALUES (?, ?, ?, ?, 'processing', ?, ?, ?, ?, ?)`,
+    `INSERT INTO lessons (title, filename, raw_text, word_count, status, source_kind, source_numbers, source_total, origin, owner_participant_id, text_warning)
+     VALUES (?, ?, ?, ?, 'processing', ?, ?, ?, ?, ?, ?)`,
   );
   // `owner` ({ id }) makes it a student's upload: counted against today's uploads (checked again here, inside the
   // transaction, so two uploads can't both pass) and logged as lesson_uploaded.
-  const createLesson = db.transaction((title, filename, text, wordCount, source, owner = null) => {
+  const createLesson = db.transaction((title, filename, text, wordCount, source, owner = null, warningCode = null) => {
     const now = clock();
     if (owner && uploadsUsedToday(db, owner.id, now) >= uploadsPerDay(db)) {
       throw new HttpError(429, 'You’ve used today’s uploads. You can upload again tomorrow.', { code: 'upload_quota' });
@@ -80,7 +80,7 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin, { ac
     if (owner) assertQueueRoom(db);
     const numbers = source.numbers ? JSON.stringify(source.numbers) : null;
     const id = Number(
-      insertLesson.run(title, filename, text, wordCount, source.kind, numbers, source.total, owner ? 'student' : 'admin', owner?.id ?? null).lastInsertRowid,
+      insertLesson.run(title, filename, text, wordCount, source.kind, numbers, source.total, owner ? 'student' : 'admin', owner?.id ?? null, warningCode).lastInsertRowid,
     );
     queueJob(db, id);
     if (owner) logLessonEvent(db, { participantId: owner.id, type: 'lesson_uploaded', lessonId: id, title, detail: filename, now });
@@ -91,7 +91,7 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin, { ac
   // file name (the title may come from it, but they chose that file themselves); admin gets the owner's code and the
   // file name. A student's own upload that failed for a reason other than its file shows a plain message.
   const shape = (row, viewer) => {
-    const { owner_participant_id: ownerId, owner_code: ownerCode, error_kind: errorKind, thinking_level: thinkingLevel, made_by: madeBy, ...rest } = row;
+    const { owner_participant_id: ownerId, owner_code: ownerCode, error_kind: errorKind, thinking_level: thinkingLevel, made_by: madeBy, text_warning: warningCode, ...rest } = row;
     const mine = Boolean(viewer.participant) && ownerId === viewer.participant.id;
     const out = { ...rest, error: safeError(row.error, { origin: row.origin, error_kind: errorKind }, viewer), mine, shared: row.shared_at !== null };
     if (viewer.admin) {
@@ -99,6 +99,8 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin, { ac
       out.thinking_level = thinkingLevel ?? null; // what the AI was asked when it prepared the lesson (admin only)
       out.made_by = madeBy ?? 'gemini'; // who wrote the content: gemini (the pipeline) | claude-haiku (imported) | mixed (Claude's, then changed by the Default AI), admin only
     } else delete out.filename;
+    // why the upload's text may be poor: only admin and the owner see it (after Share too), never another student
+    if (viewer.admin || mine) out.text_warning = textWarning(warningCode);
     if (mine && !viewer.admin) {
       const records = ownerRecords(db, row.id, viewer.participant.id);
       out.can_delete = row.origin === 'student' && row.shared_at === null && !hasRecords(records);
@@ -180,19 +182,20 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin, { ac
         const ext = fileExtension(filename);
         assertSignature(req.file.buffer, ext);
         const includeNotes = getBoolSetting(db, 'include_speaker_notes', true);
-        const { text, wordCount, pageCount, source } = await extractText(req.file.buffer, ext, { includeNotes });
+        const { text, wordCount, pageCount, source, damage } = await extractText(req.file.buffer, ext, { includeNotes });
         // an admin upload with no text fails in the pipeline (Retry); a student's is refused now, without using a try
         if (student && wordCount === 0) {
           throw new HttpError(422, "This file has no readable text, so there's nothing to study. Try a text-based version of the lesson.", { code: 'no_text' });
         }
 
         const title = body.data.title || filename.slice(0, -ext.length).trim().slice(0, 200) || 'Untitled lesson';
-        const id = createLesson(title, filename, text, wordCount, source, student);
+        const warningCode = textWarningCode(ext, wordCount, pageCount, Boolean(damage?.reason));
+        const id = createLesson(title, filename, text, wordCount, source, student, warningCode);
         const lesson = shape(db.prepare(`SELECT ${SUMMARY_COLUMNS}, ${OWNER_CODE} FROM lessons l WHERE l.id = ?`).get(id), viewer);
         runner.enqueue(id);
         res.status(201).json({
           lesson,
-          warning: lessonWarning(ext, wordCount, pageCount),
+          warning: TEXT_WARNINGS[warningCode] ?? null,
           ...(student && { uploads: uploadStatus(db, student, clock(), maxUploadBytes) }),
         });
       } catch (e) {
@@ -246,7 +249,7 @@ export function lessonsRouter(db, { maxUploadBytes }, runner, requireAdmin, { ac
             quiz_options: { ...quizOptionCounts(lesson.id), status: own ? job.status : null, error: own ? job.error : null },
             leaks: { cards: leakyCards(lesson.id) },
             quiz_review: { ...reviewSummary(db, lesson.id), checks: checkSummary(db, lesson.id), status: reviewing ? job.status : null, error: reviewing ? job.error : null },
-            flashcards: { total: cardTotals.get(lesson.id) ?? 0, status: making ? job.status : null, error: making ? job.error : null },
+            flashcards: { total: cardTotals.get(lesson.id) ?? 0, status: making ? job.status : null, error: making ? job.error : null, quiz_length: QUIZ_LENGTH },
           }),
           section_versions: {
             ...(versions.get(lesson.id) ?? { missing: 0, total: 0 }),

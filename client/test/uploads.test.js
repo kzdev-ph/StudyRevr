@@ -68,6 +68,24 @@ describe('flashcardsNotice (admin\'s "Make cards", now in the lesson list)', () 
     assert.equal(flashcardsNotice({ status: 'processing', flashcards: { total: 0 } }), null);
     assert.equal(flashcardsNotice({ status: 'ready' }).state, 'missing');
   });
+  it('says when there are fewer cards than a full mock quiz, and when none could be made', async () => {
+    const { flashcardsNotice } = await import('../src/lib/flashcardsNotice.js');
+    const few = flashcardsNotice({ status: 'ready', flashcards: { total: 8, quiz_length: 10 } });
+    assert.equal(few.state, 'few');
+    assert.equal(few.title, 'Only 8 flashcards.');
+    assert.match(few.detail, /at most 8 of 10/);
+    assert.equal(few.action, null);
+    const one = flashcardsNotice({ status: 'ready', flashcards: { total: 1, quiz_length: 10 } });
+    assert.equal(one.title, 'Only 1 flashcard.');
+    assert.match(one.detail, /needs at least 2/);
+    assert.equal(flashcardsNotice({ status: 'ready', flashcards: { total: 12, quiz_length: 10 } }), null);
+    const damaged = { code: 'damaged_text', message: 'x' };
+    const empty = flashcardsNotice({ status: 'ready', text_warning: damaged, flashcards: { total: 0, quiz_length: 10 } });
+    assert.deepEqual([empty.state, empty.title, empty.action], ['empty', 'No flashcards could be made.', 'Make cards']);
+    assert.match(empty.detail, /can stop cards from being made/);
+    const plain = flashcardsNotice({ status: 'ready', flashcards: { total: 0, quiz_length: 10 } });
+    assert.deepEqual([plain.state, plain.action], ['missing', 'Make cards']);
+  });
   it('shows progress and failure', async () => {
     const { flashcardsNotice } = await import('../src/lib/flashcardsNotice.js');
     assert.equal(flashcardsNotice({ status: 'ready', flashcards: { total: 0, status: 'running' } }).state, 'making');

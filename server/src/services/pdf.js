@@ -1,7 +1,9 @@
 import { getDocumentProxy } from 'unpdf';
 import { HttpError } from '../middleware/errors.js';
 import { pageText } from './pdf-scripts.js';
-import { normalizeText } from './text.js';
+import { applyStrays, findStrays } from './pdf-strays.js';
+import { damageReason, textDamage } from './text-damage.js';
+import { countWords, normalizeText } from './text.js';
 
 // The most time a PDF may take to read. A page count or a content stream built to be slow could otherwise keep the server
 // busy for minutes (pdf.js runs in this thread). The budget is checked between pages, and the loop yields to the event
@@ -100,8 +102,10 @@ export function reflowPdfPagesNumbered(pages) {
   return perPage.map((paragraphs, i) => ({ page: i + 1, text: paragraphs.join('\n') })).filter((b) => b.text);
 }
 
-// Returns { text, pageCount, numbers }. Pages are separated by a blank line; each line in a page is one paragraph.
-// numbers[k] is the page number of the k-th block.
+// Returns { text, pageCount, numbers, strays }. Pages are separated by a blank line; each line in a page is one paragraph.
+// numbers[k] is the page number of the k-th block; strays counts the loose letters found (pdf-strays.js). Only when the whole
+// document looks damaged by them (text-damage.js says 'stray_letters') is each put back into its line, where its place is clear;
+// otherwise the text is exactly what the items give, since a short label drawn over a longer line looks the same as a lost glyph.
 // Over `budgetMs` it throws HttpError(422, ...) and the document is destroyed.
 export async function extractPdf(buffer, { budgetMs = PDF_BUDGET_MS } = {}) {
   const started = Date.now();
@@ -115,16 +119,29 @@ export async function extractPdf(buffer, { budgetMs = PDF_BUDGET_MS } = {}) {
     pdf = await getDocumentProxy(new Uint8Array(buffer));
     checkBudget();
     const text = [];
+    const loose = new Map(); // page index -> { items, strays }, kept only for pages where something was found
+    let strayCount = 0;
     // one page at a time (the text unpdf's extractText gives per page: items in order, a line break where pdf.js saw one)
     for (let n = 1; n <= pdf.numPages; n += 1) {
       const content = await (await pdf.getPage(n)).getTextContent();
+      const strays = findStrays(content.items);
+      strayCount += strays.length;
+      if (strays.length) loose.set(n - 1, { items: content.items, strays });
       text.push(pageText(content.items)); // superscripts and subscripts (10²³, H₂O) are written as such
       checkBudget();
       await yieldToLoop();
     }
-    const pages = stripRepeatedLines(text.map((p) => normalizeText(p).replace(/\n{2,}/g, '\n')));
-    const blocks = reflowPdfPagesNumbered(pages);
-    return { text: blocks.map((b) => b.text).join('\n\n'), pageCount: text.length, numbers: blocks.map((b) => b.page) };
+    const build = () => {
+      const pages = stripRepeatedLines(text.map((p) => normalizeText(p).replace(/\n{2,}/g, '\n')));
+      const blocks = reflowPdfPagesNumbered(pages);
+      return { text: blocks.map((b) => b.text).join('\n\n'), pageCount: text.length, numbers: blocks.map((b) => b.page), strays: strayCount };
+    };
+    const raw = build();
+    if (!loose.size) return raw;
+    const reason = damageReason(textDamage(raw.text), { strays: strayCount, wordCount: countWords(raw.text) });
+    if (reason !== 'stray_letters') return raw;
+    for (const [k, { items, strays }] of loose) text[k] = pageText(applyStrays(items, strays));
+    return build();
   })();
   work.catch(() => {}); // if the timer wins, a later failure of the abandoned work is not an unhandled rejection
   const limit = new Promise((_, reject) => {

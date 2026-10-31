@@ -5,6 +5,7 @@ import PptxGenJS from 'pptxgenjs';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { createApp } from '../src/app.js';
 import { reflowPdfPages, stripRepeatedLines } from '../src/services/pdf.js';
+import { TEXT_WARNINGS } from '../src/services/lesson-access.js';
 import { openDb, runMigrations } from '../src/db/index.js';
 import { seedTestLogin, studyFetch, TEST_PIN } from './helpers.js';
 
@@ -62,6 +63,37 @@ async function makeBlankPdf(pages = 3) {
   return Buffer.from(await pdf.save());
 }
 
+// A text PDF whose letters were drawn apart from their lines (the stray-letters damage): plenty of words per page, so it
+// is not "scanned", but the text is damaged.
+async function makeDamagedPdf() {
+  const pdf = await PDFDocument.create();
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const page = pdf.addPage([612, 792]);
+  // each line is the text before a gap, the letters that belong in it, the text after; the letters are drawn first
+  const lines = [
+    ['Th', 'i', 'nk carefu', 'll', 'y about how each force affects an ob', 'j', 'ect.'],
+    ['Next Master', 'i', 'ng Phys', 'i', 'cs dead', 'li', 'ne ', 'i', 's next Monday.'],
+    ['Work done by a force ', 'i', 's not a vector quant', 'i', 'ty.'],
+  ];
+  let y = 700;
+  for (const parts of lines) {
+    let before = '';
+    let host = '';
+    parts.forEach((part, k) => {
+      if (k % 2 === 0) {
+        before += part;
+        host += part;
+      } else {
+        page.drawText(part, { x: 60 + font.widthOfTextAtSize(before, 12), y, size: 12, font });
+        host += ' ';
+      }
+    });
+    page.drawText(host, { x: 60, y, size: 12, font });
+    y -= 30;
+  }
+  return Buffer.from(await pdf.save());
+}
+
 const pdfBodies = Array.from({ length: 5 }, (_, i) =>
   Array.from({ length: 6 }, (_, j) => `Chapter ${i + 1} paragraph ${j + 1} describes how cells divide and grow over time.`),
 );
@@ -99,6 +131,8 @@ describe('lessons API', () => {
     form.append('file', new Blob([buffer], { type: mime ?? 'application/octet-stream' }), filename);
     return fetch(`${base}/api/lessons`, { method: 'POST', body: form });
   };
+
+  const storedWarning = (id) => db.prepare('SELECT text_warning FROM lessons WHERE id = ?').get(id).text_warning;
 
   before(async () => {
     db = openDb(':memory:');
@@ -143,6 +177,8 @@ describe('lessons API', () => {
     assert.equal(lesson.status, 'processing', 'AI processing is queued; the lesson is ready once it finishes');
     assert.ok(lesson.word_count > 300, `word_count was ${lesson.word_count}`);
     assert.equal(warning, null);
+    assert.equal(storedWarning(lesson.id), null, 'a clean upload stores no warning');
+    assert.equal(lesson.text_warning, null);
     assert.equal(db.prepare('SELECT COUNT(*) c FROM jobs WHERE lesson_id = ?').get(lesson.id).c, 1);
 
     const detail = await (await fetch(`${base}/api/lessons/${lesson.id}`)).json();
@@ -184,6 +220,16 @@ describe('lessons API', () => {
     const { lesson, warning } = await res.json();
     assert.equal(lesson.word_count, 0);
     assert.equal(warning, "This PDF looks scanned or image-only; text can't be extracted.");
+    assert.equal(storedWarning(lesson.id), 'scanned_pdf');
+  });
+
+  it('warns that a .pdf whose text looks damaged is damaged, and stores the code', async () => {
+    const res = await upload(await makeDamagedPdf(), 'damaged.pdf', { mime: PDF_MIME });
+    assert.equal(res.status, 201);
+    const { lesson, warning } = await res.json();
+    assert.equal(warning, TEXT_WARNINGS.damaged_text);
+    assert.equal(storedWarning(lesson.id), 'damaged_text');
+    assert.deepEqual(lesson.text_warning, { code: 'damaged_text', message: TEXT_WARNINGS.damaged_text }, 'admin sees the code and message');
   });
 
   it('rejects a .pdf without the %PDF signature and one that is corrupt', async () => {
@@ -203,8 +249,9 @@ describe('lessons API', () => {
     const buf = await makeDocx(['Just a line.']);
     const res = await upload(buf, 'tiny.docx', { mime: DOCX_MIME });
     assert.equal(res.status, 201);
-    const { warning } = await res.json();
+    const { lesson, warning } = await res.json();
     assert.match(warning, /Very little text/);
+    assert.equal(storedWarning(lesson.id), 'short_text');
   });
 
   it('rejects legacy .doc/.ppt with a save-as hint', async () => {

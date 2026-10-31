@@ -10,6 +10,7 @@
     "test": "node --import ./test/setup.js --test --test-timeout=10000 \"test/**/*.test.js\"",
     "pipeline": "node scripts/run-pipeline.js",
     "quiz:check": "node scripts/quiz-check.js",
+    "text:check": "node scripts/text-check.js",
     "participant:delete": "node scripts/delete-participant.js",
     "restore": "node scripts/restore.js",
     "lesson:rebuild": "node scripts/rebuild-lesson.js",

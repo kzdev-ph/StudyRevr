@@ -20,6 +20,14 @@ export const PREPARE_FAILED_MESSAGE = 'Preparing the simpler and Taglish version
 // The same for a teacher's lesson that failed (students can't retry it)
 export const LESSON_FAILED_MESSAGE = 'This lesson couldn’t be prepared. Your teacher can try again.';
 
+// Why an upload's text may be poor (lessons.text_warning holds the code). Shown to admin and the lesson's owner only.
+export const TEXT_WARNINGS = {
+  scanned_pdf: "This PDF looks scanned or image-only; text can't be extracted.",
+  short_text: "Very little text was found in this file. Image-heavy slides can't be read, so the review may be thin. Try a text-based version.",
+  damaged_text: "This file's text looks damaged (missing letters). Try saving it again as .docx or .pptx, or export the PDF from the source.",
+};
+export const textWarning = (code) => (TEXT_WARNINGS[code] ? { code, message: TEXT_WARNINGS[code] } : null);
+
 // `message` as the caller may read it: for a student, a lesson (their own upload or the teacher's) that failed for a
 // reason other than its file is the plain line; admin and the file's own problems (kind 'content') keep the real text.
 // `row` needs origin and error_kind.

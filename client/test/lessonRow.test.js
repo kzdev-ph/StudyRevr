@@ -39,4 +39,12 @@ describe('LessonRow', () => {
     assert.equal(r.adminFailedText, true);
     assert.equal(r.adminRetry, true);
   });
+
+  it("shows the stored text warning to admin and the owner only, and a no-cards note in the calm style", () => {
+    assert.equal(r.adminWarning, true);
+    assert.equal(r.ownerWarning, true);
+    assert.equal(r.otherWarning, false);
+    assert.equal(r.emptyClass, 'lesson__extra lesson__extra--note');
+    assert.equal(r.emptyAction, true);
+  });
 });

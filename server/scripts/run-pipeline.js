@@ -23,6 +23,7 @@ import { getJobStatus, queueJob } from '../src/pipeline/jobs.js';
 import { runPipeline } from '../src/pipeline/run.js';
 import { formatReport, lessonLeakReport } from '../src/quiz/check.js';
 import { extractText } from '../src/services/extract.js';
+import { describeDamage } from '../src/services/text-damage.js';
 import { resolveAiConfig } from '../src/services/settings.js';
 
 const LESSONS_DIR = path.join(ROOT_DIR, 'test-lessons');
@@ -78,13 +79,14 @@ if (flag('thinking')) db.prepare("INSERT INTO settings (key, value) VALUES ('les
 
 const buffer = fs.readFileSync(file);
 assertSignature(buffer, ext);
-const { text, wordCount, pageCount } = await extractText(buffer, ext);
+const { text, wordCount, pageCount, damage } = await extractText(buffer, ext);
 const chunks = chunkLesson(text, { maxTokens: chunkTokens });
 
 console.log(`# ${path.basename(file)}`);
 console.log(`Provider: ${provider.label} (${provider.baseUrl})  Model: ${provider.model}  Concurrency: ${concurrency}  Temperature: ${provider.temperature}`);
 console.log(`Request timeout: ${provider.timeoutMs / 1000}s  Request limit: ${provider.requestsPerMinute ? `${provider.requestsPerMinute}/min` : 'none'}`);
 console.log(`Extracted ${wordCount} words${pageCount ? ` from ${pageCount} pages` : ''}; ${chunks.length} chunk(s) of ~${chunks.map((c) => c.tokens).join(', ')} tokens (budget ${chunkTokens}).`);
+console.log(`Text check: ${describeDamage(damage)}`);
 if (showText) console.log(`\n## Extracted text\n${text}\n## End of extracted text\n`);
 
 // --save=<file.db>: keep the finished database, also when the pipeline failed

@@ -81,6 +81,7 @@ export default function AdminLessonScreen({ lessonId }) {
                 : 'This lesson is still being prepared.'}
             </Notice>
           )}
+          {lesson.text_warning && <Notice tone="warn">{lesson.text_warning.message}</Notice>}
 
           {data.sections.length > 0 && (
             <section className="stack" aria-labelledby="admin-lesson-sections">

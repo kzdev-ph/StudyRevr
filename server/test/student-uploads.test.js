@@ -6,7 +6,7 @@ import { AiError } from '../src/ai/client.js';
 import { openDb, runMigrations } from '../src/db/index.js';
 import { createPipelineRunner } from '../src/pipeline/runner.js';
 import http from 'node:http';
-import { CARDS_FAILED_MESSAGE, PREPARE_FAILED_MESSAGE, UPLOAD_FAILED_MESSAGE } from '../src/services/lesson-access.js';
+import { CARDS_FAILED_MESSAGE, PREPARE_FAILED_MESSAGE, TEXT_WARNINGS, UPLOAD_FAILED_MESSAGE } from '../src/services/lesson-access.js';
 import { BURST_MAX, QUEUE_LIMIT, createUploadGuard } from '../src/services/student-upload.js';
 import { addCodes, cleanReview, keepAllCandidates, quoteFromPrompt, seedLesson, startStudyApp, TEST_PIN, tokenFor } from './helpers.js';
 
@@ -572,6 +572,31 @@ describe('student uploads', () => {
       const adminRow = (await t.call('GET', `/api/lessons/${id}`, admin)).body.lesson;
       assert.equal(adminRow.filename, 'jane-doe-notes.docx');
       assert.equal((await t.call('GET', '/api/lessons', admin)).body.lessons.find((l) => l.id === id).filename, 'jane-doe-notes.docx');
+    });
+
+    it('shows the text warning to the owner and admin only, before and after Share', async () => {
+      const res = await upload(await goodDocx(), 'plants.docx'); // two sentences: very little text
+      assert.equal(res.status, 201);
+      assert.equal(res.body.warning, TEXT_WARNINGS.short_text);
+      const id = res.body.lesson.id;
+      assert.equal(t.db.prepare('SELECT text_warning FROM lessons WHERE id = ?').get(id).text_warning, 'short_text');
+      const expected = { code: 'short_text', message: TEXT_WARNINGS.short_text };
+      const listed = async (who, path = '/api/lessons') => (await t.call('GET', path, who)).body.lessons.find((l) => l.id === id);
+
+      assert.deepEqual(res.body.lesson.text_warning, expected, 'the upload reply');
+      assert.deepEqual((await listed(P01)).text_warning, expected, "the owner's list");
+      assert.deepEqual((await t.call('GET', `/api/lessons/${id}`, P01)).body.lesson.text_warning, expected, "the owner's GET /:id");
+      assert.deepEqual((await listed(admin, '/api/lessons?counts=1')).text_warning, expected, "admin's ?counts=1 list");
+      assert.deepEqual((await t.call('GET', `/api/lessons/${id}`, admin)).body.lesson.text_warning, expected, "admin's GET /:id");
+      assert.equal((await t.call('GET', `/api/lessons/${id}`, P02)).status, 404, "another student's private lesson stays a 404");
+
+      // once shared, another student reads it without the warning (no key at all); the owner still sees it
+      t.db.prepare("UPDATE lessons SET status = 'ready', shared_at = '2026-10-05T04:00:00.000Z' WHERE id = ?").run(id);
+      const other = await listed(P02);
+      assert.ok(other, 'visible once shared');
+      assert.ok(!('text_warning' in other), "another student's list row");
+      assert.ok(!('text_warning' in (await t.call('GET', `/api/lessons/${id}`, P02)).body.lesson), "another student's GET /:id");
+      assert.deepEqual((await listed(P01)).text_warning, expected, 'the owner after Share');
     });
 
     it('a teacher lesson also reaches students without its file name', async () => {

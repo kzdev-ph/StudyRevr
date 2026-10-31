@@ -38,8 +38,9 @@ function LessonStep({ lesson, notice, busyText, onMake }) {
     setAsking(false);
   };
   const failed = notice?.state === 'failed' && !busy;
+  const kept = notice?.state === 'empty' && !busy; // nothing broke; the file's text is the cause, so the calm note style
   return (
-    <div className={failed ? 'lesson__extra lesson__extra--failed' : 'lesson__extra'} aria-live="polite">
+    <div className={failed ? 'lesson__extra lesson__extra--failed' : kept ? 'lesson__extra lesson__extra--note' : 'lesson__extra'} aria-live="polite">
       <p className="lesson__extra-text">
         {busy ? (
           <>
@@ -177,6 +178,11 @@ export default function LessonRow({ lesson, admin = false, onDelete, onDeleteOwn
               {retrying ? 'Trying again…' : failedAdmin ? 'Retry' : 'Try again'}
             </button>
           )}
+        </div>
+      )}
+      {(admin || lesson.mine) && lesson.status !== 'failed' && lesson.text_warning && (
+        <div className="lesson__extra lesson__extra--note">
+          <p className="lesson__extra-text">{lesson.text_warning.message}</p>
         </div>
       )}
       {canShare && (
