@@ -1,0 +1,24 @@
+## Goal
+A True/False question built from a CONCEPT card should show one natural sentence the AI wrote ("The purpose of a
+self-introduction is to share your background."). It should not show the stiff "<card question> <suggested answer>."
+(`tfStatement`, `client/src/lib/quiz.js:55-58`).
+
+In the `quiz_options` stage the AI writes one TRUE sentence and one FALSE twin per concept card. Code checks them, then
+the existing exam review checks them. Only a pair that passed both is ever shown; otherwise the card is multiple choice.
+Stored and exported choices stay `True` / `False`. Quiz results never touch flashcard scheduling.
+
+## Project rules every step must respect (from the brief)
+- Plain JavaScript. zod validates every AI JSON reply. One retry on invalid JSON (`generateJSON` in `ai/client.js` already does it).
+- Strict "use only the provided lesson text". Use the shared constants KEEP_MEANING, NO_OBJECTIVES, ASK_BY_MEANING and
+  NO_POSITION from `server/src/ai/prompts.js`.
+- Every prompt with lesson text explains that a `Notes:` line is the teacher's spoken explanation (LESSON_RULES does this).
+- RESTATE_ONLY actually lives in `server/src/pipeline/run.js`, which appends it to the content stages only. The new call
+  is a quiz-stage call (like the wrong answers), so it gets `thinkingAi` without RESTATE_ONLY: the false twin can't
+  "only restate". The prompt carries its own restate-only rule for the TRUE sentence.
+- Separate calls per feature, never one giant call. A failure in quiz_options or the quiz review leaves the lesson `ready`.
+- Free tier is 500 requests a day and 15 a minute. The extra cost is about 1 call per lesson (batches of 25 concept
+  cards, no second try).
+- Leak rules a-f (`server/src/quiz/leaks.js`) apply to the new sentences (see "Code checks").
+- No new route, so the lesson-access tables (`server/test/lesson-access.test.js`, `mount()` in `server/src/app.js`) stay unchanged.
+- `npm test` in `server/` (1121 now) and `client/` (235 now) must pass. Edits to existing tests stay minimal (listed in Step 7).
+
