@@ -111,7 +111,7 @@ lesson_events.csv - what happened to students' uploads, one row per event
 sessions.csv - one row per study session
   activity      reading (Review tab) | flashcards | quiz;  lesson_id blank = the "All lessons" flashcard deck
   end_reason    left (closed the screen) | idle (5 min without interaction) | background (away more than 5 min) |
-                signed_out (signed out on this device) | signed_out_elsewhere (the account signed in on another device) |
+                signed_out (signed out on this device, or the student reset their own password by email) | signed_out_elsewhere (the account signed in on another device) |
                 signed_out_by_admin (the researcher signed the account out or reset its password) |
                 switched (legacy: switched participant) | unclosed (the app stopped reporting, e.g. the browser was
                 closed; ended_at is its last report) | open (still running)

@@ -51,6 +51,11 @@ const NOT_LESSON_ROUTES = new Set([
   'DELETE /my-ai/key',
   'POST /auth/signup', // makes an account; no lesson
   'POST /auth/login',
+  'POST /auth/verify', // email link; no lesson
+  'POST /auth/verify/resend',
+  'POST /auth/forgot', // email link; no lesson
+  'POST /auth/reset/check',
+  'POST /auth/reset',
   'POST /auth/logout',
   'GET /auth/me',
   'POST /auth/password',
@@ -294,7 +299,7 @@ describe('lesson visibility', () => {
       const guarded = routes.map((r) => r.split(' ')).filter(([, full]) => PIN_PREFIXES.some((p) => full.startsWith(`/api${p}/`) || full === `/api${p}`));
       assert.ok(guarded.length >= 15, `only ${guarded.length} admin routes found`);
       // the admin Accounts routes (routes/admin-accounts.js) are mounted through mount(), so they are walked here
-      for (const route of ['GET /api/admin/accounts', 'POST /api/admin/accounts/:code/reset-password', 'POST /api/admin/accounts/:code/sign-out', 'PUT /api/admin/accounts/test-login']) {
+      for (const route of ['GET /api/admin/accounts', 'POST /api/admin/accounts/:code/reset-password', 'POST /api/admin/accounts/:code/sign-out', 'POST /api/admin/accounts/:code/verify', 'POST /api/admin/accounts/:code/resend-verification', 'PUT /api/admin/accounts/test-login']) {
         assert.ok(routes.includes(route), `${route} is missing from the live routes`);
       }
       const fill = (full) => full.replace(':code', 'P01').replace(':file', 'summary').replace(/:\w+/g, '1');

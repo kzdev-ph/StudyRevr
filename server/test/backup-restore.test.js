@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { createApp } from '../src/app.js';
 import { openDb, runMigrations } from '../src/db/index.js';
 import { tokenHash } from '../src/auth/sessions.js';
+import { issueEmailToken } from '../src/auth/email-tokens.js';
 import { pidFile } from '../src/server-pid.js';
 import { backupFileName, makeBackup, removeLeftoverBackups, removeTemp } from '../src/services/backup.js';
 import { addCodes, seedLesson, TEST_PIN, tokenFor } from './helpers.js';
@@ -51,6 +52,7 @@ describe('backup and restore', () => {
   let backupFile;
   let backupName;
   let oldToken;
+  let verifyToken;
 
   before(async () => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'studyrevr-backup-'));
@@ -59,6 +61,8 @@ describe('backup and restore', () => {
     runMigrations(db);
     addCodes(db, 'P01');
     oldToken = tokenFor(db, 'P01'); // an account (p01@test.invalid) with a live sign-in session
+    const accountId = db.prepare("SELECT id FROM accounts WHERE email = 'p01@test.invalid'").get().id;
+    verifyToken = issueEmailToken(db, { accountId, purpose: 'verify', now: new Date() }); // an unused email link
     seedLesson(db, { title: 'Backed up lesson' });
     db.prepare("INSERT INTO settings (key, value) VALUES ('ai_api_key:google', ?), ('ai_model:google', 'gemini-3.5-flash-lite')").run(ADMIN_KEY);
     const p01 = db.prepare("SELECT id FROM participants WHERE code = 'P01'").get().id;
@@ -143,6 +147,40 @@ describe('backup and restore', () => {
       assert.equal(copy.prepare('SELECT email FROM accounts').get().email, 'p01@test.invalid', 'logins survive, so a backup is identifying data');
     } finally {
       copy.close();
+    }
+  });
+
+  it('the backup holds no email link (no hash of one)', () => {
+    assert.ok(!fs.readFileSync(backupFile).toString('latin1').includes(tokenHash(verifyToken)), 'the link hash is not in the file, not even in free pages');
+    const copy = openDb(backupFile);
+    try {
+      assert.equal(copy.prepare('SELECT COUNT(*) n FROM email_tokens').get().n, 0);
+      assert.equal(copy.prepare('SELECT COUNT(*) n FROM accounts').get().n, 1, 'the account stays');
+    } finally {
+      copy.close();
+    }
+  });
+
+  it('restore also drops email links of a file that still has them', async () => {
+    const raw = path.join(dir, 'raw-with-links.db');
+    const src = openDb(raw);
+    runMigrations(src);
+    addCodes(src, 'P01');
+    tokenFor(src, 'P01');
+    const accountId = src.prepare('SELECT id FROM accounts').get().id;
+    issueEmailToken(src, { accountId, purpose: 'reset', now: new Date() });
+    assert.equal(src.prepare('SELECT COUNT(*) n FROM email_tokens').get().n, 1);
+    src.close();
+    const live = path.join(dir, 'raw-links-live', 'studyrevr.db');
+    fs.mkdirSync(path.dirname(live));
+    const { code, out } = await restore(raw, live, 'RESTORE');
+    assert.equal(code, 0, out);
+    const db = openDb(live);
+    try {
+      assert.equal(db.prepare('SELECT COUNT(*) n FROM email_tokens').get().n, 0);
+      assert.equal(db.prepare('SELECT COUNT(*) n FROM accounts').get().n, 1);
+    } finally {
+      db.close();
     }
   });
 

@@ -27,15 +27,15 @@ function headersFor(body, { admin = false, token = null } = {}) {
 // What the server's 401s and 403s mean for the app: a login that is unknown, ended or missing goes back to sign-in
 // (with the reason); a temporary password has to be replaced first; a refused PIN locks admin again. `token`: the one
 // the refused request carried.
-const SIGNED_OUT = ['auth_required', 'session_unknown', 'signed_out_elsewhere', 'signed_out_by_admin', 'password_reset'];
+const SIGNED_OUT = ['auth_required', 'session_unknown', 'signed_out_elsewhere', 'signed_out_by_admin', 'password_reset', 'email_unverified'];
 function onRefused(code, token) {
   if (SIGNED_OUT.includes(code)) signedOutByServer(code, token);
   if (code === 'password_change_required') markMustChange();
   if (code === 'admin_pin') lockAdmin();
 }
 
-async function request(path, { method = 'GET', body, form, signal, admin = false, keepalive = false, as = null } = {}) {
-  const token = admin ? null : as ?? getToken();
+async function request(path, { method = 'GET', body, form, signal, admin = false, keepalive = false, as = null, anon = false } = {}) {
+  const token = admin || anon ? null : as ?? getToken();
   let res;
   try {
     res = await fetch(`/api${path}`, {
@@ -55,7 +55,7 @@ async function request(path, { method = 'GET', body, form, signal, admin = false
     const message = data?.error?.message;
     // The dev proxy answers 500/502/503/504 with no JSON body when the Express server is down.
     if (!message && res.status >= 500) throw new ApiError(UNREACHABLE, res.status);
-    if (!as && (res.status === 401 || res.status === 403)) onRefused(data?.error?.code, token);
+    if (!as && !anon && (res.status === 401 || res.status === 403)) onRefused(data?.error?.code, token);
     throw new ApiError(message ?? `The server answered with an error (${res.status}).`, res.status, data?.error?.code ?? null);
   }
   return data;
@@ -135,7 +135,7 @@ export const api = {
     request(`/quiz/attempts/${attemptId}/answers`, { method: 'POST', body: { position, choice, time_ms: timeMs } }),
   finishQuiz: (attemptId, totalMs) => request(`/quiz/attempts/${attemptId}/finish`, { method: 'POST', body: { total_ms: totalMs } }),
 
-  // accounts: { email, password } -> { token, account }; login can say `takeover: true` after a 409 active_elsewhere
+  // accounts: { email, password } -> { token, account }, or { verify_email: true, email_sent } when email is on; login can say `takeover: true` after a 409 active_elsewhere
   signup: ({ email, password }) => request('/auth/signup', { method: 'POST', body: { email, password } }),
   login: ({ email, password, takeover }) => request('/auth/login', { method: 'POST', body: { email, password, ...(takeover ? { takeover: true } : {}) } }),
   logout: () => request('/auth/logout', { method: 'POST' }),
@@ -143,6 +143,14 @@ export const api = {
   me: (signal) => request('/auth/me', { signal }),
   // { current, next } -> { token, account } (the old token no longer works)
   changePassword: ({ current, next }) => request('/auth/password', { method: 'POST', body: { current, next } }),
+  // public, for signed-out screens and email links: no token and no PIN, and a refusal never signs this device out
+  // { ok, admin, email }: `email` says whether the server can send mail (the Forgot password link needs it)
+  health: (signal) => request('/health', { signal, anon: true }),
+  resendVerification: (email) => request('/auth/verify/resend', { method: 'POST', body: { email }, anon: true }),
+  verifyEmail: (token) => request('/auth/verify', { method: 'POST', body: { token }, anon: true }),
+  forgotPassword: (email) => request('/auth/forgot', { method: 'POST', body: { email }, anon: true }),
+  checkResetLink: (token, signal) => request('/auth/reset/check', { method: 'POST', body: { token }, signal, anon: true }),
+  resetWithLink: ({ token, password }) => request('/auth/reset', { method: 'POST', body: { token, password }, anon: true }),
 
   // sessions, events, stats
   // `as`: the token the session belongs to, so its last report still goes out under it while signing out
@@ -178,6 +186,8 @@ export const api = {
   adminAccounts: (signal) => request('/admin/accounts', { signal, admin: true }),
   resetPassword: (code) => request(`/admin/accounts/${encodeURIComponent(code)}/reset-password`, { method: 'POST', body: {}, admin: true }),
   signOutAccount: (code) => request(`/admin/accounts/${encodeURIComponent(code)}/sign-out`, { method: 'POST', body: {}, admin: true }),
+  markVerified: (code) => request(`/admin/accounts/${encodeURIComponent(code)}/verify`, { method: 'POST', body: {}, admin: true }),
+  resendVerificationFor: (code) => request(`/admin/accounts/${encodeURIComponent(code)}/resend-verification`, { method: 'POST', body: {}, admin: true }),
   setTestLogin: (email, password) => request('/admin/accounts/test-login', { method: 'PUT', body: { email, password }, admin: true }),
   adminStats: (code, signal) => request(`/admin/participants/${encodeURIComponent(code)}/stats`, { signal, admin: true }),
   // admin settings: new cards per day, the student-key switch, and the AI provider (the app's Default)

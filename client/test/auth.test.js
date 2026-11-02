@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 const win = new EventTarget();
 globalThis.window = win;
 const { lockAdmin, setAdminPin, getAdminPin } = await import('../src/lib/admin.js');
-const { acceptLogin, getAccount, getToken, markMustChange, onBeforeSignOut, onTokenChange, setAccount, setToken, signOut, signedOutByServer, takeSignedOutNotice } = await import('../src/lib/auth.js');
+const { acceptLogin, getAccount, getToken, markMustChange, onBeforeSignOut, onTokenChange, setAccount, setSignInNotice, setToken, signOut, signedOutByServer, takeSignedOutNotice } = await import('../src/lib/auth.js');
 
 const realFetch = globalThis.fetch;
 let calls;
@@ -103,10 +103,18 @@ describe('signedOutByServer', () => {
     assert.match(takeSignedOutNotice(), /another device/);
     setToken('t1');
     signedOutByServer('password_reset');
-    assert.match(takeSignedOutNotice(), /reset your password/);
+    assert.match(takeSignedOutNotice(), /password was reset/);
+    setToken('t1');
+    signedOutByServer('email_unverified');
+    assert.match(takeSignedOutNotice(), /Verify your email first/);
     setToken('t1');
     signedOutByServer('session_unknown');
     assert.equal(takeSignedOutNotice(), 'Please sign in again.');
+  });
+  it('lets a screen set the sign-in message', () => {
+    setSignInNotice('Your password was reset. Sign in with the new one.');
+    assert.match(takeSignedOutNotice(), /password was reset/);
+    assert.equal(takeSignedOutNotice(), null);
   });
   it('does nothing when nobody is signed in, or the refused token is an old one', () => {
     signedOutByServer('session_unknown', 'old');

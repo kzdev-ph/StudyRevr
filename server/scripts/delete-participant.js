@@ -26,11 +26,13 @@ const TABLES = [
   ['participant_ai_keys', 'saved own AI key'],
   ['accounts', 'account (email and password)'],
   ['auth_sessions', 'sign-in sessions'],
+  ['email_tokens', 'email links (verify / reset)'],
 ];
 
-// auth_sessions hangs off the account, not the participant
+// auth_sessions and email_tokens hang off the account, not the participant
 const COUNT_SQL = {
   auth_sessions: 'SELECT COUNT(*) AS n FROM auth_sessions WHERE account_id IN (SELECT id FROM accounts WHERE participant_id = ?)',
+  email_tokens: 'SELECT COUNT(*) AS n FROM email_tokens WHERE account_id IN (SELECT id FROM accounts WHERE participant_id = ?)',
 };
 
 async function main(args) {

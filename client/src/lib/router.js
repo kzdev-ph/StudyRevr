@@ -9,7 +9,9 @@ import { useSyncExternalStore } from 'react';
 //   #/stats  #/settings
 //   #/admin                   researcher admin (PIN);  #/admin/participants/P03  that participant's stats
 //   #/admin/lessons/12        admin's read-only preview of lesson 12 (a student's private upload too)
+//   #/verify/<token>  #/reset/<token>   links from emails (public: work signed out; token = 43 URL-safe characters)
 
+const LINK_TOKEN = /^[A-Za-z0-9_-]{43}$/;
 const LESSON_VIEWS = ['sections', 'points', 'terms'];
 const TABS = ['flashcards', 'quiz', 'stats', 'settings'];
 
@@ -25,6 +27,7 @@ export function parseRoute(hash) {
     if (second === 'lessons' && /^\d+$/.test(third ?? '')) return { name: 'adminLesson', lessonId: Number(third) };
     return { name: 'admin' };
   }
+  if (first === 'verify' || first === 'reset') return { name: first, token: LINK_TOKEN.test(second ?? '') ? second : null };
   if (TABS.includes(first)) return { name: first };
   if (first === 'review' && /^\d+$/.test(second ?? '')) {
     return { name: 'lesson', lessonId: Number(second), view: LESSON_VIEWS.includes(third) ? third : 'sections' };
@@ -45,6 +48,14 @@ export const paths = {
 
 // The admin screens, the only ones that keep the PIN: leaving them locks admin again (App.jsx).
 export const isAdminRoute = (route) => route.name === 'admin' || route.name === 'adminParticipant' || route.name === 'adminLesson';
+
+// The email-link screens: they work without a login.
+export const isPublicRoute = (route) => route.name === 'verify' || route.name === 'reset';
+
+// Takes the one-time token out of the address bar and this history entry (no hashchange; the screen keeps it in memory).
+export const forgetLinkToken = (name) => {
+  if (window.location.hash !== `#/${name}`) window.history.replaceState(null, '', `#/${name}`);
+};
 
 export const navigate = (to) => {
   window.location.hash = to;

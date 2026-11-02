@@ -9,7 +9,7 @@ export const LOCK_BASE_MS = 60_000;
 export const LOCK_MAX_MS = 900_000;
 const MAX_STUDY_NUMBER = 999;
 
-const ACCOUNT_COLUMNS = 'a.id, a.participant_id, p.code, a.email, a.password_hash, a.must_change_password, a.failed_logins, a.lockouts, a.locked_until, a.created_at, a.password_changed_at';
+const ACCOUNT_COLUMNS = 'a.id, a.participant_id, p.code, a.email, a.password_hash, a.must_change_password, a.failed_logins, a.lockouts, a.locked_until, a.created_at, a.password_changed_at, a.email_verified';
 const FROM = 'FROM accounts a JOIN participants p ON p.id = a.participant_id';
 
 export const normalizeEmail = (email) => String(email ?? '').trim().toLowerCase();
@@ -37,7 +37,8 @@ export function nextStudyCode(db) {
   return `P${String(n).padStart(2, '0')}`;
 }
 
-export function createAccount(db, { email, passwordHash, now }) {
+// `verified: false` is a sign-up that still has to open its email link (see migration 022).
+export function createAccount(db, { email, passwordHash, now, verified = true }) {
   const at = now.toISOString();
   return db.transaction(() => {
     const address = normalizeEmail(email);
@@ -48,8 +49,8 @@ export function createAccount(db, { email, passwordHash, now }) {
     const participantId = Number(db.prepare('INSERT INTO participants (code, created_at) VALUES (?, ?)').run(code, at).lastInsertRowid);
     const accountId = Number(
       db
-        .prepare('INSERT INTO accounts (participant_id, email, password_hash, created_at) VALUES (?, ?, ?, ?)')
-        .run(participantId, address, passwordHash, at).lastInsertRowid,
+        .prepare('INSERT INTO accounts (participant_id, email, password_hash, created_at, email_verified) VALUES (?, ?, ?, ?, ?)')
+        .run(participantId, address, passwordHash, at, verified ? 1 : 0).lastInsertRowid,
     );
     return { accountId, participantId, code };
   })();
@@ -110,7 +111,7 @@ export function setPassword(db, accountId, hash, { mustChange = false, now }) {
 export function listAccounts(db, now, timeoutMs) {
   const rows = db
     .prepare(
-      `SELECT p.code, a.email, a.created_at, a.locked_until, a.must_change_password,
+      `SELECT p.code, a.email, a.created_at, a.locked_until, a.must_change_password, a.email_verified,
               (SELECT MAX(s.last_seen_at) FROM auth_sessions s WHERE s.account_id = a.id) AS last_seen_at,
               (SELECT MAX(s.last_seen_at) FROM auth_sessions s WHERE s.account_id = a.id AND s.revoked_at IS NULL) AS live_seen_at
        ${FROM} ORDER BY p.code`,
@@ -126,6 +127,7 @@ export function listAccounts(db, now, timeoutMs) {
     last_seen_at: r.last_seen_at,
     locked_until: lockedMs(r, now) > 0 ? r.locked_until : null,
     must_change_password: Boolean(r.must_change_password),
+    verified: Boolean(r.email_verified),
   }));
 }
 
@@ -141,7 +143,7 @@ export function setTestLogin(db, { email, passwordHash, now }) {
   }
   const own = db.prepare('SELECT id FROM accounts WHERE participant_id = ?').get(participant.id);
   if (own) {
-    db.prepare('UPDATE accounts SET email = ?, password_hash = ?, must_change_password = 0, password_changed_at = ? WHERE id = ?').run(address, passwordHash, now.toISOString(), own.id);
+    db.prepare('UPDATE accounts SET email = ?, password_hash = ?, must_change_password = 0, password_changed_at = ?, email_verified = 1 WHERE id = ?').run(address, passwordHash, now.toISOString(), own.id);
     clearFailedLogins(db, own.id);
     return { accountId: own.id, participantId: participant.id };
   }

@@ -121,8 +121,9 @@ async function main(args, { input = process.stdin, output = process.stdout } = {
   try {
     const applied = runMigrations(db);
     if (applied.length) console.log(`Brought the backup up to date: ${applied.join(', ')}`);
-    // a file that was not made with "Download backup" may still hold live sign-in tokens: nobody comes back signed in
+    // a file that was not made with "Download backup" may still hold live sign-in tokens and unused email links: nobody comes back signed in
     db.prepare('DELETE FROM auth_sessions').run();
+    db.prepare('DELETE FROM email_tokens').run();
   } finally {
     db.close();
   }

@@ -5,7 +5,7 @@ import { usePresence } from './hooks/usePresence.js';
 import { lockAdmin } from './lib/admin.js';
 import { useAccount, useMustChangePassword, useSignedIn } from './lib/auth.js';
 import { useMotionReduced } from './lib/motion.js';
-import { isAdminRoute, useRoute, tabOf } from './lib/router.js';
+import { isAdminRoute, isPublicRoute, useRoute, tabOf } from './lib/router.js';
 import AdminScreen from './screens/AdminScreen.jsx';
 import LibraryScreen from './screens/LibraryScreen.jsx';
 import LessonScreen from './screens/LessonScreen.jsx';
@@ -16,6 +16,8 @@ import QuizRunScreen from './screens/QuizRunScreen.jsx';
 import QuizScreen from './screens/QuizScreen.jsx';
 import SettingsScreen from './screens/SettingsScreen.jsx';
 import StudyScreen from './screens/StudyScreen.jsx';
+import ResetPasswordScreen from './screens/ResetPasswordScreen.jsx';
+import VerifyEmailScreen from './screens/VerifyEmailScreen.jsx';
 
 // Stats and the admin participant view load only when opened, so the study screens stay light on a phone.
 const StatsScreen = lazy(() => import('./screens/StatsScreen.jsx'));
@@ -110,6 +112,15 @@ export default function App() {
     }
     hadApp.current = inApp;
   }, [inApp]);
+
+  // Email links open here whether or not this device is signed in (often a fresh browser on another device).
+  if (isPublicRoute(route)) {
+    return (
+      <MotionConfig reducedMotion={reduced ? 'always' : 'never'}>
+        {route.name === 'verify' ? <VerifyEmailScreen token={route.token} /> : <ResetPasswordScreen token={route.token} />}
+      </MotionConfig>
+    );
+  }
 
   // Until this device is signed in, only the sign-in screen (and the researcher's admin) can open; after a password
   // reset, the new password comes first.

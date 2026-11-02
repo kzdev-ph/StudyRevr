@@ -24,6 +24,14 @@ const server = app.listen(config.port, () => {
   const lan = Object.values(os.networkInterfaces()).flat().filter((a) => a && a.family === 'IPv4' && !a.internal);
   for (const a of lan) console.log(`[server] on this network: http://${a.address}:${config.port}`);
   if (!config.adminPin) console.log('[server] admin is off: set ADMIN_PIN in .env to upload lessons, add participants and export data');
+  // email: say whether it is on, and where the links in emails open (PUBLIC_URL, else this computer's Wi-Fi address)
+  const mailOn = Boolean(config.mail.host && config.mail.user && config.mail.pass);
+  if (mailOn) {
+    console.log(`[mail] email is on (${config.mail.host}:${config.mail.port}); links in emails open ${app.get('linkBase')}`);
+    if (!config.publicUrl) console.log(`[mail] PUBLIC_URL is not set: links use this computer's Wi-Fi address, so they open only on this network`);
+  } else {
+    console.log('[mail] email is off: set SMTP_HOST, SMTP_USER and SMTP_PASS in .env. New sign-ups are not asked to verify; Forgot password is off.');
+  }
   writePidFile(config.dbPath); // npm run restore refuses while this server runs
 });
 process.on('exit', () => removePidFile(config.dbPath));

@@ -1,7 +1,7 @@
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import JSZip from 'jszip';
-import { startStudyApp, TEST_PIN } from './helpers.js';
+import { fakeMailer, linkToken, startStudyApp, TEST_PIN } from './helpers.js';
 
 const START = '2026-10-05T04:00:00.000Z';
 const PASSWORD = 'correct horse battery';
@@ -223,5 +223,186 @@ describe('admin accounts', () => {
     for (const text of texts) assert.doesNotMatch(text, /@example\.com|@test\.invalid/);
     assert.doesNotMatch(mine.text, /P\d/); // and the student's own answers carry no study ID
     assert.match((await admin('GET', '/api/admin/accounts')).text, /ana@example\.com/);
+  });
+
+  describe('email verification (admin)', () => {
+    const BASE = 'https://study.example.test';
+    const startEmail = async (mailer = fakeMailer()) => {
+      t = await startStudyApp({ now: START, mailer, publicUrl: BASE });
+      return mailer;
+    };
+    // sign-up with email on opens no login: the account waits for its link
+    const unverified = (email = 'ana@example.com') => signup(email);
+
+    it('the list carries verified per account and only the email setup flags', async () => {
+      const mailer = await startEmail();
+      await unverified('ana@example.com');
+      await api('POST', '/api/auth/verify', { body: { token: linkToken(mailer, 'verify') } });
+      await unverified('ben@example.com');
+      const list = await admin('GET', '/api/admin/accounts');
+      assert.equal(list.status, 200);
+      assert.deepEqual(list.body.accounts.map((a) => [a.code, a.verified]), [['P01', true], ['P02', false]]);
+      assert.deepEqual(list.body.email, { configured: true, link_base: BASE, link_from_env: true });
+    });
+
+    it('the list says email is off when there is no mailer', async () => {
+      await start();
+      await signup();
+      const list = await admin('GET', '/api/admin/accounts');
+      assert.equal(list.body.email.configured, false);
+      assert.equal(list.body.accounts[0].verified, true, 'with email off, sign-up verifies');
+    });
+
+    it('the list JSON never holds the SMTP password, user or host', async () => {
+      const { openDb, runMigrations } = await import('../src/db/index.js');
+      const { createApp } = await import('../src/app.js');
+      const db = openDb(':memory:');
+      runMigrations(db);
+      const mail = { host: 'smtp.example.test', port: 465, user: 'sender@example.test', pass: 'smtp-secret-pass' };
+      // the real mailer is built from this config but nothing is sent: only the list is read
+      const app = createApp(db, { maxUploadBytes: 1024, adminPin: TEST_PIN, clientDist: null, publicUrl: BASE, mail }, { ai: {}, runner: { enqueue() {} }, clock: () => new Date(START) });
+      const server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
+      try {
+        const res = await globalThis.fetch(`http://127.0.0.1:${server.address().port}/api/admin/accounts`, { headers: { 'x-admin-pin': TEST_PIN } });
+        const text = await res.text();
+        assert.equal(res.status, 200);
+        assert.equal(JSON.parse(text).email.configured, true);
+        for (const secret of ['smtp-secret-pass', 'sender@example.test', 'smtp.example.test']) assert.ok(!text.includes(secret), secret);
+      } finally {
+        await new Promise((resolve) => server.close(resolve));
+        db.close();
+      }
+    });
+
+    it('Mark verified: verified, logged by study ID, sign-in works, safe to repeat', async () => {
+      await startEmail();
+      await unverified();
+      assert.equal((await login('ana@example.com', PASSWORD)).status, 403);
+      const res = await admin('POST', '/api/admin/accounts/P01/verify');
+      assert.equal(res.status, 200);
+      assert.deepEqual(res.body, { verified: true });
+      assert.equal((await admin('GET', '/api/admin/accounts')).body.accounts[0].verified, true);
+      assert.equal((await login('ana@example.com', PASSWORD)).status, 200);
+      assert.deepEqual(events(), [{ type: 'email_verified_by_admin', detail: 'P01' }]);
+      assert.equal((await admin('POST', '/api/admin/accounts/p01/verify')).status, 200);
+    });
+
+    it('a temporary password verifies the account (the researcher vouches): it signs in with it', async () => {
+      await startEmail();
+      await unverified();
+      assert.equal((await login('ana@example.com', PASSWORD)).status, 403);
+      const reset = await admin('POST', '/api/admin/accounts/P01/reset-password');
+      assert.equal(reset.status, 200);
+      assert.equal((await admin('GET', '/api/admin/accounts')).body.accounts[0].verified, true);
+      const signedIn = await login('ana@example.com', reset.body.temporary_password);
+      assert.equal(signedIn.status, 200);
+      assert.equal(signedIn.body.account.must_change_password, true);
+    });
+
+    it('a temporary password kills an emailed reset link and a pending verify link', async () => {
+      const mailer = await startEmail();
+      await unverified();
+      const verifyLink = linkToken(mailer, 'verify');
+      assert.equal((await api('POST', '/api/auth/forgot', { body: { email: 'ana@example.com' } })).status, 202);
+      for (let i = 0; i < 100 && mailer.sent.length < 2; i++) await new Promise((resolve) => setTimeout(resolve, 10));
+      const resetLink = linkToken(mailer, 'reset');
+      assert.ok(resetLink);
+      assert.equal((await api('POST', '/api/auth/reset/check', { body: { token: resetLink } })).status, 200);
+
+      assert.equal((await admin('POST', '/api/admin/accounts/P01/reset-password')).status, 200);
+      for (const [path, token] of [['/api/auth/reset/check', resetLink], ['/api/auth/verify', verifyLink]]) {
+        const res = await api('POST', path, { body: { token } });
+        assert.equal(res.status, 400, path);
+        assert.equal(res.body.error.code, 'link_invalid', path);
+      }
+      assert.equal(t.db.prepare('SELECT COUNT(*) AS n FROM email_tokens').get().n, 0);
+    });
+
+    it('Mark verified makes the emailed link useless', async () => {
+      const mailer = await startEmail();
+      await unverified();
+      const token = linkToken(mailer, 'verify');
+      await admin('POST', '/api/admin/accounts/P01/verify');
+      const used = await api('POST', '/api/auth/verify', { body: { token } });
+      assert.equal(used.status, 400);
+      assert.equal(used.body.error.code, 'link_invalid');
+    });
+
+    it('resend answers { sent: true } and emails one new working link to the account', async () => {
+      const mailer = await startEmail();
+      await unverified();
+      const first = linkToken(mailer, 'verify');
+      assert.equal(mailer.sent.length, 1);
+      const res = await admin('POST', '/api/admin/accounts/P01/resend-verification');
+      assert.equal(res.status, 200);
+      assert.deepEqual(res.body, { sent: true });
+      assert.equal(mailer.sent.length, 2);
+      assert.equal(mailer.sent.at(-1).to, 'ana@example.com');
+      const fresh = linkToken(mailer, 'verify');
+      assert.notEqual(fresh, first);
+      assert.equal((await api('POST', '/api/auth/verify', { body: { token: first } })).status, 400);
+      assert.equal((await api('POST', '/api/auth/verify', { body: { token: fresh } })).status, 200);
+      assert.deepEqual(events(), [{ type: 'verification_resent', detail: 'P01' }]);
+    });
+
+    it('resend has no rate limit for the researcher', async () => {
+      const mailer = await startEmail();
+      await unverified();
+      for (let i = 0; i < 5; i += 1) assert.deepEqual((await admin('POST', '/api/admin/accounts/P01/resend-verification')).body, { sent: true });
+      assert.equal(mailer.sent.length, 6);
+    });
+
+    it('resend says { sent: false } when the mail server fails', async () => {
+      await startEmail(fakeMailer({ fail: true }));
+      await unverified();
+      const res = await admin('POST', '/api/admin/accounts/P01/resend-verification');
+      assert.equal(res.status, 200);
+      assert.deepEqual(res.body, { sent: false });
+    });
+
+    it('resend is 409 already_verified for a verified account and sends nothing', async () => {
+      const mailer = await startEmail();
+      await unverified();
+      await admin('POST', '/api/admin/accounts/P01/verify');
+      const res = await admin('POST', '/api/admin/accounts/P01/resend-verification');
+      assert.equal(res.status, 409);
+      assert.equal(res.body.error.code, 'already_verified');
+      assert.equal(mailer.sent.length, 1);
+    });
+
+    it('resend is 503 email_off without a mailer', async () => {
+      await start();
+      await signup();
+      const res = await admin('POST', '/api/admin/accounts/P01/resend-verification');
+      assert.equal(res.status, 503);
+      assert.equal(res.body.error.code, 'email_off');
+    });
+
+    it('verify and resend need the PIN', async () => {
+      const mailer = await startEmail();
+      await unverified();
+      for (const action of ['verify', 'resend-verification']) {
+        for (const pin of [undefined, 'wrong-pin']) {
+          t.now = new Date(Date.parse(t.now) + 2 * 60_000).toISOString(); // past any PIN lockout
+          const res = await api('POST', `/api/admin/accounts/P01/${action}`, { pin });
+          assert.equal(res.status, 401, `${action} pin=${pin}`);
+        }
+      }
+      assert.equal(mailer.sent.length, 1);
+      assert.equal(events().length, 0);
+      assert.equal(t.db.prepare('SELECT email_verified FROM accounts').get().email_verified, 0);
+    });
+
+    it('an unknown study ID is 404 for verify and resend', async () => {
+      const mailer = await startEmail();
+      await unverified();
+      for (const action of ['verify', 'resend-verification']) {
+        const res = await admin('POST', `/api/admin/accounts/P77/${action}`);
+        assert.equal(res.status, 404, action);
+        assert.equal(res.body.error.message, 'No account with that study ID.');
+      }
+      assert.equal(mailer.sent.length, 1);
+      assert.equal(events().length, 0);
+    });
   });
 });

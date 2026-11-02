@@ -60,6 +60,13 @@ export default function AdminAccounts() {
       }
     });
 
+  const resend = (a) =>
+    run(async () => {
+      const { sent } = await api.resendVerificationFor(a.code);
+      if (sent) setMessage(`Sent a new verification link to ${a.email}.`);
+      else setProblem('The email could not be sent. The server log says why. You can use Mark verified instead.');
+    });
+
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(temporary.password);
@@ -88,6 +95,17 @@ export default function AdminAccounts() {
         Emails are shown here only. They are never in the export or shown to other students.
         {data ? ` A device counts as active for ${data.timeout_s} seconds after its last activity.` : ''}
       </p>
+      {data?.email &&
+        (data.email.configured ? (
+          <p className="muted">
+            Email is set up. Links in emails open {data.email.link_base}
+            {data.email.link_from_env ? '' : " (PUBLIC_URL is not set: this computer's Wi-Fi address)"}.
+          </p>
+        ) : (
+          <Notice tone="warn">
+            Email is not set up, so new sign-ups are not asked to verify and Forgot password is off. Set SMTP_HOST, SMTP_USER and SMTP_PASS in .env, then restart the server.
+          </Notice>
+        ))}
       {problem && <Notice onDismiss={() => setProblem(null)}>{problem}</Notice>}
       {temporary && (
         <Notice
@@ -150,6 +168,21 @@ export default function AdminAccounts() {
                       </div>
                     ) : (
                       <div className="accounts-actions">
+                        {a.verified === false && !a.test && (
+                          <button
+                            type="button"
+                            className="btn btn--quiet btn--small"
+                            disabled={busy}
+                            onClick={() => run(() => api.markVerified(a.code).then(() => setMessage(`${a.email} is verified.`)))}
+                          >
+                            Mark verified
+                          </button>
+                        )}
+                        {a.verified === false && !a.test && data.email?.configured && (
+                          <button type="button" className="btn btn--quiet btn--small" disabled={busy} onClick={() => resend(a)}>
+                            Resend email
+                          </button>
+                        )}
                         <button type="button" className="btn btn--quiet btn--small" disabled={busy} onClick={() => setPending({ code: a.code, email: a.email, kind: 'reset' })}>
                           Reset password
                         </button>

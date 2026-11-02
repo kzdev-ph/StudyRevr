@@ -1,9 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { clearFailedLogins, findAccountByCode, listAccounts, setPassword, setTestLogin } from '../auth/accounts.js';
+import { markVerified } from '../auth/email-tokens.js';
 import { hashPassword, PASSWORD_MAX, PASSWORD_MIN, temporaryPassword } from '../auth/passwords.js';
 import { revokeSessions } from '../auth/sessions.js';
 import { HttpError } from '../middleware/errors.js';
+import { sendVerifyEmail } from '../services/account-email.js';
 import { logAdminEvent } from '../services/backup.js';
 import { sessionTimeoutSeconds } from '../services/settings.js';
 
@@ -16,7 +18,7 @@ const NO_ACCOUNT = 'No account with that study ID.';
 
 // The researcher's account list (Admin > Accounts), behind the PIN. Mounted at /api/admin. Emails and study IDs are
 // shown together here and nowhere else; a temporary password is returned once and never logged or stored in plain text.
-export function adminAccountsRouter({ db, clock = () => new Date(), requireAdmin }) {
+export function adminAccountsRouter({ db, clock = () => new Date(), requireAdmin, mailer, linkBase, publicUrlSet, sendCap }) {
   const router = Router();
   router.use(requireAdmin);
 
@@ -29,10 +31,36 @@ export function adminAccountsRouter({ db, clock = () => new Date(), requireAdmin
   router.get('/accounts', (_req, res) => {
     const timeout = sessionTimeoutSeconds(db);
     // emails: never kept by a browser or proxy cache
-    res.set('cache-control', 'no-store').json({ timeout_s: timeout, accounts: listAccounts(db, clock(), timeout * 1000) });
+    // email: only whether it is set up and the public base of its links, never the mail host, user, password or sender
+    res.set('cache-control', 'no-store').json({
+      timeout_s: timeout,
+      accounts: listAccounts(db, clock(), timeout * 1000),
+      email: { configured: mailer.configured, link_base: linkBase, link_from_env: publicUrlSet },
+    });
+  });
+
+  // For someone whose email link cannot be used: the researcher vouches for the address. Safe to repeat.
+  router.post('/accounts/:code/verify', (req, res) => {
+    const account = accountOr404(req.params.code);
+    db.transaction(() => {
+      markVerified(db, account.id);
+      logAdminEvent(db, 'email_verified_by_admin', account.code, clock());
+    })();
+    res.json({ verified: true });
+  });
+
+  // A new verification email, with no rate limit (the researcher is the one asking).
+  router.post('/accounts/:code/resend-verification', async (req, res) => {
+    const account = accountOr404(req.params.code);
+    if (!mailer.configured) throw new HttpError(503, 'Email is not set up on this server. Use Mark verified instead.', { code: 'email_off' });
+    if (account.email_verified) throw new HttpError(409, 'This account is already verified.', { code: 'already_verified' });
+    const now = clock();
+    logAdminEvent(db, 'verification_resent', account.code, now);
+    res.json({ sent: await sendVerifyEmail({ db, mailer, linkBase, account, now, sendCap }) });
   });
 
   // A temporary password: they are signed out, any lockout is lifted, and they choose a new password at the next sign-in.
+  // The researcher vouches for them, so the account counts as verified, and an emailed reset link no longer works.
   router.post('/accounts/:code/reset-password', async (req, res) => {
     const account = accountOr404(req.params.code);
     const temporary = temporaryPassword();
@@ -43,6 +71,8 @@ export function adminAccountsRouter({ db, clock = () => new Date(), requireAdmin
       const now = clock();
       setPassword(db, account.id, hash, { mustChange: true, now });
       clearFailedLogins(db, account.id);
+      markVerified(db, account.id);
+      db.prepare("DELETE FROM email_tokens WHERE account_id = ? AND purpose = 'reset'").run(account.id);
       revokeSessions(db, { accountId: account.id, participantId: account.participant_id, reason: 'password_reset', now });
       logAdminEvent(db, 'password_reset', account.code, now);
     })();

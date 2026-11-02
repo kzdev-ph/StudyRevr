@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 import { z } from 'zod';
 import { parseTemperature } from './ai/providers.js';
+import { parsePublicUrl } from './mail/links.js';
 
 export const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -46,6 +47,16 @@ export function loadConfig(env = process.env) {
     adminPin: (env.ADMIN_PIN || '').trim(),
     // The built app (npm run build); served by the API server when it exists, so phones need one address.
     clientDist: path.join(ROOT_DIR, 'client', 'dist'),
+    // Outgoing email (verify and reset links). Without host, user and pass no mail is sent.
+    mail: {
+      host: (env.SMTP_HOST || '').trim(),
+      port: positiveInt(env.SMTP_PORT) || 465,
+      user: (env.SMTP_USER || '').trim(),
+      pass: (env.SMTP_PASS || '').replace(/\s+/g, ''), // Gmail shows app passwords in groups of four
+      from: (env.MAIL_FROM || '').trim(),
+    },
+    // The address links in emails point at; empty: this machine's LAN address.
+    publicUrl: parsePublicUrl(env.PUBLIC_URL),
     ai: {
       provider: (env.AI_PROVIDER || '').trim().toLowerCase(), // google (default) | nvidia-nim | openrouter | ollama | llamacpp | custom
       // Optional overrides; they apply to the provider named by AI_PROVIDER (or inferred from AI_BASE_URL).

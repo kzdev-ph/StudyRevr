@@ -9,6 +9,7 @@ const hhmm = (iso) => {
 export function accountStatus(account) {
   if (account.test) return 'Your test login';
   if (account.locked_until) return `Locked until ${hhmm(account.locked_until)}`;
+  if (account.verified === false) return 'Email not verified';
   if (account.must_change_password) return 'Must change password';
   if (account.active_now) return 'Active now';
   if (account.signed_in) return 'Signed in';

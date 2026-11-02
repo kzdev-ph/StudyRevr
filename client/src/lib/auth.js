@@ -55,7 +55,8 @@ export function acceptLogin({ token: value, account: who }) {
 const NOTICES = {
   signed_out_elsewhere: 'You were signed out because your account was opened on another device.',
   signed_out_by_admin: 'Your teacher signed you out. Sign in again.',
-  password_reset: 'Your teacher reset your password. Sign in with the new one.',
+  password_reset: 'Your password was reset. Sign in with the new one.',
+  email_unverified: 'Verify your email first: open the link we sent to your Gmail inbox.',
 };
 const SIGN_IN_AGAIN = 'Please sign in again.';
 
@@ -65,6 +66,19 @@ export function takeSignedOutNotice() {
   notice.set(null);
   return message;
 }
+
+// A screen sets the message for the sign-in screen itself (e.g. after a password reset by email link).
+export const setSignInNotice = (message) => notice.set(message);
+
+// A screen asks for the sign-in screen to open on its Forgot password form (e.g. a reset link that has expired).
+let forgotRequested = false;
+export const requestForgotForm = () => {
+  forgotRequested = true;
+};
+export const peekForgotRequest = () => forgotRequested;
+export const clearForgotRequest = () => {
+  forgotRequested = false;
+};
 
 // ---- signing out ---------------------------------------------------------------------------------------------------
 const WAIT_MS = 2000;

@@ -4,6 +4,8 @@ import express from 'express';
 import { createAdminGuard } from './middleware/admin.js';
 import { errorHandler, notFound } from './middleware/errors.js';
 import { createAiClient, describeAttempt } from './ai/client.js';
+import { fallbackBase } from './mail/links.js';
+import { createMailer } from './mail/mailer.js';
 import { createPipelineRunner } from './pipeline/runner.js';
 import { adminRouter } from './routes/admin.js';
 import { adminAccountsRouter } from './routes/admin-accounts.js';
@@ -17,13 +19,18 @@ import { sectionsRouter } from './routes/sections.js';
 import { sessionsRouter } from './routes/sessions.js';
 import { settingsRouter } from './routes/settings.js';
 import { statsRouter } from './routes/stats.js';
+import { createSendCap } from './services/account-email.js';
 import { createAccess } from './services/lesson-access.js';
 import { resolveAiConfig } from './services/settings.js';
 
 // `ai` and `runner` default to the real provider client and background job runner; tests inject stubs, and a fake
 // `clock` (() => Date) for the flashcard scheduler, the quiz, sessions and stats, and `random` (() => [0, 1)) for quiz
-// shuffles.
-export function createApp(db, config, { ai, runner, clock = () => new Date(), random } = {}) {
+// shuffles. `mailer` defaults to the real one built from config.mail (sends nothing when email is not set up); tests
+// inject a fake so no mail is ever sent.
+export function createApp(db, config, { ai, runner, clock = () => new Date(), random, mailer } = {}) {
+  mailer ??= createMailer(config.mail);
+  // where the links in emails point: PUBLIC_URL, else this computer's address on the Wi-Fi
+  const linkBase = config.publicUrl || fallbackBase(config.port ?? 3001);
   ai ??= createAiClient({
     getConfig: () => resolveAiConfig(db, config.ai),
     // every HTTP attempt to the provider (start, end, failure reason), so a hung or retried request shows in the log
@@ -41,7 +48,13 @@ export function createApp(db, config, { ai, runner, clock = () => new Date(), ra
 
   const app = express();
   app.set('clock', clock); // read by middleware/participant.js for last-seen updates
+  app.set('linkBase', linkBase);
+  app.set('emailOn', mailer.configured); // read by middleware/participant.js: unverified accounts are only refused when email is on
+  const sendCap = createSendCap(); // one hourly cap on all verification and reset emails
   app.disable('x-powered-by');
+  // The Cloudflare tunnel connects from this computer, so only a request that arrives from the loopback address has its
+  // X-Forwarded-For believed: req.ip is then the student's own IP. Anyone else connecting directly cannot fake it.
+  app.set('trust proxy', 'loopback');
   app.use(express.json({ limit: '1mb' }));
 
   // Admin routes (ADMIN_PIN): lesson upload / retry / delete, making cards, participant codes, AI settings, export.
@@ -58,10 +71,10 @@ export function createApp(db, config, { ai, runner, clock = () => new Date(), ra
     app.use(prefix, ...handlers);
   };
 
-  app.get('/api/health', (_req, res) => res.json({ ok: true, admin: Boolean(config.adminPin) }));
+  app.get('/api/health', (_req, res) => res.json({ ok: true, admin: Boolean(config.adminPin), email: Boolean(mailer.configured) }));
   mount('/api/admin', adminRouter({ db, ai, runner, clock, requireAdmin }));
-  mount('/api/admin', adminAccountsRouter({ db, clock, requireAdmin }));
-  mount('/api', authRouter({ db, clock }));
+  mount('/api/admin', adminAccountsRouter({ db, clock, requireAdmin, mailer, linkBase, publicUrlSet: Boolean(config.publicUrl), sendCap }));
+  mount('/api', authRouter({ db, clock, mailer, linkBase, emailOn: mailer.configured, sendCap }));
   mount('/api', sessionsRouter({ db, clock, access }));
   mount('/api', statsRouter({ db, clock }));
   mount('/api', flashcardsRouter({ db, runner, clock, requireAdmin, access }));

@@ -121,6 +121,8 @@ describe('research export', () => {
     const EMAIL = 'maria.santos.export@example.test';
     t.db.prepare('DELETE FROM accounts WHERE participant_id = ?').run(ids.P01);
     t.db.prepare("INSERT INTO accounts (participant_id, email, password_hash, created_at) VALUES (?, ?, 'scrypt$16384$8$1$c2FsdA$aGFzaA', '2026-10-05T04:00:00.000Z')").run(ids.P01, EMAIL);
+    const linkHash = 'e'.repeat(64); // an unused email link (verify) of that account: its hash must not be exported either
+    t.db.prepare("INSERT INTO email_tokens (account_id, purpose, token_hash, created_at, expires_at) VALUES ((SELECT id FROM accounts WHERE participant_id = ?), 'verify', ?, '2026-10-05T04:00:00.000Z', '2026-10-06T04:00:00.000Z')").run(ids.P01, linkHash);
     const res = await t.call('GET', '/api/admin/export.zip?include_p00=1', { pin: TEST_PIN, raw: true });
     assert.equal(res.status, 200);
     const zip = await JSZip.loadAsync(Buffer.from(await res.arrayBuffer()));
@@ -129,6 +131,7 @@ describe('research export', () => {
       const text = await zip.file(name).async('string');
       assert.ok(!text.includes('@'), `"@" in ${name}`);
       assert.ok(!text.includes('scrypt$') && !text.includes('maria.santos'), `account data in ${name}`);
+      assert.ok(!text.includes(linkHash), `email link hash in ${name}`);
     }
     const readme = await zip.file('README.txt').async('string');
     assert.match(readme, /study ID only/);

@@ -106,7 +106,7 @@ export const studyFetch = (url, init = {}) => globalThis.fetch(url, { ...init, h
 //   await t.call('POST', '/api/sessions', { as: 'P01', body: {...} })   // as: participant code; pin: admin PIN
 //   t.now = '...'  moves the clock;  await t.close()
 // `showTaglish` (default true here, false in the app) sets admin's "Show Filipino/Taglish to students".
-export async function startStudyApp({ now = '2026-10-05T04:00:00.000Z', adminPin = TEST_PIN, ai, random, runner = { enqueue() {} }, db: given, showTaglish = true } = {}) {
+export async function startStudyApp({ now = '2026-10-05T04:00:00.000Z', adminPin = TEST_PIN, ai, random, runner = { enqueue() {} }, db: given, showTaglish = true, mailer, publicUrl } = {}) {
   const { openDb, runMigrations } = await import('../src/db/index.js');
   const { createApp } = await import('../src/app.js');
   const db = given ?? openDb(':memory:');
@@ -114,7 +114,7 @@ export async function startStudyApp({ now = '2026-10-05T04:00:00.000Z', adminPin
   if (showTaglish) db.prepare("INSERT INTO settings (key, value) VALUES ('show_taglish', 'true') ON CONFLICT(key) DO UPDATE SET value = 'true'").run();
   const t = { db, now };
   ai ??= { async generateJSON() { throw new Error('no AI in this test'); } };
-  const app = createApp(db, { maxUploadBytes: 1024 * 1024, adminPin, clientDist: null }, { ai, runner, clock: () => new Date(t.now), random });
+  const app = createApp(db, { maxUploadBytes: 1024 * 1024, adminPin, clientDist: null, publicUrl }, { ai, runner, clock: () => new Date(t.now), random, mailer });
   const server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
   const base = `http://127.0.0.1:${server.address().port}`;
   t.base = base;
@@ -151,6 +151,14 @@ export function seedLesson(db, { title = 'Inquiry', n = 4, created = '2026-10-01
   db.prepare("INSERT INTO sections (lesson_id, position, title, content) VALUES (?, 0, 'One', 'c'), (?, 1, 'Two', 'c')").run(lessonId, lessonId);
   return { lessonId, cards };
 }
+
+// A mailer that sends nothing: every message is kept in `sent`; `fail: true` makes each send answer false.
+export function fakeMailer({ fail = false } = {}) {
+  const sent = [];
+  return { configured: true, sent, async send(message) { sent.push(message); return !fail; } };
+}
+// The one-time token in the newest email's link of that kind ('verify' | 'reset'), or null.
+export const linkToken = (mailer, kind) => new RegExp(`/#/${kind}/([A-Za-z0-9_-]{43})`).exec(mailer.sent.at(-1)?.text ?? '')?.[1] ?? null;
 
 export const addCodes = (db, ...codes) => {
   const insert = db.prepare('INSERT OR IGNORE INTO participants (code) VALUES (?)');

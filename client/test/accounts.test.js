@@ -13,6 +13,12 @@ describe('accountStatus', () => {
     assert.match(accountStatus({ ...base, locked_until: '2026-10-05T04:30:00.000Z' }), /^Locked until \d\d:\d\d$/);
     assert.equal(accountStatus({ ...base, test: true, code: 'P00', signed_in: true }), 'Your test login');
   });
+  it('says when the email is not verified, and leaves old rows (no verified field) alone', () => {
+    assert.equal(accountStatus({ ...base, verified: false }), 'Email not verified');
+    assert.equal(accountStatus({ ...base, verified: true }), 'Signed out');
+    assert.equal(accountStatus(base), 'Signed out');
+    assert.match(accountStatus({ ...base, verified: false, locked_until: '2026-10-05T04:30:00.000Z' }), /^Locked/);
+  });
   it('a lockout is shown ahead of the other states', () => {
     assert.match(accountStatus({ ...base, signed_in: true, active_now: true, must_change_password: true, locked_until: '2026-10-05T04:30:00.000Z' }), /^Locked/);
   });

@@ -71,7 +71,7 @@ describe('admin PIN', () => {
         assert.equal(res.body.error.code, 'admin_off');
       }
     }
-    assert.deepEqual((await t.call('GET', '/api/health')).body, { ok: true, admin: false });
+    assert.deepEqual((await t.call('GET', '/api/health')).body, { ok: true, admin: false, email: false });
   });
 
   it('locks an address out for a minute after 5 wrong PINs', async () => {

@@ -6,7 +6,7 @@ const SIGN_IN_AGAIN = 'Please sign in again.';
 const REVOKED = {
   signed_out_elsewhere: 'You were signed out because your account was opened on another device.',
   signed_out_by_admin: 'Your teacher signed you out. Sign in again.',
-  password_reset: 'Your teacher reset your password. Sign in with the new one.',
+  password_reset: 'Your password was reset. Sign in with the new one.',
 };
 
 const memo = new WeakMap(); // req -> the participant already worked out for it
@@ -50,6 +50,8 @@ function resolve(db, req) {
   const session = bearerSession(db, req);
   if (session) {
     if (session.must_change_password) throw new HttpError(403, 'Choose a new password first.', { code: 'password_change_required' });
+    // only when email is on (app.js sets 'emailOn'): without a mail server nobody could ever verify
+    if (req.app.get('emailOn') && !session.email_verified) throw new HttpError(403, 'Verify your email first: open the link we sent to your Gmail inbox.', { code: 'email_unverified' });
     touch(db, session, nowOf(req));
     return { id: session.participant_id, code: session.code, accountId: session.account_id, sessionId: session.id };
   }

@@ -113,7 +113,7 @@ describe('participants API', () => {
     addCodes(t.db, 'P01');
     const { lessonId } = seedLesson(t.db); // a lesson that exists, so a route can't answer 404 before it asks who is calling
     const { routes } = liveRoutes(t.app);
-    const open = new Set(['GET /api/health', 'POST /api/auth/signup', 'POST /api/auth/login']);
+    const open = new Set(['GET /api/health', 'POST /api/auth/signup', 'POST /api/auth/login', 'POST /api/auth/verify', 'POST /api/auth/verify/resend', 'POST /api/auth/forgot', 'POST /api/auth/reset/check', 'POST /api/auth/reset']);
     const guarded = (full) => ['/api/admin', '/api/settings'].some((p) => full === p || full.startsWith(`${p}/`));
     // lesson routes behind the admin PIN instead of a sign-in: still refused, but with admin_pin
     const pinRoutes = new Set(['POST /api/lessons/:id/flashcards/generate', 'POST /api/lessons/:id/quiz-options', 'POST /api/lessons/:id/section-versions', 'POST /api/lessons/:id/share']);

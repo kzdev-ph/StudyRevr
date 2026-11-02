@@ -1,6 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { isAdminRoute, parseRoute, paths, tabOf } from '../src/lib/router.js';
+import { isAdminRoute, isPublicRoute, parseRoute, paths, tabOf } from '../src/lib/router.js';
+
+const LINK = 'A'.repeat(20) + '-_' + '9'.repeat(21); // 43 characters
 
 describe('parseRoute', () => {
   it('opens the library by default', () => {
@@ -33,6 +35,21 @@ describe('parseRoute', () => {
     for (const hash of ['#/admin', '#/admin/participants/P03', '#/admin/lessons/4']) assert.equal(isAdminRoute(parseRoute(hash)), true);
     for (const hash of ['#/review', '#/review/4', '#/settings', '#/quiz/4', '#/stats', '#/flashcards/all']) assert.equal(isAdminRoute(parseRoute(hash)), false);
     assert.equal(tabOf(parseRoute('#/admin/lessons/4')), null);
+  });
+  it('parses the email links, keeping only a well-formed token', () => {
+    assert.equal(LINK.length, 43);
+    assert.deepEqual(parseRoute(`#/verify/${LINK}`), { name: 'verify', token: LINK });
+    assert.deepEqual(parseRoute(`#/reset/${LINK}`), { name: 'reset', token: LINK });
+    assert.deepEqual(parseRoute('#/verify/short'), { name: 'verify', token: null });
+    assert.deepEqual(parseRoute(`#/reset/${LINK}x`), { name: 'reset', token: null });
+    assert.deepEqual(parseRoute('#/reset'), { name: 'reset', token: null });
+  });
+  it('knows which routes are public, and that they are not admin screens', () => {
+    for (const hash of [`#/verify/${LINK}`, '#/verify', `#/reset/${LINK}`]) {
+      assert.equal(isPublicRoute(parseRoute(hash)), true);
+      assert.equal(isAdminRoute(parseRoute(hash)), false);
+    }
+    for (const hash of ['#/review', '#/admin', '#/settings']) assert.equal(isPublicRoute(parseRoute(hash)), false);
   });
   it('maps routes to bottom tabs', () => {
     assert.equal(tabOf(parseRoute('#/review/3')), 'review');

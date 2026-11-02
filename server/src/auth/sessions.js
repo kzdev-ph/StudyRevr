@@ -32,7 +32,7 @@ export function findByToken(db, token) {
   return (
     db
       .prepare(
-        `SELECT s.id, s.account_id, a.participant_id, p.code, a.email, a.must_change_password, s.last_seen_at, s.revoked_at, s.revoked_reason
+        `SELECT s.id, s.account_id, a.participant_id, p.code, a.email, a.must_change_password, a.email_verified, s.last_seen_at, s.revoked_at, s.revoked_reason
          FROM auth_sessions s JOIN accounts a ON a.id = s.account_id JOIN participants p ON p.id = a.participant_id
          WHERE s.token_hash = ?`,
       )
@@ -52,7 +52,8 @@ export function touch(db, session, now) {
 // Revokes the account's live session and closes the participant's open study sessions. Returns how many login
 // sessions were revoked (0 or 1). With `sessionId` only that login session is revoked, and when it was already gone
 // (signed in elsewhere in the meantime) the study sessions are left alone, as they belong to the newer login.
-export function revokeSessions(db, { accountId, participantId, reason, now, sessionId }) {
+// `studyEndReason` overrides the study-session end reason that `reason` maps to.
+export function revokeSessions(db, { accountId, participantId, reason, now, sessionId, studyEndReason }) {
   return db.transaction(() => {
     const revoked = sessionId
       ? db
@@ -61,7 +62,7 @@ export function revokeSessions(db, { accountId, participantId, reason, now, sess
       : db
           .prepare('UPDATE auth_sessions SET revoked_at = ?, revoked_reason = ? WHERE account_id = ? AND revoked_at IS NULL')
           .run(now.toISOString(), reason, accountId).changes;
-    if (revoked || !sessionId) endOpenSessions(db, { participantId, reason: STUDY_END_REASON[reason], now });
+    if (revoked || !sessionId) endOpenSessions(db, { participantId, reason: studyEndReason ?? STUDY_END_REASON[reason], now });
     return revoked;
   })();
 }

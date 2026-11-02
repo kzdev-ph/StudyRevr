@@ -6,6 +6,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openDb, runMigrations } from '../src/db/index.js';
+import { issueEmailToken } from '../src/auth/email-tokens.js';
+import { tokenHash } from '../src/auth/sessions.js';
 import { addCodes, seedLesson, startStudyApp } from './helpers.js';
 
 const SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'scripts', 'delete-participant.js');
@@ -155,6 +157,24 @@ describe('npm run participant:delete', () => {
       for (const suffix of ['', '-wal']) {
         if (fs.existsSync(dbPath + suffix)) assert.ok(!fs.readFileSync(dbPath + suffix).includes(Buffer.from(EMAIL)), `email left in ${suffix || 'db file'}`);
       }
+    });
+
+    it('removes their email links (verify / reset) too and leaves the other participant\'s', async () => {
+      let db = openDb(dbPath);
+      const issue = (code) => issueEmailToken(db, { accountId: db.prepare('SELECT a.id FROM accounts a JOIN participants p ON p.id = a.participant_id WHERE p.code = ?').get(code).id, purpose: 'verify', now: new Date() });
+      const hash = tokenHash(issue('P01'));
+      issue('P02');
+      db.close();
+      assert.ok(fs.readFileSync(dbPath).includes(Buffer.from(hash)), 'the scan can see the link hash before');
+
+      const res = await run(dbPath, ['P01', '--yes']);
+      assert.equal(res.code, 0, res.out);
+      assert.match(res.out, /1 +email links \(verify \/ reset\)/);
+      db = openDb(dbPath);
+      assert.equal(db.prepare('SELECT COUNT(*) n FROM email_tokens').get().n, 1, 'only the other participant keeps a link');
+      assert.equal(db.prepare('SELECT COUNT(*) n FROM email_tokens WHERE token_hash = ?').get(hash).n, 0);
+      db.close();
+      assert.ok(!fs.readFileSync(dbPath).includes(Buffer.from(hash)), 'the link hash is not left in the file');
     });
 
     it('deleting by study ID removes the account too', async () => {

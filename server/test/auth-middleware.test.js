@@ -1,7 +1,7 @@
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { revokeSessions } from '../src/auth/sessions.js';
-import { addCodes, seedLesson, startStudyApp, tokenFor } from './helpers.js';
+import { addCodes, fakeMailer, seedLesson, startStudyApp, tokenFor } from './helpers.js';
 
 const NOON = '2026-10-05T04:00:00.000Z';
 
@@ -43,7 +43,7 @@ describe('token auth in the middleware', () => {
       ['signed_out', 'session_unknown', 'Please sign in again.'],
       ['signed_out_elsewhere', 'signed_out_elsewhere', 'You were signed out because your account was opened on another device.'],
       ['signed_out_by_admin', 'signed_out_by_admin', 'Your teacher signed you out. Sign in again.'],
-      ['password_reset', 'password_reset', 'Your teacher reset your password. Sign in with the new one.'],
+      ['password_reset', 'password_reset', 'Your password was reset. Sign in with the new one.'],
     ];
     for (const [reason, code, message] of cases) {
       const token = tokenFor(t.db, 'P01', new Date(t.now));
@@ -72,6 +72,26 @@ describe('token auth in the middleware', () => {
     const { error } = await res.json();
     assert.equal(error.code, 'password_change_required');
     assert.equal(error.message, 'Choose a new password first.');
+  });
+
+  it('an account whose email is not verified is 403 email_unverified, but /api/auth/me still answers', async () => {
+    t = await startStudyApp({ now: NOON, mailer: fakeMailer() }); // the refusal only applies with email on
+    addCodes(t.db, 'P01', 'P02');
+    const token = tokenFor(t.db, 'P01', new Date(t.now));
+    t.db.prepare("UPDATE accounts SET email_verified = 0 WHERE email = 'p01@test.invalid'").run();
+    const res = await withToken(token, '/api/stats');
+    assert.equal(res.status, 403);
+    const { error } = await res.json();
+    assert.equal(error.code, 'email_unverified');
+    assert.equal(error.message, 'Verify your email first: open the link we sent to your Gmail inbox.');
+    assert.equal((await withToken(token, '/api/auth/me')).status, 200);
+  });
+
+  it('with email off an unverified account is let through', async () => {
+    await start(); // no mailer
+    const token = tokenFor(t.db, 'P01', new Date(t.now));
+    t.db.prepare("UPDATE accounts SET email_verified = 0 WHERE email = 'p01@test.invalid'").run();
+    assert.equal((await withToken(token, '/api/stats')).status, 200);
   });
 
   it('last_seen_at moves only after 10 seconds on the clock', async () => {

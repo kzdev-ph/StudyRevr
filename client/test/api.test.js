@@ -11,7 +11,7 @@ import { getToken, setToken, signOut, takeSignedOutNotice } from '../src/lib/aut
 // always admin: they send the PIN
 const ADMIN = [
   'listLessonsWithCounts', 'shareLesson', 'makeQuizOptions', 'reviewQuiz', 'lessonLeaks', 'regenerateCard', 'prepareVersions', 'makeFlashcards',
-  'adminParticipants', 'adminAccounts', 'resetPassword', 'signOutAccount', 'setTestLogin', 'adminStats', 'appSettings', 'saveAppSettings', 'aiSettings', 'saveAiSettings', 'aiModels',
+  'adminParticipants', 'adminAccounts', 'resetPassword', 'signOutAccount', 'markVerified', 'resendVerificationFor', 'setTestLogin', 'adminStats', 'appSettings', 'saveAppSettings', 'aiSettings', 'saveAiSettings', 'aiModels',
   'testAi', 'aiProblems', 'deleteStudentKeys', 'downloadBackup', 'lastBackup', 'downloadExport',
 ];
 // admin only when called with { admin: true } (the student's own use of the same route sends none)
@@ -22,6 +22,8 @@ const STUDENT = [
   'undoAnswer', 'listQuizzes', 'startQuiz', 'answerQuestion', 'finishQuiz', 'signup', 'login', 'logout', 'me', 'changePassword', 'startSession', 'reportSession', 'logEvent',
   'logSettingEvent', 'getStats', 'myAi', 'myAiModels', 'saveMyKey', 'removeMyKey',
 ];
+// public (signed-out screens, email links): neither the login token nor the PIN
+const PUBLIC = ['health', 'resendVerification', 'verifyEmail', 'forgotPassword', 'checkResetLink', 'resetWithLink'];
 // sends the PIN it is given (to check it), not the stored one
 const OWN_PIN = ['unlockAdmin'];
 
@@ -89,8 +91,15 @@ describe('the admin PIN header', () => {
     assert.equal(headers['x-admin-pin'], undefined);
     assert.equal(headers.authorization, 'Bearer t1');
   });
+  it('is not sent, nor the login token, by a public call', async () => {
+    for (const name of PUBLIC) {
+      const headers = await call(name, ...args(name));
+      assert.equal(headers['x-admin-pin'], undefined, name);
+      assert.equal(headers.authorization, undefined, name);
+    }
+  });
   it('classifies every api function', () => {
-    const listed = [...ADMIN, ...EITHER, ...STUDENT, ...OWN_PIN].sort();
+    const listed = [...ADMIN, ...EITHER, ...STUDENT, ...PUBLIC, ...OWN_PIN].sort();
     assert.deepEqual(Object.keys(api).sort(), listed);
     assert.equal(new Set(listed).size, listed.length, 'a function is in two lists');
   });
@@ -142,5 +151,17 @@ describe('a refused login token', () => {
     refuse(401, 'login_failed');
     await assert.rejects(api.login({ email: 'a@b.co', password: 'x' }), { code: 'login_failed' });
     assert.equal(getToken(), 't1');
+  });
+  it('never signs this device out for a public call', async () => {
+    refuse(403, 'email_unverified');
+    await assert.rejects(api.verifyEmail('x'), { code: 'email_unverified' });
+    assert.equal(getToken(), 't1');
+    assert.equal(takeSignedOutNotice(), null);
+  });
+  it('signs the student out when a signed-in call says the email is not verified', async () => {
+    refuse(403, 'email_unverified');
+    await assert.rejects(api.listLessons());
+    assert.equal(getToken(), null);
+    assert.match(takeSignedOutNotice(), /Verify your email/);
   });
 });
