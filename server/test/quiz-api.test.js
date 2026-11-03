@@ -40,10 +40,11 @@ describe('quiz API', () => {
 
   const addLesson = (title, status = 'ready') =>
     Number(db.prepare("INSERT INTO lessons (title, filename, raw_text, word_count, status) VALUES (?, ?, 'The topic: alpha, beta and gamma.', 200, ?)").run(title, `${title}.pptx`, status).lastInsertRowid);
-  const addCards = (lessonId, n, kind = 'concept') => {
+  // `question: false` leaves the "?" off a concept front: a question ending in one is Yes/No only through a reviewed pair
+  const addCards = (lessonId, n, kind = 'concept', question = true) => {
     const insert = db.prepare("INSERT INTO flashcards (lesson_id, kind, front, back, evidence, position) VALUES (?, ?, ?, ?, ?, ?)");
     return Array.from({ length: n }, (_, i) =>
-      Number(insert.run(lessonId, kind, kind === 'term' ? `Term ${i + 1}` : `Question ${i + 1} about the topic?`, `Topic ${kind} n${i + 1}.`, `quote ${kind} ${i + 1}`, i + 1).lastInsertRowid),
+      Number(insert.run(lessonId, kind, kind === 'term' ? `Term ${i + 1}` : `Question ${i + 1} about the topic${question ? '?' : ''}`, `Topic ${kind} n${i + 1}.`, `quote ${kind} ${i + 1}`, i + 1).lastInsertRowid),
     );
   };
   const flashcardState = () => db.prepare('SELECT id, state, ease, interval, due_at, reps, lapses, step FROM flashcards ORDER BY id').all();
@@ -194,7 +195,7 @@ describe('quiz API', () => {
       throw new AiError('rate_limited', 'The AI provider is rate limiting requests. Try again shortly.', 429);
     });
     const id = addLesson('Inquiry');
-    addCards(id, 5);
+    addCards(id, 5, 'concept', false);
     const res = await send('POST', `/api/lessons/${id}/quiz/attempts`);
     assert.equal(res.status, 201);
     assert.equal(res.body.questions.length, 5);
@@ -372,9 +373,9 @@ describe('quiz API', () => {
   it('lists lessons with the questions they support and the best finished score', async () => {
     await start();
     const a = addLesson('Inquiry');
-    addCards(a, 12);
+    addCards(a, 12, 'concept', false);
     const b = addLesson('Short');
-    addCards(b, 3);
+    addCards(b, 3, 'concept', false);
     const c = addLesson('Empty');
     const { body } = await send('POST', `/api/lessons/${b}/quiz/attempts`);
     for (const q of body.questions) await send('POST', `/api/quiz/attempts/${body.attempt.id}/answers`, { position: q.position, choice: rightChoice(body.attempt.id, q.position) });

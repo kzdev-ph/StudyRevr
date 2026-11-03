@@ -47,13 +47,14 @@ describe('quiz building with true / false pairs', () => {
       for (const q of legacy) assert.ok(!('form' in q), 'no form key without pairs');
     }
     for (const p of quizCandidates(CARDS, { distractors })) {
-      assert.deepEqual(p.yesNo, p.falseClean);
+      // a concept card whose question ends in "?" is never Yes/No without a reviewed pair
+      assert.deepEqual(p.yesNo, p.card.kind === 'concept' ? [] : p.falseClean);
       assert.equal(p.pair, null);
       assert.equal(p.tfForm, null);
     }
   });
 
-  it('an MC-able concept card without a pair is never True/False; a forced card keeps the old form', () => {
+  it('an MC-able concept card without a pair is never True/False; a card with no clean options is left out, not forced into it', () => {
     const statements = new Map();
     for (const seed of SEEDS) {
       const qs = buildQuiz({ cards: CARDS, distractors, statements, random: seeded(seed) });
@@ -62,6 +63,7 @@ describe('quiz building with true / false pairs', () => {
         if (q) assert.equal(q.type, 'mc', `card ${card.id}, seed ${seed}`);
       }
       for (const q of qs.filter((x) => x.type === 'tf')) assert.ok(!MC_CARDS.some((c) => c.id === q.flashcard_id) && !('form' in q));
+      for (const card of FORCED) assert.equal(find(qs, card), undefined, `card ${card.id} ends in "?" and has no pair, seed ${seed}`);
     }
     const cands = quizCandidates(CARDS, { distractors, statements });
     for (const card of MC_CARDS) {
@@ -72,14 +74,10 @@ describe('quiz building with true / false pairs', () => {
     }
     for (const card of FORCED) {
       const p = cands.find((c) => c.card.id === card.id);
-      assert.deepEqual(p.yesNo, p.falseClean);
-      assert.ok(p.yesNo.length > 0);
+      assert.deepEqual(p.yesNo, []);
+      assert.ok(p.falseClean.length > 0, 'falseClean keeps its meaning');
     }
-    const forced = buildQuiz({ cards: CARDS, distractors, statements, random: seeded(3) }).filter((q) => FORCED.some((c) => c.id === q.flashcard_id));
-    for (const q of forced) {
-      assert.equal(q.type, 'tf');
-      assert.ok(!('form' in q));
-    }
+    assert.deepEqual(buildQuiz({ cards: CARDS, distractors, statements, random: seeded(3) }).filter((q) => FORCED.some((c) => c.id === q.flashcard_id)), []);
   });
 
   it('asks an ok pair with both truths across seeds; answer_text is the true sentence', () => {
@@ -169,6 +167,26 @@ describe('quiz building with true / false pairs', () => {
       assert.equal(p.tfForm, null, name);
       assert.ok(!p.yesNo.includes(statements.get(card.id).false_text), name);
     }
+  });
+
+  it('a concept card whose front is "What is X?" is never True/False without a clean pair; with one it can be', () => {
+    const card = { id: 40, kind: 'concept', front: 'What is the topic frame?', back: 'The list of the topic’s members: rivers and canyons.', evidence: 'quote 40' };
+    const cards = [...CARDS, card];
+    // no pair, and a pair that is not reviewed clean (pending): never Yes/No, whatever the seed
+    for (const statements of [new Map(), new Map([[card.id, row(card, { status: 'pending' })]])]) {
+      const p = quizCandidates(cards, { distractors, statements }).find((c) => c.card.id === card.id);
+      assert.deepEqual(p.yesNo, []);
+      assert.ok(p.falseClean.length > 0, 'there are false statements; the rule, not a lack of them, keeps it out');
+      for (const seed of SEEDS) assert.notEqual(find(buildQuiz({ cards, distractors, statements, random: seeded(seed) }), card)?.type, 'tf');
+    }
+    // the same card with a clean pair: Yes/No in the statement form
+    const statements = new Map([[card.id, row(card)]]);
+    const p = quizCandidates(cards, { distractors, statements }).find((c) => c.card.id === card.id);
+    assert.equal(p.tfForm, 'statement');
+    assert.deepEqual(p.yesNo, [statements.get(card.id).false_text]);
+    const seen = SEEDS.map((seed) => find(buildQuiz({ cards, distractors, statements, random: seeded(seed) }), card)).filter((q) => q?.type === 'tf');
+    assert.ok(seen.length > 0, 'asked as True/False for some seed');
+    assert.ok(seen.every((q) => q.form === 'statement'));
   });
 
   it('term and list cards are unchanged', () => {

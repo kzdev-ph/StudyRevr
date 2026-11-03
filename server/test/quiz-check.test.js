@@ -49,7 +49,7 @@ describe('npm run quiz:check', () => {
     assert.equal(code, 0);
     assert.match(out, /Lesson \d+: Photosynthesis basics \(ready\)/);
     assert.match(out, /Lesson \d+: Pag-unlad ng Wika \(ready\)/);
-    assert.equal(out.match(/Clean questions available: 5 of 10/g).length, 2);
+    assert.deepEqual(out.match(/Clean questions available: [0-9]+ of 10/g), ['Clean questions available: 4 of 10', 'Clean questions available: 3 of 10'], 'English 4 and Filipino 3: a "?" question has no Yes/No form without a reviewed pair');
     assert.match(out, /Flashcards that give their answer away \(g, i, j, k\): 1 {2}\[g 1\]/, 'English: card 7 (g)');
     assert.match(out, /Info: term definitions that name their term \(h; the quiz blanks it\): #\d+/, 'English: card 3 (h), information only');
     assert.match(out, /Multiple choice: 4 possible, 2 clean, 2 skipped {2}\[c 2, f 1\]/, 'English: cards 5 (tone; one option also restates the answer) and 6 (length)');
@@ -77,7 +77,7 @@ describe('npm run quiz:check', () => {
     db.close();
     const { code, out } = quizCheck(['--db', dbPath]);
     assert.equal(code, 0);
-    assert.equal(out.match(/Clean questions available: 5 of 10/g).length, 2);
+    assert.deepEqual(out.match(/Clean questions available: [0-9]+ of 10/g), ['Clean questions available: 4 of 10', 'Clean questions available: 3 of 10']);
   });
 
   it('reports the True/False statement pairs, and prints no statements line on a database from before migration 021', () => {
@@ -104,7 +104,7 @@ describe('npm run quiz:check', () => {
     const older = quizCheck(['--db', dbPath]);
     assert.equal(older.code, 0);
     assert.doesNotMatch(older.out, /True\/False statements/);
-    assert.equal(older.out.match(/Clean questions available: 5 of 10/g).length, 2);
+    assert.deepEqual(older.out.match(/Clean questions available: [0-9]+ of 10/g), ['Clean questions available: 4 of 10', 'Clean questions available: 3 of 10']);
   });
 
   it('explains bad arguments, a missing file and an unknown lesson', () => {
@@ -125,6 +125,6 @@ describe('npm run quiz:check', () => {
       child.on('close', (code) => resolve({ code, text }));
     });
     assert.equal(out.code, 0);
-    assert.match(out.text, /Clean questions available: 5 of 10/);
+    assert.match(out.text, /Clean questions available: 4 of 10/);
   });
 });

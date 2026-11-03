@@ -233,7 +233,9 @@ export function quizCandidates(cards, { distractors = new Map(), extraTerms = []
       ? { true: row.true_text, false: row.false_text }
       : null;
     const pairClean = Boolean(pair) && row.status === 'ok' && cardOk && !reviewProblems.length && !trueFlagged && !optionFlags(review, pair.false).length;
-    const yesNo = !statementMode || siblings ? falseClean : pairClean ? [pair.false] : mcClean.length >= WRONG_PER_QUESTION ? [] : falseClean;
+    const statementYesNo = !statementMode || siblings ? falseClean : pairClean ? [pair.false] : mcClean.length >= WRONG_PER_QUESTION ? [] : falseClean;
+    // "What is …?" plus an answer is not a statement to mark True or False: only a saved sentence pair can make it one
+    const yesNo = /\?\s*$/.test(card.front) && !pairClean ? [] : statementYesNo;
     const reviewablePair = pair ? [...new Set([...reviewable, pair.false])] : reviewable;
     return { card, shown: card.back, mcWrong: saved, mcClean, falsePool, falseClean, reviewable: reviewablePair, mcCode: cardOk ? savedClean : [], excluded, problems, sibling: Boolean(siblings), yesNo, pair, tfForm: pairClean ? 'statement' : null };
   }).map((p) => ({ yesNo: p.falseClean, pair: null, tfForm: null, ...p }));

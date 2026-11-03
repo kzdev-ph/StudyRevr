@@ -12,6 +12,8 @@ const term = (id, front, back) => ({ id, kind: 'term', front, back, evidence: `$
 // answer has a word of its own (two answers that differ only in a number would be one answer to the leak checks)
 const NAMES = 'rivers mountains forests deserts islands valleys oceans glaciers meadows canyons volcanoes beaches'.split(' ');
 const concept = (id, n = id) => ({ id, kind: 'concept', front: `Question ${n} about the topic?`, back: `Topic answer number ${n}: ${NAMES[n % NAMES.length]}.`, evidence: `quote ${n}` });
+// the same card with a statement for a front: with no "?" it can be a True/False question without a reviewed pair
+const plain = (c) => ({ ...c, front: `Statement ${c.id} about the topic` });
 const TERMS = [
   term(1, 'Hypothesis', 'A testable prediction about variables.'),
   term(2, 'Independent variable', 'The factor the researcher changes.'),
@@ -113,23 +115,26 @@ describe('quiz building', () => {
 
   it('a concept card without saved wrong answers is true / false; its false statement is another card’s answer', () => {
     let falseSeen = 0;
+    const cards = CONCEPTS.slice(0, 4).map(plain);
     for (let seed = 1; seed <= 20; seed++) {
-      const qs = buildQuiz({ cards: CONCEPTS.slice(0, 4), random: seeded(seed) });
+      const qs = buildQuiz({ cards, random: seeded(seed) });
       assert.equal(qs.length, 4);
       for (const q of qs) {
         assert.equal(q.type, 'tf');
         if (q.answer_index === 1) {
           falseSeen++;
           assert.notEqual(q.statement, q.answer_text);
-          assert.ok(CONCEPTS.slice(0, 4).some((c) => c.back === q.statement && c.id !== q.flashcard_id));
+          assert.ok(cards.some((c) => c.back === q.statement && c.id !== q.flashcard_id));
         }
       }
     }
     assert.ok(falseSeen > 0);
+    // a question ending in "?" with its answer glued on is no statement to mark True or False: left out instead
+    assert.deepEqual(buildQuiz({ cards: CONCEPTS.slice(0, 4), random: seeded(1) }), []);
   });
 
   it('with 1-2 saved wrong answers the false statement comes from them', () => {
-    const cards = CONCEPTS.slice(0, 2);
+    const cards = CONCEPTS.slice(0, 2).map(plain);
     const distractors = new Map([[cards[0].id, ['Saved wrong']], [cards[1].id, ['Other saved', cards[1].back]]]);
     for (let seed = 1; seed <= 10; seed++) {
       for (const q of buildQuiz({ cards, distractors, random: seeded(seed) })) {
@@ -142,7 +147,8 @@ describe('quiz building', () => {
     assert.equal(buildQuiz({ cards: CONCEPTS.slice(0, 6), distractors: wrongFor(CONCEPTS) }).length, 6);
     assert.deepEqual(buildQuiz({ cards: [concept(1)] }), []);
     assert.equal(usableCount([concept(1)]), 0);
-    assert.equal(usableCount([concept(1), concept(2)]), 2);
+    assert.equal(usableCount([plain(concept(1)), plain(concept(2))]), 2);
+    assert.equal(usableCount([concept(1), concept(2)]), 0, 'questions ending in "?" have no True/False form');
     // two cards with the same answer cannot be wrong against each other
     assert.equal(usableCount([concept(1), { ...concept(2), back: 'topic answer number 1: mountains.' }]), 0);
   });
@@ -227,8 +233,10 @@ for (const lesson of [EN_LESSON, FIL_LESSON]) {
     });
 
     it('a lesson that can’t fill 10 clean questions gets fewer', () => {
-      assert.equal(usableCount(lesson.cards, opts), 5);
-      for (const quiz of quizzes) assert.equal(quiz.length, 5);
+      // was 5 each, when cards 6 (English) and 14, 16 (Filipino) were asked as Yes/No; a "?" question has no such form now
+      const count = lesson === EN_LESSON ? 4 : 3;
+      assert.equal(usableCount(lesson.cards, opts), count);
+      for (const quiz of quizzes) assert.equal(quiz.length, count);
     });
 
     it('cards whose question holds the answer, or whose every wrong answer is a reversal, are never asked', () => {
@@ -236,17 +244,11 @@ for (const lesson of [EN_LESSON, FIL_LESSON]) {
       for (const q of asked) assert.ok(!never.includes(q.flashcard_id), `card ${q.flashcard_id} was asked`);
     });
 
-    it('a card whose wrong answers stand out is asked as Yes/No only, with a plausible false statement', () => {
-      const tfOnly = lesson === EN_LESSON ? [6] : [14, 16];
-      for (const q of asked.filter((x) => tfOnly.includes(x.flashcard_id))) {
-        assert.equal(q.type, 'tf');
-        if (q.answer_index === 1) assert.ok(lesson.distractors[q.flashcard_id].includes(q.statement));
-      }
-      if (lesson === FIL_LESSON) {
-        const falses = asked.filter((q) => q.flashcard_id === 14 && q.answer_index === 1).map((q) => q.statement);
-        assert.ok(falses.length > 0);
-        assert.ok(falses.every((s) => !/mahirapan|itago/.test(s)), 'the reversed wrong answers are never the false statement');
-      }
+    it('a card whose wrong answers stand out and whose question ends in "?" is not asked: no multiple choice, no reviewed pair for Yes/No', () => {
+      const notMc = lesson === EN_LESSON ? [6] : [14, 16];
+      for (const q of asked) assert.ok(!notMc.includes(q.flashcard_id), `card ${q.flashcard_id} was asked`);
+      // and the reversed wrong answers are shown nowhere
+      if (lesson === FIL_LESSON) for (const q of asked) assert.ok(!/mahirapan|itago/.test([q.statement ?? '', ...(q.choices ?? [])].join(' ')), 'a reversed wrong answer was shown');
     });
 
     it('a definition that holds its own term is shown with the term blanked, and the stored answer is unchanged', () => {

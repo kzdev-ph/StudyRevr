@@ -73,9 +73,11 @@ describe('trailing punctuation never tells options apart', () => {
   it('lesson 33: a Yes/No statement, true or false, carries no stop either, and matches the stored answer when true', () => {
     // 'Hypotheses.' against 'Attitudes' etc.: force Yes/No by giving the card only two wrong answers
     const two = { ...options, distractors: new Map([[1, ['Attitudes', 'Opinions']]]) };
+    // without the "?": a question ending in one has no Yes/No form (no reviewed pair here)
+    const noMark = (c) => ({ ...c, front: c.front.replace(/[?]$/, '') });
     const seen = new Set();
     for (let seed = 1; seed <= 60; seed++) {
-      for (const q of forms([hypotheses, ...others], seeded(seed), two)) {
+      for (const q of forms([hypotheses, ...others].map(noMark), seeded(seed), two)) {
         assert.equal(q.type, 'tf');
         assert.ok(!/\.$/.test(q.statement), q.statement);
         assert.ok(!/\.$/.test(q.answer_text), q.answer_text);
