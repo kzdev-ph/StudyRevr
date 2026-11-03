@@ -125,11 +125,14 @@ const flashcards = (s, { maxCards } = {}) => {
 };
 
 const wrongAnswers = (s, u, rawText) => {
-  let t = swap(
-    s,
-    "1. Use ONLY the lesson content you are given: each card's question, its correct answer and a quote copied from the lesson.",
-    "1. Use ONLY the lesson content you are given: the whole lesson text in <lesson_text>, and each card's question, its correct answer and a quote copied from the lesson.",
-  );
+  // given the lesson, the shared rule 1 already names <lesson_text>: only the text-less one needs the swap
+  let t = s.includes('and the lesson text in <lesson_text>')
+    ? s
+    : swap(
+        s,
+        "1. Use ONLY the lesson content you are given: each card's question, its correct answer and a quote copied from the lesson.",
+        "1. Use ONLY the lesson content you are given: the whole lesson text in <lesson_text>, and each card's question, its correct answer and a quote copied from the lesson.",
+      );
   t = after(
     t,
     'No "all of the above", "none of the above", jokes or obviously silly options.',
@@ -142,7 +145,8 @@ const wrongAnswers = (s, u, rawText) => {
 - Give every card its own wrong answers: never the same wrong answer, or the same set, for two cards.
 - Plain words that a Grade 11 student understands at once.`,
   );
-  return { system: t, user: `${u}\n\n<lesson_text>\n${rawText}\n</lesson_text>` };
+  // distractorsPrompt now sends the lesson itself: do not add a second one
+  return { system: t, user: u.trimEnd().endsWith('</lesson_text>') ? u : `${u}\n\n<lesson_text>\n${rawText}\n</lesson_text>` };
 };
 
 const quizReview = (s) => {

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   answerInQuestion,
   asksByPosition,
+  bareTail,
   CARD_LEAK_RULES,
   cardLeaks,
   contentWords,
@@ -352,6 +353,29 @@ describe('rule m: a hint tail that repeats the answer', () => {
     assert.ok(rules(cardLeaks(c)).includes('m'), JSON.stringify(cardLeaks(c)));
     assert.ok(CARD_LEAK_RULES.includes('m'));
     assert.ok(!rules(cardLeaks({ kind: 'concept', front: 'What does a self-introduction build?', back: 'Confidence.' })).includes('m'));
+  });
+  it('bareTail finds a short "regarding …" tail whatever its words', () => {
+    assert.ok(bareTail('What does data help researchers do regarding choices?'));
+    assert.ok(bareTail('What does a hypothesis do in relation to the study?'));
+    assert.ok(bareTail('Which aim is regarding a community?'));
+    assert.equal(bareTail('How do surveys and interviews differ in terms of cost?'), null);
+    assert.equal(bareTail('What builds trust?'), null);
+    assert.equal(bareTail('What does an animal cell hold regarding the animal cell membrane types?'), null);
+    assert.equal(bareTail(''), null);
+  });
+  it('bareTail leaves "related to" / "concerning" used as a predicate or adjective alone', () => {
+    assert.equal(bareTail('What is a vitamin related to bone health?'), null);
+    assert.equal(bareTail('Which hormone is related to stress in the body?'), null);
+    assert.equal(bareTail('Which law is concerning supply and demand?'), null);
+    assert.equal(bareTail('What is the most concerning effect?'), null);
+    assert.ok(bareTail('What does data help researchers do regarding choices?'));
+    assert.ok(bareTail('What does a hypothesis do in relation to the study?'));
+    assert.ok(bareTail('Which aim is regarding a community?'));
+  });
+  it('makes a concept card with a synonym tail break rule m, but not a term card', () => {
+    const front = 'What does data help researchers do regarding choices?';
+    assert.ok(rules(cardLeaks({ kind: 'concept', front, back: 'Make informed decisions.' })).includes('m'));
+    assert.ok(!rules(cardLeaks({ kind: 'term', front, back: 'Make informed decisions.' })).includes('m'));
   });
 });
 

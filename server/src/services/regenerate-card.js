@@ -18,7 +18,7 @@ import { hasRecords, participantRecords } from './lesson-records.js';
 
 const conceptReply = z.object({ question: z.string().min(1), answer: z.string().min(1), evidence: z.string().catch('') });
 const termReply = z.object({ definition: z.string().min(1) });
-const LEAK_RULES = ['g', 'h', 'i', 'j', 'k', 'l'];
+const LEAK_RULES = ['g', 'h', 'i', 'j', 'k', 'l', 'm'];
 const CONTEXT_CHARS = 12000;
 const LESSON_SHARE = 0.5; // share of a new definition's content words that must be lesson words
 const wordCount = (s) => (String(s).match(/\S+/g) ?? []).length;

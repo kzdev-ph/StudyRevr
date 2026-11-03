@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { mapLimit } from '../ai/pool.js';
 import { quizReviewPrompt, regenerateCardsPrompt } from '../ai/prompts.js';
 import { comparable } from '../pipeline/evidence.js';
+import { contextForBatch } from '../quiz/context.js';
 import { contentWords } from '../quiz/leaks.js';
 import { termKey } from '../pipeline/terms.js';
 import { hasText, quizCandidates } from '../quiz/build.js';
@@ -31,7 +32,6 @@ import { hasRecords, participantRecords } from './lesson-records.js';
 // (lessons.term_families), which the quiz never uses as wrong options for each other (quiz/related.js).
 
 export const BATCH_SIZE = 12;
-const CONTEXT_CHARS = 16000;
 const MAX_WHY = 200;
 const REVIEW_LABEL = 'the quiz review';
 const ROUND2_LABEL = 'the quiz review (after fixes)';
@@ -102,25 +102,8 @@ function cleanFlags(list, allowed) {
   return out;
 }
 
-// The lesson for one call: all of it when short, else the blocks around the batch's quotes (one on each side).
-export function contextForBatch(rawText, evidences) {
-  const text = String(rawText ?? '');
-  if (text.length <= CONTEXT_CHARS) return text;
-  const blocks = text.split(/\n\s*\n/);
-  const keys = blocks.map(comparable);
-  const keep = new Set();
-  for (const evidence of evidences) {
-    const key = comparable(evidence ?? '');
-    const at = key ? keys.findIndex((b) => b.includes(key)) : -1;
-    if (at >= 0) for (const i of [at - 1, at, at + 1]) if (i >= 0 && i < blocks.length) keep.add(i);
-  }
-  if (!keep.size) return text.slice(0, CONTEXT_CHARS);
-  return [...keep]
-    .sort((a, b) => a - b)
-    .map((i) => blocks[i])
-    .join('\n\n')
-    .slice(0, CONTEXT_CHARS * 2);
-}
+// moved to quiz/context.js (quiz/distractors.js needs it too); kept exported here for the other services and tests
+export { contextForBatch } from '../quiz/context.js';
 
 const lessonCards = (db, lessonId) => db.prepare('SELECT id, kind, front, back, evidence FROM flashcards WHERE lesson_id = ? ORDER BY position, id').all(lessonId);
 const keyTermNames = (db, lessonId) => db.prepare('SELECT term FROM key_terms WHERE lesson_id = ? ORDER BY id').all(lessonId).map((t) => t.term);

@@ -20,6 +20,7 @@ import { hasMathOperator, hasNumberUnit, isFormulaLike, mathKey, sameValue } fro
 //   j  the front holds another card's answer
 //   k  front and back are nearly the same, or the back only restates the front
 //   l  the question asks by a place in the list ("the aim listed first"), not by what the item is (concept cards)
+//   m  a "regarding / related to …" tail (the answer's word or 1-3 words of any kind) (concept cards)
 //
 // These are word checks: they catch wording and tone, not a question whose meaning already says the answer
 // ("Why is language called dynamic?" -> "because it changes"). The prompts ask for that; the checks can't see it.
@@ -446,6 +447,27 @@ export function hintTail(question, answer) {
   return found.length ? names(found) : null;
 }
 
+// Rule m, second form: a short tail of this kind whatever its words. Told not to repeat the answer's word, the model
+// writes a synonym instead ("…regarding suppositions?" for "Form hypotheses", "…regarding choices?" for "Make
+// informed decisions": RSCH2120 Gemini version, docs/claude-import.md), which hintTail can't see. "in terms of" is
+// left out: "How do the two methods differ in terms of cost?" is a real comparison.
+const BARE_TAIL = /\b(regarding|related to|concerning|with regard to|in relation to)\s+(.+?)[?.\s]*$/i;
+// "related to" / "concerning" after a form of "to be" earlier in the question, or right after "most/more/very/so", is the
+// question's own predicate or adjective ("What is a vitamin related to bone health?", "the most concerning effect"), not a
+// tail pointing at the answer.
+const PREDICATE_PHRASE = /^(?:related to|concerning)$/i;
+const PREDICATE_BEFORE = /\b(?:is|are|was|were|be|been|being)\b|\b(?:most|more|very|so)\s+$/i;
+export const BARE_TAIL_WORDS = 3;
+export function bareTail(question) {
+  const q = String(question ?? '').slice(-300);
+  const m = BARE_TAIL.exec(q);
+  if (!m) return null;
+  if (PREDICATE_PHRASE.test(m[1]) && PREDICATE_BEFORE.test(q.slice(0, m.index))) return null;
+  const tail = m[2];
+  const found = wordStems(tail);
+  return found.length >= 1 && found.length <= BARE_TAIL_WORDS ? names(found) : null;
+}
+
 // The rules that make a flashcard give its answer away during flashcard study (h is only reported: see above).
 export const CARD_LEAK_RULES = ['g', 'i', 'j', 'k', 'l', 'm'];
 
@@ -467,7 +489,9 @@ export function cardLeaks(card, others = []) {
       problems.push({ rule: 'i', detail: 'a yes/no or either/or question' });
     if (asksByPosition(card.front)) problems.push({ rule: 'l', detail: 'asks by place in the list' });
     const hint = hintTail(card.front, card.back);
+    const tail = hint ? null : bareTail(card.front);
     if (hint) problems.push({ rule: 'm', detail: `a hint tail repeats the answer (${hint.join(', ')})` });
+    else if (tail) problems.push({ rule: 'm', detail: `a "regarding …" tail points at the answer; ask by meaning (${tail.join(', ')})` });
   }
   const front = wordStems(card.front);
   for (const other of others) {

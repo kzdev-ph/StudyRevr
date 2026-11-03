@@ -55,6 +55,14 @@ describe('quiz wrong answers', () => {
     assert.equal(ai.calls.length, 1, 'the second quiz reuses them');
   });
 
+  it('shows the lesson text to the wrong-answers call', async () => {
+    addCards(2);
+    const ai = fakeAi(threeClean);
+    await ensureDistractors({ db, ai, lessonId, log: quiet });
+    assert.ok(ai.calls[0].user.includes('<lesson_text>'));
+    assert.ok(ai.calls[0].user.includes('An interview asks one person questions in depth.'), 'a line of the lesson is in the call');
+  });
+
   it('never saves or loads a blank wrong answer (zero-width space, gap marks, whitespace)', async () => {
     const [id] = addCards(1);
     const ai = fakeAi((cards) => ({ items: cards.map((c) => ({ n: c.n, wrong: ['​', ...CLEAN, '   ', '___', '...'] })) }));

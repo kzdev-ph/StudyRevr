@@ -82,6 +82,14 @@ describe('the Haiku prompt set', () => {
     assert.ok(wrong.user.endsWith(`<lesson_text>\n${LESSON}\n</lesson_text>`));
   });
 
+  it('the wrong-answer request has one lesson_text when the shared prompt already shows the lesson', () => {
+    const shared = distractorsPrompt({ cards: [{ n: 1, question: 'Q?', answer: 'A', evidence: 'e' }], text: LESSON });
+    const count = (s) => s.split('<lesson_text>').length - 1;
+    assert.equal(count(shared.user), 1);
+    assert.equal(count(haikuRequest(shared, LESSON).user), 1);
+    assert.match(haikuRequest(shared, LESSON).system, /would a student who knows the lesson be wrong to pick it/);
+  });
+
   it('asks the flashcard writer for the number of cards the pipeline really keeps', () => {
     const p = flashcardsPrompt({ text: LESSON, keyTerms: ['Clay', 'Sand', 'Loam'], index: 0, total: 1, targetCards: 25 });
     assert.match(haikuRequest(p, LESSON).system, /Give about 25 cards/);

@@ -193,6 +193,17 @@ describe('prompts never build questions from learning objectives', () => {
     assert.match(distractorsPrompt({ cards }).system, /absolute word/);
   });
 
+  it('the distractor prompt shows the lesson and asks for wrong answers checked against it only when it is given the text', () => {
+    const withText = distractorsPrompt({ cards, text: 'Line A.' });
+    assert.ok(withText.user.includes('<lesson_text>\nLine A.\n</lesson_text>'));
+    assert.match(withText.system, /would a student who knows the lesson be wrong to pick it/);
+    const without = distractorsPrompt({ cards });
+    assert.ok(!without.user.includes('<lesson_text>'));
+    assert.doesNotMatch(without.system, /would a student who knows the lesson be wrong to pick it/);
+    assert.match(withText.system, /1\. Use ONLY the lesson content you are given: .*and the lesson text in <lesson_text>\./);
+    assert.ok(without.system.includes("1. Use ONLY the lesson content you are given: each card's question, its correct answer and a quote copied from the lesson. Do not use"));
+  });
+
   it('both reviewers flag a question made from objectives as off_topic', () => {
     assert.match(quizReviewPrompt({ items: [], text: 'x' }).system, /"off_topic": the card is made from the lesson's learning objectives/);
     assert.match(quickCheckReviewPrompt({ sections: [], text: 'x' }).system, /"off_topic": the question is made from the lesson's learning objectives/);

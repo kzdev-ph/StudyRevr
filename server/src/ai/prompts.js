@@ -27,8 +27,8 @@ export const NO_POSITION = `Never ask by position in a list ("the aim listed fir
 export const NO_OBJECTIVES = `Never make a question, card, key point or term from learning objectives, "at the end of this lesson / students will be able to" lines, an outline or an agenda: they say what the lesson will cover, not what it teaches. Use only the content the lesson explains.`;
 
 // A question that ends in "regarding X" / "related to X" repeats a word of its answer to point at it ("What does the
-// data help researchers do regarding decisions?" -> "Make informed decisions"). Ask by what the item means instead.
-export const ASK_BY_MEANING = `Tell items of a list apart by what the lesson says each one means or does, in plain words ("Which key element of a self-introduction means being honest and natural?"), never by tacking on "regarding / related to / concerning / in terms of" plus a word of the answer ("…do regarding decisions?" for "Make informed decisions"): that only points at the answer.`;
+// data help researchers do regarding decisions?" -> "Make informed decisions"). Ask by what the item means instead; synonyms of the answer are banned too.
+export const ASK_BY_MEANING = `Tell items of a list apart by what the lesson says each one means or does, in a plain clause ("Which key element of a self-introduction means being honest and natural?"). Never end a question with "regarding / related to / concerning / in terms of / with regard to / in relation to" plus a few words: not a word of the answer ("…do regarding decisions?" for "Make informed decisions") and not a synonym of it either ("…do regarding choices?", "…regarding suppositions?" for "Form hypotheses"). Such a tail only points at the answer, and the card is dropped.`;
 
 // Rules for lessons with formulas and worked examples. mathRules adds them only when the text looks mathy, so the
 // prompt for any other text stays exactly as it was. The model writes plain Unicode, and mathTextDeep (ai/client.js)
@@ -263,17 +263,21 @@ Reply with this JSON shape:
   return { system, user: `${part(index, total)}${guide}${lessonText(text)}` };
 }
 
+// Added to distractorsPrompt when it is given the lesson: the wrong answers come from other ideas of the lesson and are
+// checked against it, not reworded from the right answer.
+const LESSON_OPTIONS = `- <lesson_text> is the lesson (or the part of it around these cards). Read it first and build each wrong answer from what it says about ANOTHER item, part or idea of the same kind, written to fit this question. Then test each one against it: if the lesson says it is also true for this question, or it is a synonym, a broader or narrower name, or a rewording of the correct answer, replace it. Ask: would a student who knows the lesson be wrong to pick it? If not, do not use it.`;
+
 // Wrong answer options for multiple-choice quiz questions made from concept flashcards. `cards`: [{ n, question,
-// answer, evidence, words?, language?, keep?, rejected?, problems? }], where `evidence` is the verbatim lesson quote the
+// answer, evidence, words?, language?, keep?, rejected?, problems? }], `text` the lesson (or the part around the cards), where `evidence` is the verbatim lesson quote the
 // card was checked against, `words` the right answer's length and `language` its language ('en' | 'fil'). The
 // follow-up call also passes `keep` (wrong answers that passed the checks), `rejected` ([{ text, why }]) and
 // `problems` (why the set still gave the answer away). The wrong answers must be believable but wrong according to the
 // lesson, and look like the right one so length, wording and tone give nothing away (checked in code: quiz/leaks.js).
-export function distractorsPrompt({ cards, keyTerms = [] }) {
+export function distractorsPrompt({ cards, keyTerms = [], text = '' }) {
   const system = `You help a teacher write a multiple-choice quiz from their lesson.
 
 Rules:
-1. Use ONLY the lesson content you are given: each card's question, its correct answer and a quote copied from the lesson. Do not use outside knowledge or add facts, names, dates or numbers that are not in it.
+1. Use ONLY the lesson content you are given: ${text ? "each card's question, its correct answer and a quote, and the lesson text in <lesson_text>" : "each card's question, its correct answer and a quote copied from the lesson"}. Do not use outside knowledge or add facts, names, dates or numbers that are not in it.
 2. A quote may come from the teacher's spoken notes for a slide (written after a line "${NOTES_LABEL}" in the lesson). Treat it as lesson content that explains that slide, not as a separate topic.
 3. Write each wrong answer in the language of that card's correct answer (English, Filipino or Taglish).
 4. Reply with ONE JSON object and nothing else: no markdown, no code fences, no commentary.
@@ -294,6 +298,8 @@ Task: for each card, write 3 wrong answers to its question. A student who has no
   }${
     keyTerms.length ? `\n- The lesson's key terms: ${keyTerms.join('; ')}.` : ''
   }${
+    text ? `\n${LESSON_OPTIONS}` : ''
+  }${
     cards.some((c) => c.rejected || c.problems)
       ? `\n- Some cards were asked before and their wrong answers gave the right one away. For those, the card lists the rejected answers and why: write 3 new wrong answers that avoid those problems. The card's "Kept" answers (if any) passed and may be reused.`
       : ''
@@ -312,7 +318,7 @@ Reply with this JSON shape, one item per card, using the card's number as "n":
       return lines.join('\n');
     })
     .join('\n');
-  return { system, user: `<cards>\n${list}\n</cards>` };
+  return { system, user: text ? `<cards>\n${list}\n</cards>\n\n${lessonText(text)}` : `<cards>\n${list}\n</cards>` };
 }
 
 // True / False statements for the quiz (services/quiz-statements.js): for each concept card, one TRUE sentence that
