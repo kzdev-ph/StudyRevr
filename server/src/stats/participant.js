@@ -210,9 +210,18 @@ export function summaryRow(db, participant, { now, config, lessons }) {
   return Object.fromEntries(summaryColumns(lessons).map((c) => [c, row[c] ?? null]));
 }
 
-// Participants in code order; P00 (the researcher's test data) only when asked for.
+// Participants in code order; P00 (the researcher's test data) only when asked for. A sign-up that never verified its
+// email and never studied (a mistyped address, signed up again) is not a participant of the study and is left out.
 export const listParticipants = (db, { includeP00 = false } = {}) =>
-  db.prepare(`SELECT id, code, created_at FROM participants ${includeP00 ? '' : "WHERE code <> 'P00'"} ORDER BY code`).all();
+  db
+    .prepare(
+      `SELECT p.id, p.code, p.created_at FROM participants p
+       WHERE ${includeP00 ? '1' : "p.code <> 'P00'"}
+         AND (NOT EXISTS (SELECT 1 FROM accounts a WHERE a.participant_id = p.id AND a.email_verified = 0)
+              OR EXISTS (SELECT 1 FROM study_sessions s WHERE s.participant_id = p.id))
+       ORDER BY p.code`,
+    )
+    .all();
 
 // The lessons that get a column of their own in summary.csv: the teacher's and the student uploads admin shared
 // `forExport`: a student's upload is named by its generic export title (see EXPORT_TITLE); admin's screens (the participants

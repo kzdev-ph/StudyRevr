@@ -26,11 +26,15 @@ const RESET_LINK_BAD = 'This reset link has expired or was already used. Ask for
 const RESET_OFF = 'Password reset by email is not available here. Ask your teacher to reset your password.';
 const linkBad = () => new HttpError(400, RESET_LINK_BAD, { code: 'link_invalid' });
 
-// The limit is per req.ip. Behind the tunnel, `trust proxy` (app.js) gives each student their own IP, so each has their own
+// The limit is per req.ip (an IPv6 /64 counts as one, limiterKey). Behind the tunnel, `trust proxy` (app.js) gives each student their own IP, so each has their own
 // limit (10 sign-ups per 10 minutes). Sign-ups also use up study numbers, which are never reused: switch them off in
 // Admin once everyone is enrolled.
 const SIGNUPS_PER_WINDOW = 10;
 const SIGNUP_WINDOW_MS = 10 * 60_000;
+// Wrong sign-ins (unknown email or wrong password) per IP: one address can't run scrypt without end or walk through
+// accounts locking them; a class behind one address still has room.
+const LOGIN_FAILS_PER_WINDOW = 30;
+const LOGIN_FAIL_WINDOW_MS = 15 * 60_000;
 
 // Only for a password someone chooses (sign-up, change); never for sign-in or a teacher's temporary password.
 function assertNotCommon(password, email) {
@@ -49,7 +53,8 @@ const accountOf = (row) => ({ email: row.email, must_change_password: Boolean(ro
 // study ID (the P-code), and neither passwords nor tokens are logged.
 export function authRouter({ db, clock = () => new Date(), mailer = { configured: false, send: async () => false }, linkBase = '', emailOn = mailer.configured, sendCap }) {
   const router = Router();
-  const signups = new Map(); // ip -> times of its recent sign-up attempts (in memory; a restart clears it)
+  const signups = createLimiter({ max: SIGNUPS_PER_WINDOW, windowMs: SIGNUP_WINDOW_MS }); // sign-up attempts per IP
+  const loginFails = createLimiter({ max: LOGIN_FAILS_PER_WINDOW, windowMs: LOGIN_FAIL_WINDOW_MS }); // wrong sign-ins per IP
   const emailIps = createLimiter({ max: 10, windowMs: 15 * 60_000 }); // verification-email requests per IP
   const emailAccounts = createLimiter({ max: 3, windowMs: 15 * 60_000 }); // verification emails per account
 
@@ -60,21 +65,10 @@ export function authRouter({ db, clock = () => new Date(), mailer = { configured
     return session;
   };
 
-  const rateLimited = (ip, now) => {
-    const recent = (signups.get(ip) ?? []).filter((at) => now - at < SIGNUP_WINDOW_MS);
-    if (recent.length >= SIGNUPS_PER_WINDOW) {
-      signups.set(ip, recent);
-      return true;
-    }
-    signups.set(ip, [...recent, now]);
-    if (signups.size > 1000) for (const [key, times] of signups) if (times.every((at) => now - at >= SIGNUP_WINDOW_MS)) signups.delete(key);
-    return false;
-  };
-
   router.post('/auth/signup', async (req, res) => {
     if (!signupsAllowed(db)) throw new HttpError(403, 'Sign-ups are closed. Ask your teacher.', { code: 'signups_off' });
     const now = clock();
-    if (rateLimited(req.ip, now.getTime())) throw new HttpError(429, 'Too many sign-ups from here. Try again in a few minutes.', { code: 'signup_rate_limited' });
+    if (signups.limited(limiterKey(req.ip), now.getTime())) throw new HttpError(429, 'Too many sign-ups from here. Try again in a few minutes.', { code: 'signup_rate_limited' });
     const body = parseBody(signupBody, req.body, `Enter a valid email and a password of ${PASSWORD_MIN} to ${PASSWORD_MAX} characters.`);
     assertNotCommon(body.password, body.email);
     const verified = !mailer.configured;
@@ -92,8 +86,11 @@ export function authRouter({ db, clock = () => new Date(), mailer = { configured
 
   router.post('/auth/login', async (req, res) => {
     const body = parseBody(loginBody, req.body, 'Enter your email and password.');
+    const ipKey = limiterKey(req.ip);
+    if (loginFails.over(ipKey, clock().getTime())) throw new HttpError(429, TOO_MANY, { code: 'login_rate_limited' });
     const account = findAccountByEmail(db, body.email);
     if (!account) {
+      loginFails.limited(ipKey, clock().getTime());
       await verifyDummy(body.password);
       throw new HttpError(401, 'Email or password is wrong.', { code: 'login_failed' });
     }
@@ -105,6 +102,7 @@ export function authRouter({ db, clock = () => new Date(), mailer = { configured
     // lock was set answer 429 without counting, and sign nobody in even with the right password.
     assertNotLocked(db, account.id, clock());
     if (!correct) {
+      loginFails.limited(ipKey, clock().getTime());
       const { lockedMs: wait } = recordFailedLogin(db, account, clock());
       if (wait > 0) throw lockedError(wait);
       throw new HttpError(401, 'Email or password is wrong.', { code: 'login_failed' });
@@ -115,6 +113,9 @@ export function authRouter({ db, clock = () => new Date(), mailer = { configured
     // One live login per account: a device that was seen within the timeout is asked about first.
     const token = db.transaction(() => {
       const now = clock();
+      // the password was checked against the hash read before scrypt: a reset that landed meanwhile wins
+      const current = db.prepare('SELECT password_hash FROM accounts WHERE id = ?').get(account.id);
+      if (current?.password_hash !== account.password_hash) throw new HttpError(401, 'Email or password is wrong.', { code: 'login_failed' });
       const active = activeSession(db, account.id);
       if (active) {
         const busy = now.getTime() - Date.parse(active.last_seen_at) < sessionTimeoutSeconds(db) * 1000;

@@ -19,6 +19,15 @@ import {
 
 export const MAX_STATEMENT_WORDS = 45;
 
+// The words of `text` missing from `source`: its content words (wordsNotIn), or, when it has none (a one-character or
+// stop-word answer such as "4" or "x"), its plain words, so such an answer can still be compared.
+const plainNotIn = (text, source) => {
+  const have = new Set(words(source));
+  return words(text).filter((w) => !have.has(w));
+};
+const changedWords = (text, source) => (wordStems(text).length ? wordsNotIn(text, source) : plainNotIn(text, source));
+const answerWordCount = (text) => wordStems(text).length || words(text).length;
+
 // Words that make a statement true or false on their own. The stop words of leaks.js hide most of these ("all",
 // "only", "lahat"), so they are looked for in the raw words.
 export const ABSOLUTES = new Set(
@@ -97,11 +106,11 @@ export function twinProblems(card, trueText, falseText, { lessonWords = null, ot
     problems.push({ rule: 'e', detail: 'only adds or drops words' });
     return problems;
   }
-  if (!wordsNotIn(added.text, removed.text).length) problems.push({ rule: 'e', detail: 'only reordered or re-inflected words' });
+  if (!changedWords(added.text, removed.text).length) problems.push({ rule: 'e', detail: 'only reordered or re-inflected words' });
   // the changed part is the same kind of thing as the answer: a number for a number, a word for a word
   if (/\d/.test(removed.text) !== /\d/.test(added.text)) problems.push({ rule: 'f', detail: 'a different kind of change (number vs word)' });
   // the change must replace the answer, never the subject
-  if (wordsNotIn(card.back, removed.text).length === wordStems(card.back).length) problems.push({ rule: 's', detail: 'the change does not replace the answer' });
+  if (changedWords(card.back, removed.text).length === answerWordCount(card.back)) problems.push({ rule: 's', detail: 'the change does not replace the answer' });
   const given = answerInQuestion(falseText, card.back);
   if (given) problems.push({ rule: 'a', detail: given.replace('the question', 'the twin') });
   // a negative A is caught below, by falseStatementProblems (e) and wrongOptionProblems (c), when R is not negative
@@ -115,7 +124,7 @@ export function twinProblems(card, trueText, falseText, { lessonWords = null, ot
     if (off.length) problems.push({ rule: 'f', detail: `words that are not in the lesson (${off.map((forms) => forms[0]).join(', ')})` });
   }
   // A only repeats words of the shared frame, so the sentence says nothing new
-  if (!wordsNotIn(added.text, frame.text).length) problems.push({ rule: 'e', detail: 'only repeats the rest of the sentence' });
+  if (!changedWords(added.text, frame.text).length) problems.push({ rule: 'e', detail: 'only repeats the rest of the sentence' });
   return problems;
 }
 

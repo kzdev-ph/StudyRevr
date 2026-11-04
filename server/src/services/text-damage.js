@@ -3,7 +3,7 @@
 // Lone consonants between two words ("let x be", "d ko alam") are counted apart (lone) because variables and text-speak
 // make them common in clean text; 'broken' totals both, 'multi' is only the words of 2+ letters (see damageReason).
 const NO_VOWEL_OK = new Set('ng mg nth st nd rd th pp vs mr mrs dr km cm mm nm kg ml dl hz khz mhz ghz ms ns ps pm dx dy dz dt ds dv ln lg sgn ft lb lbs pt pts qt hr hrs sq tsp tbsp mph rpm bpm ppm ppb psi pdf ppt hmm shh brr lcm gcd csc lng kc tlga nmn pls plss sbi ksi dba'.split(' '));
-const ONSETS = new Set('bl br ch chl chr chth cl cr dr dw fl fr gh gl gn gr kh kl kn kr kw gw pw bw mn ph phl phr phth pl pr ps pn pt sc sch schr scl scr sh shr sk skr sl sm sn sp sph spl spr squ st str sv sw th thr tr ts tw wh wr ng mg dj zh'.split(' '));
+const ONSETS = new Set('bl br ch chl chr chth cl cr dr dw fl fr gh gl gn gr kh kl kn kr kw gw pw bw mn ph phl phr phth pl pr ps pn pt sc sch schr scl scr sh shr sk skr sl sm sn sp sph spl spr sq st str sv sw th thr thw rh tr ts tw wh wr ng mg dj zh'.split(' '));
 const EDGE = /^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu;
 export const MIN_WORDS = 80; export const MIN_BROKEN = 12; export const MIN_MULTI = 8; export const BROKEN_SHARE = 0.07;
 export const MIN_STRAYS = 5; export const STRAYS_PER_100_WORDS = 0.5;

@@ -145,6 +145,7 @@ export function setTestLogin(db, { email, passwordHash, now }) {
   if (own) {
     db.prepare('UPDATE accounts SET email = ?, password_hash = ?, must_change_password = 0, password_changed_at = ?, email_verified = 1 WHERE id = ?').run(address, passwordHash, now.toISOString(), own.id);
     clearFailedLogins(db, own.id);
+    db.prepare('DELETE FROM email_tokens WHERE account_id = ?').run(own.id); // links mailed to the old address stop working
     return { accountId: own.id, participantId: participant.id };
   }
   const accountId = Number(

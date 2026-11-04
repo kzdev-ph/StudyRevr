@@ -10,13 +10,14 @@ export const TOKEN_SHAPE = /^[A-Za-z0-9_-]{43}$/; // 32 random bytes, base64url
 const TTL_MS = { verify: VERIFY_TTL_MS, reset: RESET_TTL_MS };
 
 // Makes a new link for the account and returns its token (the only time it exists outside the email). Expired rows
-// are swept, and the account's older link of the same purpose stops working.
-export function issueEmailToken(db, { accountId, purpose, now }) {
+// are swept, and the account's older link of the same purpose stops working (`replace: false` keeps it until
+// dropOlderEmailTokens, once the new one was sent).
+export function issueEmailToken(db, { accountId, purpose, now, replace = true }) {
   const token = newToken();
   const at = now.toISOString();
   db.transaction(() => {
     db.prepare('DELETE FROM email_tokens WHERE expires_at <= ?').run(at);
-    db.prepare('DELETE FROM email_tokens WHERE account_id = ? AND purpose = ?').run(accountId, purpose);
+    if (replace) db.prepare('DELETE FROM email_tokens WHERE account_id = ? AND purpose = ?').run(accountId, purpose);
     db.prepare('INSERT INTO email_tokens (account_id, purpose, token_hash, created_at, expires_at) VALUES (?, ?, ?, ?, ?)').run(
       accountId,
       purpose,
@@ -26,6 +27,11 @@ export function issueEmailToken(db, { accountId, purpose, now }) {
     );
   })();
   return token;
+}
+
+// The account's links of this purpose other than `token` stop working.
+export function dropOlderEmailTokens(db, { accountId, purpose, token }) {
+  db.prepare('DELETE FROM email_tokens WHERE account_id = ? AND purpose = ? AND token_hash <> ?').run(accountId, purpose, tokenHash(token));
 }
 
 // The live link row with its account, or null (malformed, unknown, used, replaced, expired or the wrong purpose).

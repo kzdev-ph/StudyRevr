@@ -1,3 +1,5 @@
+import { mathText } from '../services/math-text.js';
+
 // Grounding for key terms: a term is kept only if the quote the AI gives as evidence really is in the lesson text
 // and says something about the term (not just its title). This stops the model defining a term from its own knowledge.
 
@@ -16,7 +18,10 @@ const words = (s) => String(s).normalize('NFKC').toLowerCase().match(/[\p{L}\p{N
 
 // Case, spacing, punctuation, bullets and line-end hyphens all vanish, so "word-\nnext", "Word - Next" and
 // "wordnext" compare equal. Whole quotes are compared, so the looseness can't make a short quote match by accident.
-export const comparable = (s) => words(s).join('');
+// LaTeX is read as text first (math-text.js), so a quote the AI copied from an older lesson whose raw_text still holds
+// "\frac{1}{2}" matches it after the reply was converted to "1/2" (and the other way round).
+const folded = (t) => (/[$\\^_]/.test(t) ? mathText(t) : t);
+export const comparable = (s) => words(folded(String(s))).join('');
 
 // A quote longer than `max` words cut where a sentence or clause ends, not in the middle of a phrase (a prefix of a
 // verbatim quote is still verbatim): the last sentence end within `max` words, else the last comma or dash, else the

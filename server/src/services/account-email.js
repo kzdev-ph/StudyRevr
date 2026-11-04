@@ -1,5 +1,5 @@
 import { createLimiter } from '../auth/limiter.js';
-import { issueEmailToken } from '../auth/email-tokens.js';
+import { dropOlderEmailTokens, issueEmailToken } from '../auth/email-tokens.js';
 import { linkTo } from '../mail/links.js';
 import { resetMessage, verifyMessage } from '../mail/messages.js';
 
@@ -17,8 +17,12 @@ async function sendLink({ db, mailer, linkBase, account, now, sendCap }, purpose
     console.warn('[mail] hourly send cap reached');
     return false;
   }
-  const token = issueEmailToken(db, { accountId: account.id, purpose, now });
-  return mailer.send({ to: account.email, ...message(linkTo(linkBase, purpose, token)) });
+  // The link already sent keeps working until this one is handed to the mail server: a failed or slow send leaves the
+  // student a link that works (both stay live then, until they expire).
+  const token = issueEmailToken(db, { accountId: account.id, purpose, now, replace: false });
+  const sent = await mailer.send({ to: account.email, ...message(linkTo(linkBase, purpose, token)) });
+  if (sent) dropOlderEmailTokens(db, { accountId: account.id, purpose, token });
+  return sent;
 }
 
 export const sendVerifyEmail = (args) => sendLink(args, 'verify', verifyMessage);

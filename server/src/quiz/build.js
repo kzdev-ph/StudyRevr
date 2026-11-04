@@ -30,8 +30,9 @@ import { cardHash, describe, optionFlags, reviewFor } from './review-flags.js';
 //
 // A concept card with a saved true / false pair (statements.js: `statements`, Map card id -> row) is asked as one whole
 // sentence, true or its false twin, when the pair was reviewed clean. Without a clean pair a card that can be multiple
-// choice is asked that way (never as a stiff question-plus-answer True/False); one that can't keeps the old form.
-// With `statements` undefined (older databases, tests) nothing changes.
+// choice is asked that way (never as a stiff question-plus-answer True/False); one that can't keeps the old form,
+// except that a question ending in "?" (list items too, and with `statements` undefined: older databases, tests) is
+// never True/False without a clean pair, so it is multiple choice or not asked.
 
 export const QUIZ_LENGTH = 10;
 export const TF_SHARE = 0.3;

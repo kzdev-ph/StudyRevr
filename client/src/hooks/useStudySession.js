@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { api } from '../lib/api.js';
-import { getToken, onBeforeSignOut } from '../lib/auth.js';
+import { onBeforeSignOut, useToken } from '../lib/auth.js';
 import { createSessionTracker } from '../lib/session.js';
 
 const INTERACTIONS = ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll'];
@@ -10,9 +10,11 @@ const INTERACTIONS = ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll']
 // -> a function giving the active time so far on this screen, over every session it ran (the flashcard recap).
 export function useStudySession(lessonId, activity, { enabled = true } = {}) {
   const tracker = useRef(null);
+  // the login this screen studies under: another tab signing in or out (or a new token) ends this session, and the
+  // next one starts under the new login
+  const who = useToken();
 
   useEffect(() => {
-    const who = getToken();
     if (!enabled || !who) return undefined;
     const t = createSessionTracker({
       start: async () => (await api.startSession(lessonId, activity, who)).session.id,
@@ -38,7 +40,7 @@ export function useStudySession(lessonId, activity, { enabled = true } = {}) {
       offSignOut();
       t.close('left');
     };
-  }, [lessonId, activity, enabled]);
+  }, [lessonId, activity, enabled, who]);
 
   return () => tracker.current?.totalActiveMs() ?? 0;
 }

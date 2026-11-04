@@ -20,6 +20,8 @@ export function createLimiter({ max, windowMs }) {
       while (seen.size > MAX_KEYS) seen.delete(seen.keys().next().value);
       return over;
     },
+    // whether the key is over the limit now, without counting an attempt
+    over: (key, nowMs) => (seen.get(key) ?? []).filter((at) => nowMs - at < windowMs).length >= max,
     size: () => seen.size,
   };
 }

@@ -68,7 +68,9 @@ export function lessonLeakReport(db, lessonId) {
     }
 
     if (p.mcClean.length < 3 && !p.yesNo.length) {
-      const left = p.excluded.length ? p.excluded.map(excludedReason) : [{ rule: '-', detail: card.kind === 'term' ? 'no clean other definition or 3 other terms' : 'no clean wrong answers saved' }];
+      // a clean false statement was there, but a question ending in "?" is True/False only as a reviewed sentence pair
+      const noPair = p.falseClean.length ? [{ rule: '-', detail: 'no clean multiple-choice set, and a question ending in "?" is True/False only with a reviewed sentence pair (Make True/False)' }] : [];
+      const left = p.excluded.length ? [...noPair, ...p.excluded.map(excludedReason)] : noPair.length ? noPair : [{ rule: '-', detail: card.kind === 'term' ? 'no clean other definition or 3 other terms' : 'no clean wrong answers saved' }];
       const reasons = p.problems.length ? p.problems : left;
       never.push({ card_id: card.id, kind: card.kind, front: card.front, reasons });
     }

@@ -1,15 +1,17 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { limiterKey } from '../auth/limiter.js';
 import { HttpError } from './errors.js';
 
 export const ADMIN_HEADER = 'x-admin-pin';
 const MAX_TRIES = 5;
 const LOCK_MS = 60_000;
+const MAX_ADDRESSES = 5000; // most addresses remembered at once; the oldest give way beyond this
 
 const digest = (text) => createHash('sha256').update(String(text)).digest();
 
 // The researcher's admin area (lesson upload, participant codes, AI settings, research export) is behind ADMIN_PIN
 // from .env, checked here on the server. No PIN set: admin is off (403). A missing or wrong PIN is a 401; after
-// MAX_TRIES wrong PINs from one address, that address waits LOCK_MS (429). `clock` is () => ms (tests pass a fake).
+// MAX_TRIES wrong PINs from one address (an IPv6 /64 counts as one, limiterKey), that address waits LOCK_MS (429). `clock` is () => ms (tests pass a fake).
 export function createAdminGuard({ pin, clock = Date.now } = {}) {
   const expected = pin ? digest(pin) : null;
   const failures = new Map(); // address -> { count, lockedUntil }
@@ -18,7 +20,7 @@ export function createAdminGuard({ pin, clock = Date.now } = {}) {
   // either way, so a route that only asks "is this the admin?" can't be used to guess the PIN around the lockout.
   function check(req) {
     if (!expected) return { error: new HttpError(403, 'Admin is turned off. Set ADMIN_PIN in .env and restart the server.', { code: 'admin_off' }) };
-    const who = req.ip ?? 'unknown';
+    const who = limiterKey(req.ip ?? 'unknown');
     const now = clock();
     const record = failures.get(who);
     if (record?.lockedUntil > now) {
@@ -33,7 +35,9 @@ export function createAdminGuard({ pin, clock = Date.now } = {}) {
     }
     if (given) {
       const count = (record && !(record.lockedUntil > 0) ? record.count : 0) + 1;
+      failures.delete(who); // re-added below, so the oldest address is first
       failures.set(who, count >= MAX_TRIES ? { count: 0, lockedUntil: now + LOCK_MS } : { count, lockedUntil: 0 });
+      while (failures.size > MAX_ADDRESSES) failures.delete(failures.keys().next().value);
     }
     return { error: new HttpError(401, given ? 'That PIN is not right.' : 'Enter the admin PIN.', { code: 'admin_pin' }) };
   }
