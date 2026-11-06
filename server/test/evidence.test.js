@@ -103,3 +103,30 @@ describe('checkEvidence: formulas', () => {
     assert.equal(run('Area of a circle', 'The law').reason, 'evidence is only the term or a title');
   });
 });
+
+describe('checkEvidence: LaTeX that converts to nothing', () => {
+  const B = String.fromCharCode(92); // a backslash
+  const empty = `${B}left. ${B}right. ${B}text{}`;
+  const run = (term, evidence, text) => checkEvidence({ term, evidence, sourceKey: comparable(text) });
+
+  it('rejects a quote made only of empty LaTeX commands, for any lesson', () => {
+    assert.equal(run('Plants', empty, 'Plants make food from light.').ok, false);
+  });
+
+  it('rejects empty LaTeX plus one real word: too few real words', () => {
+    const r = run('Biology', `${empty} plants`, 'Plants make food from light.');
+    assert.equal(r.ok, false);
+    assert.equal(r.reason, 'evidence is only the term or a title');
+  });
+
+  it('still matches a fraction in the lesson against 1/2 in a quote', () => {
+    const text = `Probability
+The chance of heads is ${B}frac{1}{2} for a fair coin.`;
+    assert.equal(run('Probability', 'The chance of heads is 1/2 for a fair coin.', text).ok, true);
+  });
+
+  it('a grounded quote passes and an ungrounded one fails', () => {
+    assert.equal(check('Hypothesis', 'A hypothesis is a tentative answer to a research question.').ok, true);
+    assert.equal(check('Hypothesis', 'A hypothesis is a proven fact about nature.').ok, false);
+  });
+});

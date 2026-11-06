@@ -211,14 +211,21 @@ export function summaryRow(db, participant, { now, config, lessons }) {
 }
 
 // Participants in code order; P00 (the researcher's test data) only when asked for. A sign-up that never verified its
-// email and never studied (a mistyped address, signed up again) is not a participant of the study and is left out.
+// email and has no recorded activity in any study table (a mistyped address, signed up again) is not a participant of
+// the study and is left out. Any row in a participant-keyed table keeps the participant (with email verification off a
+// quiz can be taken with no study session), so summary.csv never drops someone who still appears in another file.
+const ACTIVITY_TABLES = ['study_sessions', 'flashcard_reviews', 'flashcard_progress', 'quiz_attempts', 'events', 'lesson_events', 'setting_events', 'ai_calls', 'review_progress'];
+const HAS_ACTIVITY = [
+  ...ACTIVITY_TABLES.map((t) => `EXISTS (SELECT 1 FROM ${t} x WHERE x.participant_id = p.id)`),
+  'EXISTS (SELECT 1 FROM lessons l WHERE l.owner_participant_id = p.id)',
+].join('\n              OR ');
 export const listParticipants = (db, { includeP00 = false } = {}) =>
   db
     .prepare(
       `SELECT p.id, p.code, p.created_at FROM participants p
        WHERE ${includeP00 ? '1' : "p.code <> 'P00'"}
          AND (NOT EXISTS (SELECT 1 FROM accounts a WHERE a.participant_id = p.id AND a.email_verified = 0)
-              OR EXISTS (SELECT 1 FROM study_sessions s WHERE s.participant_id = p.id))
+              OR ${HAS_ACTIVITY})
        ORDER BY p.code`,
     )
     .all();

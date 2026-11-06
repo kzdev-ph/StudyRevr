@@ -154,10 +154,58 @@ describe('auth routes', () => {
       const results = await Promise.all([...Array.from({ length: 20 }, () => wrong()), login()]);
       const codes = results.map((r) => r.body?.error?.code);
       assert.ok(codes.filter((c) => c === 'login_failed').length <= 5);
-      assert.ok(codes.filter((c) => c === 'login_locked').length >= 16);
+      // refused either by the lock or by the 4-checks-at-once cap of the IP
+      assert.ok(codes.filter((c) => c === 'login_locked' || c === 'login_rate_limited').length >= 16);
       assert.equal(results.filter((r) => r.status === 200).length, 0);
       assert.equal(results.at(-1).status, 429);
-      assert.equal(t.db.prepare('SELECT lockouts FROM accounts').get().lockouts, 1); // locked once; late guesses did not lock it again
+      assert.ok(t.db.prepare('SELECT lockouts FROM accounts').get().lockouts <= 1); // late guesses did not lock it again
+    });
+
+    it('the lock still comes after 5 wrong passwords sent one after another from one IP', async () => {
+      await start();
+      await signup();
+      for (let i = 0; i < 5; i++) await wrong();
+      assert.equal(t.db.prepare('SELECT lockouts FROM accounts').get().lockouts, 1);
+      assert.equal((await login()).body.error.code, 'login_locked');
+    });
+
+    it('a class behind one IP signing in at the same moment: everyone gets in (extra checks wait their turn)', async () => {
+      await start();
+      const emails = Array.from({ length: 8 }, (_, i) => `student${i}@example.com`);
+      for (const email of emails) await signup(email);
+      const results = await Promise.all(emails.map((email) => login({ email, takeover: true })));
+      assert.deepEqual(results.map((r) => r.status), emails.map(() => 200));
+    });
+
+    it('a burst of guesses from one IP: 4 checks run, 40 wait, the rest answer 429 login_rate_limited', async () => {
+      await start();
+      await signup();
+      const results = await Promise.all(Array.from({ length: 50 }, () => wrong()));
+      const codes = results.map((r) => r.body?.error?.code);
+      assert.equal(results.filter((r) => r.status === 200).length, 0);
+      assert.ok(codes.filter((c) => c === 'login_failed').length <= 5);
+      assert.ok(codes.filter((c) => c === 'login_rate_limited').length >= 6);
+    });
+
+    it('30 unknown-email attempts per IP are answered, the 31st gets 429; a correct password still signs in', async () => {
+      await start();
+      await signup();
+      for (let i = 0; i < 30; i++) assert.equal((await login({ email: `nobody${i}@example.com` })).status, 401);
+      const blocked = await login({ email: 'nobody-else@example.com' });
+      assert.equal(blocked.status, 429);
+      assert.equal(blocked.body.error.code, 'login_rate_limited');
+      const ok = await login({ takeover: true }); // same IP, known account, right password
+      assert.equal(ok.status, 200);
+      assert.ok(ok.body.token);
+    });
+
+    it('wrong passwords on account A do not stop a correct sign-in on account B from the same IP', async () => {
+      await start();
+      await signup('ana@example.com');
+      await signup('ben@example.com');
+      for (let i = 0; i < 40; i++) await login({ email: 'ana@example.com', password: 'not the password' }); // locks A again and again
+      const ben = await login({ email: 'ben@example.com', takeover: true });
+      assert.equal(ben.status, 200);
     });
 
     it('password: 5 wrong current passwords lock the account, and sign-in is locked too', async () => {

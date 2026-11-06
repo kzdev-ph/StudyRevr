@@ -31,10 +31,16 @@ const linkBad = () => new HttpError(400, RESET_LINK_BAD, { code: 'link_invalid' 
 // Admin once everyone is enrolled.
 const SIGNUPS_PER_WINDOW = 10;
 const SIGNUP_WINDOW_MS = 10 * 60_000;
-// Wrong sign-ins (unknown email or wrong password) per IP: one address can't run scrypt without end or walk through
-// accounts locking them; a class behind one address still has room.
+// Sign-ins with an unknown email per IP: one address can't run scrypt without end on made-up emails; a class behind one
+// address still has room. Only unknown emails count and are refused here: a known account has its own lock (5 wrong
+// passwords), so a person typing wrong passwords can't stop a correct sign-in on any account.
 const LOGIN_FAILS_PER_WINDOW = 30;
 const LOGIN_FAIL_WINDOW_MS = 15 * 60_000;
+// Password checks (scrypt) running at once per IP: parallel guesses can't all pass the lock check before the first ends.
+// More checks wait their turn (a class behind one address signing in together), up to LOGIN_CHECKS_WAITING; past
+// that they answer 429.
+const LOGIN_CHECKS_AT_ONCE = 4;
+const LOGIN_CHECKS_WAITING = 40;
 
 // Only for a password someone chooses (sign-up, change); never for sign-in or a teacher's temporary password.
 function assertNotCommon(password, email) {
@@ -54,7 +60,26 @@ const accountOf = (row) => ({ email: row.email, must_change_password: Boolean(ro
 export function authRouter({ db, clock = () => new Date(), mailer = { configured: false, send: async () => false }, linkBase = '', emailOn = mailer.configured, sendCap }) {
   const router = Router();
   const signups = createLimiter({ max: SIGNUPS_PER_WINDOW, windowMs: SIGNUP_WINDOW_MS }); // sign-up attempts per IP
-  const loginFails = createLimiter({ max: LOGIN_FAILS_PER_WINDOW, windowMs: LOGIN_FAIL_WINDOW_MS }); // wrong sign-ins per IP
+  const loginFails = createLimiter({ max: LOGIN_FAILS_PER_WINDOW, windowMs: LOGIN_FAIL_WINDOW_MS }); // unknown-email sign-ins per IP
+  // ipKey -> { running, waiting } (deleted when nothing runs or waits, so the map stays small)
+  const checking = new Map();
+
+  // Runs one password check for the IP: at most LOGIN_CHECKS_AT_ONCE at a time, the next ones wait in order; 429 when
+  // LOGIN_CHECKS_WAITING are already waiting.
+  const withCheckSlot = async (ipKey, check) => {
+    let slot = checking.get(ipKey);
+    if (!slot) checking.set(ipKey, (slot = { running: 0, waiting: [] }));
+    if (slot.running < LOGIN_CHECKS_AT_ONCE) slot.running += 1;
+    else if (slot.waiting.length >= LOGIN_CHECKS_WAITING) throw new HttpError(429, TOO_MANY, { code: 'login_rate_limited' });
+    else await new Promise((resolve) => slot.waiting.push(resolve)); // a finishing check hands its place over
+    try {
+      return await check();
+    } finally {
+      const next = slot.waiting.shift();
+      if (next) next();
+      else if (--slot.running === 0) checking.delete(ipKey);
+    }
+  };
   const emailIps = createLimiter({ max: 10, windowMs: 15 * 60_000 }); // verification-email requests per IP
   const emailAccounts = createLimiter({ max: 3, windowMs: 15 * 60_000 }); // verification emails per account
 
@@ -87,22 +112,21 @@ export function authRouter({ db, clock = () => new Date(), mailer = { configured
   router.post('/auth/login', async (req, res) => {
     const body = parseBody(loginBody, req.body, 'Enter your email and password.');
     const ipKey = limiterKey(req.ip);
-    if (loginFails.over(ipKey, clock().getTime())) throw new HttpError(429, TOO_MANY, { code: 'login_rate_limited' });
     const account = findAccountByEmail(db, body.email);
     if (!account) {
-      loginFails.limited(ipKey, clock().getTime());
-      await verifyDummy(body.password);
+      // only made-up emails count against the IP, and only they are refused by its cap
+      if (loginFails.limited(ipKey, clock().getTime())) throw new HttpError(429, TOO_MANY, { code: 'login_rate_limited' });
+      await withCheckSlot(ipKey, () => verifyDummy(body.password));
       throw new HttpError(401, 'Email or password is wrong.', { code: 'login_failed' });
     }
     const locked = lockedMs(account, clock());
     if (locked > 0) throw lockedError(locked);
 
-    const correct = await verifyPassword(body.password, account.password_hash);
+    const correct = await withCheckSlot(ipKey, () => verifyPassword(body.password, account.password_hash));
     // Parallel guesses all passed the check above before scrypt finished: look again, so those that started before the
     // lock was set answer 429 without counting, and sign nobody in even with the right password.
     assertNotLocked(db, account.id, clock());
     if (!correct) {
-      loginFails.limited(ipKey, clock().getTime());
       const { lockedMs: wait } = recordFailedLogin(db, account, clock());
       if (wait > 0) throw lockedError(wait);
       throw new HttpError(401, 'Email or password is wrong.', { code: 'login_failed' });

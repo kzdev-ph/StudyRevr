@@ -263,3 +263,17 @@ describe('checkPair', () => {
     assert.equal(checkPair(EN_CARD, null, opts).ok, false);
   });
 });
+
+describe('statements: a one-character answer', () => {
+  const SQ_TEXT = 'A square has 4 sides. A triangle has 3 sides.';
+  const SQ_CARD = { front: 'How many sides does a square have?', back: '4', evidence: 'A square has 4 sides.' };
+  const sq = (falseText) => twinProblems(SQ_CARD, 'A square has 4 sides.', falseText, { lessonWords: lessonWords(SQ_TEXT), otherAnswers: [] });
+
+  it('accepts a twin that swaps the number answer', () => {
+    assert.deepEqual(rules(sq('A square has 5 sides.')), []);
+  });
+
+  it('still refuses a twin that swaps the subject instead of the answer', () => {
+    assert.ok(rules(sq('A triangle has 4 sides.')).includes('s'));
+  });
+});

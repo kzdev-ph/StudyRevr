@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import JSZip from 'jszip';
 import { csvCell, toCsv } from '../src/export/csv.js';
+import { listParticipants } from '../src/stats/participant.js';
 import { addCodes, seedLesson, startStudyApp, TEST_PIN } from './helpers.js';
 
 const SECRET_KEY = 'AIza-EXPORT-SECRET-0001';
@@ -162,6 +163,41 @@ describe('research export', () => {
     const all = parseCsv(await file('summary', '?include_p00=1')).map((r) => r.participant);
     assert.deepEqual(all, ['P00', 'P01', 'P02']);
     assert.ok(parseCsv(await file('events', '?include_p00=1')).some((r) => r.participant === 'P00'));
+  });
+
+  describe('which sign-ups are in summary.csv', () => {
+    const addP = (code, { email, verified } = {}) => {
+      const id = Number(t.db.prepare('INSERT INTO participants (code) VALUES (?)').run(code).lastInsertRowid);
+      if (email) t.db.prepare('INSERT INTO accounts (participant_id, email, password_hash, created_at, email_verified) VALUES (?, ?, ?, ?, ?)').run(id, email, 'x', '2026-10-05T04:00:00.000Z', verified ? 1 : 0);
+      return id;
+    };
+    const summaryCodes = async () => parseCsv(await file('summary')).map((r) => r.participant);
+
+    it('keeps an unverified sign-up whose only record is a quiz attempt (no study session)', async () => {
+      const id = addP('P91', { email: 'p91@x.test', verified: false });
+      t.db.prepare('INSERT INTO quiz_attempts (lesson_id, score, total, participant_id) VALUES (?, 1, 2, ?)').run(lessonId, id);
+      assert.ok((await summaryCodes()).includes('P91'));
+      assert.ok(listParticipants(t.db).some((p) => p.code === 'P91'));
+    });
+
+    it('keeps an unverified sign-up whose only record is a lesson they own', async () => {
+      const id = addP('P92', { email: 'p92@x.test', verified: false });
+      t.db.prepare('UPDATE lessons SET owner_participant_id = ? WHERE id = ?').run(id, lessonId);
+      assert.ok((await summaryCodes()).includes('P92'));
+    });
+
+    it('leaves out an unverified sign-up with no rows anywhere', async () => {
+      addP('P93', { email: 'p93@x.test', verified: false });
+      assert.ok(!(await summaryCodes()).includes('P93'));
+      assert.ok(!listParticipants(t.db).some((p) => p.code === 'P93'));
+    });
+
+    it('keeps a verified sign-up with no activity, and a participant with no account row', async () => {
+      addP('P94', { email: 'p94@x.test', verified: true });
+      addP('P95');
+      const codes = await summaryCodes();
+      assert.ok(codes.includes('P94') && codes.includes('P95'));
+    });
   });
 
   it('marks abandoned attempts and retakes', async () => {

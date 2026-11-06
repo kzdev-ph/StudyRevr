@@ -136,3 +136,10 @@ describe('textDamage', () => {
     assert.equal(textDamage(undefined).words, 0);
   });
 });
+
+describe('textDamage: word starts sq, rh, thw', () => {
+  it('counts "square", "rhombus", "thwart" and "rhythm" as whole words, but still sees broken words', () => {
+    assert.equal(textDamage('square rhombus thwart rhythm').broken, 0);
+    assert.equal(textDamage('nders nk').broken, 2);
+  });
+});

@@ -38,7 +38,7 @@ Lessons from students (only if the researcher turned student uploads on)
   lessons (never the student's own AI key). Study activity on uploads is exported in the same files as the rest
   (lesson_id tells which lesson; see lessons.csv for where each came from).
 
-summary.csv - one row per participant (a sign-up that never verified its email and never studied is left out); columns grouped by SDL dimension
+summary.csv - one row per participant (a sign-up that never verified its email and has no recorded activity in any study table is left out); columns grouped by SDL dimension
   Main measures count the teacher's lessons only (origin admin). Student uploads, shared or not, are left out of them.
   Every measure marked (+all) has a twin with the same name plus _all, right after it, that counts every lesson:
   the teacher's, students' shared uploads and students' private uploads. Study on the "All lessons" flashcard deck

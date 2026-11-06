@@ -17,7 +17,8 @@ const isFormula = (quote) => RELATION.test(quote) || (/[→⇌]/.test(quote) && 
 const words = (s) => String(s).normalize('NFKC').toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
 
 // Case, spacing, punctuation, bullets and line-end hyphens all vanish, so "word-\nnext", "Word - Next" and
-// "wordnext" compare equal. Whole quotes are compared, so the looseness can't make a short quote match by accident.
+// "wordnext" compare equal. The words of a quote are counted first (checkEvidence), so the looseness can't make a
+// near-empty quote match by accident.
 // LaTeX is read as text first (math-text.js), so a quote the AI copied from an older lesson whose raw_text still holds
 // "\frac{1}{2}" matches it after the reply was converted to "1/2" (and the other way round).
 const folded = (t) => (/[$\\^_]/.test(t) ? mathText(t) : t);
@@ -55,8 +56,11 @@ export function checkEvidence({ term, evidence, sourceKey, minExplaining = MIN_E
   // a formula or reaction ("F = ma") is explanation on its own: it has few words but says what the term is
   if (isFormula(quote)) minExplaining = Math.min(minExplaining, 1);
   const termWords = new Set(words(term));
-  const explaining = words(quote).filter((w) => !termWords.has(w));
+  // count words on the converted quote, the same form the key is made from: LaTeX such as "\left." or "\text{}" turns
+  // into nothing, so it must not count as explanation
+  const explaining = words(folded(quote)).filter((w) => !termWords.has(w));
   if (explaining.length < minExplaining) return { ok: false, reason: 'evidence is only the term or a title' };
-  if (!sourceKey.includes(comparable(quote))) return { ok: false, reason: 'evidence not found in the lesson text' };
+  const key = comparable(quote);
+  if (!key || !sourceKey.includes(key)) return { ok: false, reason: 'evidence not found in the lesson text' };
   return { ok: true, evidence: trimQuote(quote, maxWords) };
 }
